@@ -142,6 +142,7 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
   3. Bahasa yang dilihat pengguna adalah **Bahasa Indonesia** (lihat `PERSONA.md`). Identifier dan komentar kode tetap bahasa Inggris.
   4. Dependency Python dikelola lewat `pyproject.toml`; dependency bridge lewat `package.json` di direktorinya sendiri.
 - Alternatif yang dipertimbangkan:
+  - **Rust untuk inti**: ditolak. GenericAgent, `llmcore.py`, memori, dan tool bundle sudah Python; memakai Rust berarti menulis ulang basis yang sudah dipilih, atau menempelkan Python lewat FFI. Bot ini I/O-bound dan latensinya didominasi LLM, jadi keunggulan performa Rust tidak memberi nilai sebanding dengan biaya rewrite. Rust tetap boleh dipakai nanti untuk komponen kecil yang terbukti bottleneck, bukan untuk inti.
   - **Python saja + WhatsApp Cloud API resmi**: satu bahasa, tetapi butuh akun Meta Business, webhook publik, dan biaya percakapan. Dicatat sebagai opsi cadangan di ADR-0013.
   - **Semua Node.js**: ditolak karena harness GenericAgent, memori, dan tool sudah Python; menulis ulang berarti membuang basis yang sudah dipilih.
 - Konsekuensi: deployment membutuhkan dua runtime (Python dan Node) hanya saat gateway aktif. Bagian inti tetap bisa dites dengan Python tanpa Node. Jika kelak pindah ke Cloud API, bridge Node bisa dihapus tanpa mengubah inti.
