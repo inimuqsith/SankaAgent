@@ -4,9 +4,11 @@ import { loadConfig } from './config.js';
 import { createInboundDeliverer } from './deliver.js';
 import { createServer } from './http.js';
 import { createLogger } from './logger.js';
+import { createMediaPipeline } from './media.js';
 import { createOutbound } from './outbound.js';
 import { assertOutsideRepo, prepareSessionDir } from './session.js';
 import { createSocketManager } from './socket.js';
+import { uploadAttachment } from './upload.js';
 
 process.umask(0o077);
 
@@ -74,7 +76,18 @@ async function main() {
     clock,
     logger,
   });
-  const socket = createSocketManager({ config, deliverer, logger });
+  const media = createMediaPipeline({
+    upload: (buffer, metadata) =>
+      uploadAttachment({
+        url: config.attachmentUrl,
+        token: config.token,
+        buffer,
+        ...metadata,
+      }),
+    maxBytes: config.attachmentMaxBytes,
+    logger,
+  });
+  const socket = createSocketManager({ config, deliverer, logger, media });
   const outbound = createOutbound({
     transport: {
       sendText: (chatId, text) => socket.sendText(chatId, text),

@@ -44,7 +44,10 @@ Bridge mendorong pesan masuk (push) dan Python memanggil bridge untuk keluaran; 
 - **policy**: peran (owner/panitia; pengguna tak tercantum = panitia), matriks izin tool, rate limit per pengguna. Penegakan di kode.
 - **agent loop**: loop persepsi, pikir, tool, memori (turunan `agent_loop.py` GenericAgent). Sebisa mungkin tidak diubah, diperluas lewat hook.
 - **tool registry**: daftar tool bundle. Tool yang tidak diizinkan untuk peran tertentu tidak muncul di daftar tool yang dilihat LLM pada giliran itu.
-- **formatter**: satu-satunya jalan keluar ke WhatsApp. Aturannya: teks final saja, ringkas, batas panjang, kecuali jenis respons "rekap" yang boleh panjang dan dipecah per pesan.
+- **formatter**: satu-satunya jalan keluar ke WhatsApp. Aturannya: teks final saja, ringkas, batas panjang, kecuali jenis respons "rekap" yang boleh panjang dan dipecah per pesan. Formatter juga menormalkan markdown model (`**`, `##`, `-`) ke sintaks WhatsApp (`*`, `•`) sebelum memotong atau memecah pesan.
+- **persona**: L0 dimuat dari `config/SOUL.md`; `sanka/agent/prompt.py` menambahkan aturan tool/data dan tanggal. Tidak ada persona cadangan di kode. Gateway gagal start bila file hilang atau kosong.
+- **operasional**: `scripts/sanka` mengurus lifecycle kedua proses (`start`, `stop`, `restart`, `status`, `logs` dengan target `all|gateway|bridge`). `scripts/sanka pair` menjalankan bridge di foreground untuk QR pertama. Log/PID ada di `logs/` (gitignored).
+- **group context**: buffer JSONL di luar repo untuk pesan teks grup yang tidak di-mention. `GroupContextStore` mencatat setelah gate grup lolos, memangkas berdasarkan retensi/ukuran, dan menyajikan blok `<group_context>` ke prompt saat giliran grup. Ini bukan log dan bukan memori jangka panjang (ADR-0025).
 - **memori dan skill**: lapisan memori turunan GenericAgent. Self-evolution aktif, belajar dari semua pengguna, dengan pencatatan asal-usul skill. Lihat ADR dan `SECURITY.md`.
 
 ## Gateway Python (plan-3)

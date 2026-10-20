@@ -22,6 +22,7 @@ from gateway.outbound import OutboundQueue
 from sanka.commands.registry import CommandContext, CommandResult
 from sanka.config import SankaConfig
 from sanka.formatter import Formatter, ResponseKind
+from sanka.group_context import GroupContextStore
 from sanka.models import InboundMessage
 from sanka.policy import RateLimiter, Role
 from tests.gateway_fakes import FakeBridge, FakeClock, FakeRuntime
@@ -70,6 +71,7 @@ def make_event(
     is_group: bool = False,
     mentions: tuple[str, ...] = (),
     reply_to_bot: bool = False,
+    sender_name: str = "",
     timestamp: float | None = None,
 ) -> InboundEvent:
     return InboundEvent(
@@ -81,6 +83,7 @@ def make_event(
             is_group=is_group,
             mentions=mentions,
             reply_to_bot=reply_to_bot,
+            sender_name=sender_name,
         ),
         timestamp=time.time() if timestamp is None else timestamp,
     )
@@ -106,6 +109,7 @@ def make_harness(config: SankaConfig):
         limiter: RateLimiter | None = None,
         agent: object = "default",
         send_read_receipts: bool | None = None,
+        group_context: object = None,
     ) -> Harness:
         active = active_config or config
         if send_read_receipts is not None:
@@ -139,6 +143,7 @@ def make_harness(config: SankaConfig):
             agent=runtime,
             dedup=dedup,
             notices=notices,
+            group_context=group_context,
         )
         harness = Harness(
             dispatcher=dispatcher,
@@ -423,3 +428,70 @@ def test_logs_never_contain_message_text_jids_or_token(make_harness, caplog):
     assert token not in captured
     assert "@s.whatsapp.net" not in captured
     assert "@g.us" not in captured
+
+
+def _context_store(tmp_path) -> GroupContextStore:
+    return GroupContextStore(
+        tmp_path / "gc",
+        retention_seconds=3600,
+        max_messages=10,
+        inject_messages=5,
+        inject_max_chars=1000,
+        capture_all=True,
+        capture_group_ids=(),
+    )
+
+
+def test_unmentioned_group_message_is_captured_without_agent(
+    make_harness, tmp_path
+) -> None:
+    store = _context_store(tmp_path)
+    harness = make_harness(group_context=store)
+
+    result = harness.dispatcher.submit(
+        make_event(
+            "ctx-1",
+            chat_id=GROUP,
+            sender_id=PARTICIPANT,
+            text="pagi semua",
+            is_group=True,
+            sender_name="Budi",
+        )
+    )
+    harness.outbound.wait_idle(2.0)
+
+    assert result.outcome is SubmitOutcome.IGNORED
+    assert harness.runtime.calls == []
+    context = store.context(GROUP)
+    assert context is not None
+    assert "Budi: pagi semua" in context
+
+
+def test_dm_is_never_captured(make_harness, tmp_path) -> None:
+    store = _context_store(tmp_path)
+    harness = make_harness(group_context=store)
+
+    harness.dispatcher.submit(
+        make_event("dm-ctx", text="pesan pribadi", is_group=False)
+    )
+    harness.wait_sends(1)
+
+    assert store.context(PARTICIPANT) is None
+
+
+def test_group_rejected_by_gate_is_not_captured(make_harness, tmp_path) -> None:
+    store = _context_store(tmp_path)
+    harness = make_harness(group_context=store)
+
+    result = harness.dispatcher.submit(
+        make_event(
+            "ctx-denied",
+            chat_id="999999999999@g.us",
+            sender_id=PARTICIPANT,
+            text="tidak boleh",
+            is_group=True,
+        )
+    )
+
+    assert result.outcome is SubmitOutcome.IGNORED
+    assert store.context("999999999999@g.us") is None

@@ -25,7 +25,7 @@ def register_session_commands(
     registry.register(
         Command(
             "new",
-            "Mulai percakapan baru di chat ini",
+            "🧹 Mulai percakapan baru di chat ini",
             ALL_ROLES,
             lambda context, args: _new(context, control),
         )
@@ -33,7 +33,7 @@ def register_session_commands(
     registry.register(
         Command(
             "stop",
-            "Hentikan pekerjaan yang sedang berjalan",
+            "⏹️ Hentikan pekerjaan yang sedang berjalan",
             ALL_ROLES,
             lambda context, args: _stop(context, control),
         )
@@ -42,7 +42,7 @@ def register_session_commands(
 
 def _new(context: CommandContext, control: SessionControl) -> str:
     control.reset(context.chat_id)
-    return "Konteks percakapan di chat ini sudah direset."
+    return "🧹 Siap! Konteks percakapan di chat ini sudah direset."
 
 
 def _stop(context: CommandContext, control: SessionControl) -> str:
@@ -52,7 +52,7 @@ def _stop(context: CommandContext, control: SessionControl) -> str:
         is_owner=context.role is Role.OWNER,
     )
     if outcome is StopOutcome.STOPPED:
-        return "Pekerjaan di chat ini dihentikan."
+        return "⏹️ Oke, pekerjaan di chat ini sudah dihentikan."
     if outcome is StopOutcome.FORBIDDEN:
-        return "Kamu tidak bisa menghentikan pekerjaan ini."
-    return "Tidak ada pekerjaan yang berjalan di chat ini."
+        return "🔒 Kamu tidak bisa menghentikan pekerjaan ini."
+    return "🤔 Tidak ada pekerjaan yang sedang berjalan di chat ini."

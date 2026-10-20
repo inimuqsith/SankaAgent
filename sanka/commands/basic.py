@@ -35,16 +35,16 @@ def build_registry(
         return _render_help(registry.list_for(context.role))
 
     registry.register(
-        Command("ping", "Cek Sanka hidup", ALL_ROLES, _ping)
+        Command("ping", "🏓 Cek Sanka hidup", ALL_ROLES, _ping)
     )
     registry.register(
-        Command("help", "Daftar command sesuai peranmu", ALL_ROLES, help_handler)
+        Command("help", "🧭 Daftar command sesuai peranmu", ALL_ROLES, help_handler)
     )
     registry.register(
-        Command("whoami", "Tampilkan peranmu", ALL_ROLES, _whoami)
+        Command("whoami", "👤 Identitas dan peranmu", ALL_ROLES, _whoami)
     )
     registry.register(
-        Command("status", "Status ringkas Sanka", COMMITTEE_ROLES, _status)
+        Command("status", "⚙️ Status ringkas Sanka", COMMITTEE_ROLES, _status)
     )
     register_session_commands(registry, control)
     if recap_service is not None:
@@ -55,18 +55,29 @@ def build_registry(
 
 
 def _ping(context: CommandContext, arguments: str) -> str:
-    return "pong"
+    return "🏓 Pong! Sanka hidup dan siap."
 
 
 def _whoami(context: CommandContext, arguments: str) -> str:
-    return f"Peran kamu: {context.role.value}."
+    lines = [
+        f"👤 Kamu: {context.sender_id}",
+        f"🎭 Peran: {context.role.value.capitalize()}",
+    ]
+    if context.chat_id:
+        chat_kind = "grup" if context.is_group else "pribadi"
+        lines.append(f"💬 Chat: {chat_kind} ({context.chat_id})")
+    return "\n".join(lines)
 
 
 def _status(context: CommandContext, arguments: str) -> str:
-    return f"Mode: deterministic\nModel: {context.config.llm.model}"
+    return (
+        "⚙️ Mode: deterministic (command tanpa LLM)\n"
+        f"🧠 Model: {context.config.llm.model}"
+    )
 
 
 def _render_help(commands: tuple[Command, ...]) -> str:
-    lines = ["Command tersedia:"]
+    lines = ["🧭 *Command Sanka*"]
     lines.extend(f"/{command.name} - {command.description}" for command in commands)
+    lines.append("Ketik command di atas, atau ngobrol biasa tanpa slash.")
     return "\n".join(lines)

@@ -80,6 +80,24 @@ limits:
 #         column: "Nominal"
 recaps: {}
 
+group_context:
+  enabled: false
+  dir: "~/.local/share/sanka/group-context"
+  capture_all_groups: false
+  capture_group_ids: []
+  retention_hours: 24
+  max_messages: 200
+  inject_messages: 30
+  inject_max_chars: 3500
+
+attachments:
+  dir: ""                # absolute path outside the repo; "" disables
+  max_bytes: 25000000
+  max_per_message: 4
+  max_image_bytes: 8000000
+  retention_minutes: 1440
+  max_total_bytes: 536870912
+
 gateway:
   bridge_url: "http://127.0.0.1:3000"
   require_mention: true

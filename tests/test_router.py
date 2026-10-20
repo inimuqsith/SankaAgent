@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from sanka.models import InboundMessage
+from sanka.models import InboundAttachment, InboundMessage
 from sanka.router import Route, route
 
 BOT_ID = "628999999999"
@@ -55,3 +55,31 @@ def test_mention_of_someone_else_is_ignored() -> None:
 
 def test_group_does_not_require_mention_when_disabled() -> None:
     assert route(message("halo"), require_mention=False) is Route.AGENT
+
+
+ATTACHMENT = InboundAttachment(
+    attachment_id="a" * 32,
+    kind="document",
+    mime="text/markdown",
+    name="catatan.md",
+    size=5,
+)
+
+
+def test_attachment_only_dm_is_agent() -> None:
+    incoming = message("", is_group=False, attachments=(ATTACHMENT,))
+    assert route(incoming, bot_ids=(BOT_ID,)) is Route.AGENT
+
+
+def test_attachment_only_group_still_needs_mention() -> None:
+    incoming = message("", is_group=True, attachments=(ATTACHMENT,))
+    assert route(incoming, bot_ids=(BOT_ID,)) is Route.IGNORE
+
+
+def test_attachment_with_caption_mention_is_agent() -> None:
+    incoming = message(
+        "@sanka baca ini",
+        is_group=True,
+        attachments=(ATTACHMENT,),
+    )
+    assert route(incoming, bot_ids=(BOT_ID,)) is Route.AGENT

@@ -117,7 +117,7 @@ def agent_runner_loop(
     tools_schema: Any,
     max_turns: int = 40,
     verbose: bool = False,
-    initial_user_content: str | None = None,
+    initial_user_content: str | list[dict[str, Any]] | None = None,
     yield_info: bool = False,
     *,
     history: list[dict[str, str]] | None = None,
@@ -126,7 +126,9 @@ def agent_runner_loop(
 
     SANKA-MOD: ``verbose`` defaults to ``False`` for Sanka and the new
     keyword-only ``history`` parameter is spliced between the system prompt and
-    the current user message: ``[system, *history, user]``.
+    the current user message: ``[system, *history, user]``. Plan-12 also accepts
+    OpenAI-style content parts for the current user turn (images), while the
+    stored history remains plain text.
     """
     initial_content = initial_user_content if initial_user_content is not None else user_input
     messages: list[dict[str, Any]] = [

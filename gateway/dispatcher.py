@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from sanka.commands.registry import CommandRegistry
     from sanka.config import SankaConfig
     from sanka.formatter import Formatter
+    from sanka.group_context import GroupContextStore
 
     from gateway.dedup import TtlRegistry
     from gateway.outbound import OutboundQueue
@@ -91,6 +92,7 @@ class Dispatcher:
         agent: AgentHandler | None,
         dedup: TtlRegistry,
         notices: TtlRegistry,
+        group_context: GroupContextStore | None = None,
         workers: int = 8,
         wall_clock: Callable[[], float] = time.time,
     ) -> None:
@@ -107,6 +109,7 @@ class Dispatcher:
         self._agent = agent
         self._dedup = dedup
         self._notices = notices
+        self._group_context = group_context
         self._wall_clock = wall_clock
         self._slots = threading.BoundedSemaphore(workers)
         self._executor = ThreadPoolExecutor(
@@ -142,10 +145,12 @@ class Dispatcher:
             require_mention=self._config.gateway.require_mention,
         )
         if decision is Route.IGNORE:
+            self._record_context(event)
             _log("ignored", event, role=role, detail="not_mentioned")
             return SubmitResult(SubmitOutcome.IGNORED, "not_mentioned")
 
         if decision is Route.COMMAND and not self._limiter.allow(message.sender_id):
+            self._record_context(event)
             self._send_rate_notice(event, role)
             _log("ignored", event, role=role, detail="rate_limited")
             return SubmitResult(SubmitOutcome.IGNORED, "rate_limited")
@@ -188,7 +193,17 @@ class Dispatcher:
         except Exception as exc:  # a worker must survive any handler failure
             self._report_failure(event, role, exc)
         finally:
+            self._record_context(event)
             self._slots.release()
+
+    def _record_context(self, event: InboundEvent) -> None:
+        if self._group_context is None:
+            return
+        self._group_context.record(
+            event.message,
+            timestamp=event.timestamp,
+            message_id=event.message_id,
+        )
 
     def _run_command(self, event: InboundEvent, role: Role) -> None:
         message = event.message

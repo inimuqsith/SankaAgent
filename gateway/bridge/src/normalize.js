@@ -36,6 +36,12 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.length > 0;
 }
 
+function sanitizeSenderName(value) {
+  if (typeof value !== 'string') return '';
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned.slice(0, 64);
+}
+
 /**
  * Normalize a WhatsApp JID: strip the device suffix (`:12`) and any duplicate
  * server part, and map the legacy `c.us` server to `s.whatsapp.net`.
@@ -92,7 +98,7 @@ function readTimestamp(value) {
   return Number.NaN;
 }
 
-function unwrapMessage(message) {
+export function unwrapMessage(message) {
   let content = message;
 
   for (let depth = 0; depth < MAX_UNWRAP_DEPTH; depth += 1) {
@@ -261,6 +267,7 @@ function normalizeUnsafe(msg, ctx) {
     message_id: messageId,
     chat_id: remoteJid,
     sender_id: senderId,
+    sender_name: sanitizeSenderName(msg.pushName),
     text: extractText(content),
     is_group: isGroup,
     mentions,

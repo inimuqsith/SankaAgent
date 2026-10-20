@@ -14,6 +14,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_INBOUND_URL = 'http://127.0.0.1:8099/v1/inbound';
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_OUTBOUND_PER_MINUTE = 20;
+export const DEFAULT_ATTACHMENT_MAX_BYTES = 25_000_000;
 export const DEFAULT_LOG_LEVEL = 'info';
 export const DEFAULT_SESSION_DIR = path.join(
   os.homedir(),
@@ -159,7 +160,7 @@ function resolveSessionDir(raw) {
  * @returns {Readonly<{port: number, host: '127.0.0.1', token: string,
  *   inboundUrl: string, sessionDir: string, logLevel: string,
  *   outboundPerMinute: number, readReceipts: boolean, pairOnly: boolean,
- *   repoRoot: string}>}
+ *   attachmentMaxBytes: number, attachmentUrl: string, repoRoot: string}>}
  * @throws {ConfigError} when an environment value is missing or invalid
  */
 export function loadConfig(env = process.env) {
@@ -207,12 +208,22 @@ export function loadConfig(env = process.env) {
   );
   const readReceipts = readBoolean(env, 'SANKA_BRIDGE_READ_RECEIPTS', false);
   const pairOnly = readBoolean(env, 'SANKA_BRIDGE_PAIR_ONLY', false);
+  const attachmentMaxBytes = readInt(
+    env,
+    'SANKA_ATTACHMENT_MAX_BYTES',
+    DEFAULT_ATTACHMENT_MAX_BYTES,
+    1,
+    100_000_000,
+  );
+  const attachmentUrl = new URL('/v1/attachments', inboundUrl).toString();
 
   return Object.freeze({
     port,
     host: '127.0.0.1',
     token,
     inboundUrl,
+    attachmentUrl,
+    attachmentMaxBytes,
     sessionDir,
     logLevel,
     outboundPerMinute,

@@ -37,7 +37,7 @@ def register_recap_command(
     registry.register(
         Command(
             name="rekap",
-            description="Rekap data dari sheet terdaftar",
+            description="📊 Rekap data dari sheet terdaftar",
             roles=COMMITTEE_ROLES,
             handler=_make_handler(service),
             kind=ResponseKind.RECAP,

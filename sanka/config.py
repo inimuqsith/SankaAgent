@@ -167,6 +167,34 @@ class GatewayConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupContextConfig:
+    enabled: bool = False
+    dir: str = "~/.local/share/sanka/group-context"
+    capture_all_groups: bool = False
+    capture_group_ids: tuple[str, ...] = ()
+    retention_hours: int = 24
+    max_messages: int = 200
+    inject_messages: int = 30
+    inject_max_chars: int = 3500
+
+
+@dataclass(frozen=True, slots=True)
+class AttachmentsConfig:
+    """Inbound media storage limits (plan-12).
+
+    An empty ``dir`` disables the feature. The directory must be absolute and
+    outside the repository; it never comes from a message or model argument.
+    """
+
+    dir: str = ""
+    max_bytes: int = 25_000_000
+    max_per_message: int = 4
+    max_image_bytes: int = 8_000_000
+    retention_minutes: int = 1440
+    max_total_bytes: int = 536_870_912
+
+
+@dataclass(frozen=True, slots=True)
 class SankaConfig:
     llm: LLMConfig
     access: AccessConfig
@@ -177,6 +205,8 @@ class SankaConfig:
     recaps: Mapping[str, RecapDefinition] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    group_context: GroupContextConfig = field(default_factory=GroupContextConfig)
+    attachments: AttachmentsConfig = field(default_factory=AttachmentsConfig)
 
 
 def load_config(path: str | Path) -> SankaConfig:
@@ -260,6 +290,8 @@ def _parse(root: Mapping[str, Any]) -> SankaConfig:
         workspace=workspace_config,
         tools=tools_config,
         recaps=_recap_definitions(root, workspace_config.read_allowlist),
+        group_context=_group_context_config(root),
+        attachments=_attachments_config(root),
         limits=LimitsConfig(
             max_reply_chars=_int(limits, "max_reply_chars", "limits.max_reply_chars"),
             rate_limit_per_minute=_int(
@@ -468,6 +500,155 @@ def _optional_str(
     if not allow_empty and not value.strip():
         raise ConfigError(f"{path} must not be empty")
     return value
+
+
+def _optional_str_tuple(
+    section: Mapping[str, Any], key: str, path: str
+) -> tuple[str, ...]:
+    if key not in section:
+        return ()
+    value = section[key]
+    if not isinstance(value, list):
+        raise ConfigError(f"{path} must be a list of strings")
+    items: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str):
+            raise ConfigError(f"{path}[{index}] must be a string")
+        items.append(item)
+    return tuple(items)
+
+
+def _group_context_config(root: Mapping[str, Any]) -> GroupContextConfig:
+    section = _optional_section(root, "group_context", "group_context")
+    capture_ids = _optional_str_tuple(
+        section, "capture_group_ids", "group_context.capture_group_ids"
+    )
+    for index, chat_id in enumerate(capture_ids):
+        if not chat_id.endswith("@g.us"):
+            raise ConfigError(
+                f"group_context.capture_group_ids[{index}] must be a group JID"
+            )
+
+    directory = _optional_str(
+        section,
+        "dir",
+        "group_context.dir",
+        "~/.local/share/sanka/group-context",
+    )
+    expanded = Path(directory).expanduser()
+    if not expanded.is_absolute():
+        raise ConfigError("group_context.dir must be an absolute path")
+    if expanded.resolve() == _REPO_ROOT or _REPO_ROOT in expanded.resolve().parents:
+        raise ConfigError("group_context.dir must be outside the repository")
+
+    enabled = _optional_bool(section, "enabled", "group_context.enabled", False)
+    capture_all = _optional_bool(
+        section, "capture_all_groups", "group_context.capture_all_groups", False
+    )
+    if enabled and not capture_all and not capture_ids:
+        raise ConfigError(
+            "group_context.enabled requires capture_all_groups or capture_group_ids"
+        )
+
+    retention_hours = _optional_int(
+        section, "retention_hours", "group_context.retention_hours", 24
+    )
+    if not 1 <= retention_hours <= 24 * 30:
+        raise ConfigError("group_context.retention_hours must be between 1 and 720")
+
+    max_messages = _optional_int(
+        section, "max_messages", "group_context.max_messages", 200
+    )
+    if not 1 <= max_messages <= 2000:
+        raise ConfigError("group_context.max_messages must be between 1 and 2000")
+
+    inject_messages = _optional_int(
+        section, "inject_messages", "group_context.inject_messages", 30
+    )
+    if not 1 <= inject_messages <= 200:
+        raise ConfigError("group_context.inject_messages must be between 1 and 200")
+    if inject_messages > max_messages:
+        raise ConfigError(
+            "group_context.inject_messages must not exceed max_messages"
+        )
+
+    inject_max_chars = _optional_int(
+        section, "inject_max_chars", "group_context.inject_max_chars", 3500
+    )
+    if not 500 <= inject_max_chars <= 20000:
+        raise ConfigError(
+            "group_context.inject_max_chars must be between 500 and 20000"
+        )
+
+    return GroupContextConfig(
+        enabled=enabled,
+        dir=str(expanded),
+        capture_all_groups=capture_all,
+        capture_group_ids=capture_ids,
+        retention_hours=retention_hours,
+        max_messages=max_messages,
+        inject_messages=inject_messages,
+        inject_max_chars=inject_max_chars,
+    )
+
+
+def _attachments_config(root: Mapping[str, Any]) -> AttachmentsConfig:
+    section = _optional_section(root, "attachments", "attachments")
+    directory = _optional_str(
+        section, "dir", "attachments.dir", "", allow_empty=True
+    )
+    if directory:
+        expanded = Path(directory).expanduser()
+        if not expanded.is_absolute():
+            raise ConfigError("attachments.dir must be an absolute path")
+        resolved = expanded.resolve()
+        if resolved.is_relative_to(_REPO_ROOT):
+            raise ConfigError("attachments.dir must be outside the repository")
+        directory = str(expanded)
+
+    max_bytes = _optional_int(
+        section, "max_bytes", "attachments.max_bytes", 25_000_000
+    )
+    if not 1 <= max_bytes <= 100_000_000:
+        raise ConfigError("attachments.max_bytes must be between 1 and 100000000")
+
+    max_per_message = _optional_int(
+        section, "max_per_message", "attachments.max_per_message", 4
+    )
+    if not 1 <= max_per_message <= 10:
+        raise ConfigError("attachments.max_per_message must be between 1 and 10")
+
+    max_image_bytes = _optional_int(
+        section, "max_image_bytes", "attachments.max_image_bytes", 8_000_000
+    )
+    if not 1 <= max_image_bytes <= max_bytes:
+        raise ConfigError("attachments.max_image_bytes must not exceed max_bytes")
+
+    retention_minutes = _optional_int(
+        section, "retention_minutes", "attachments.retention_minutes", 1440
+    )
+    if not 1 <= retention_minutes <= 10_080:
+        raise ConfigError(
+            "attachments.retention_minutes must be between 1 and 10080"
+        )
+
+    max_total_bytes = _optional_int(
+        section,
+        "max_total_bytes",
+        "attachments.max_total_bytes",
+        536_870_912,
+    )
+    if max_total_bytes < max_bytes:
+        raise ConfigError("attachments.max_total_bytes must be at least max_bytes")
+
+    return AttachmentsConfig(
+        dir=directory,
+        max_bytes=max_bytes,
+        max_per_message=max_per_message,
+        max_image_bytes=max_image_bytes,
+        retention_minutes=retention_minutes,
+        max_total_bytes=max_total_bytes,
+    )
 
 
 def _optional_env_name(

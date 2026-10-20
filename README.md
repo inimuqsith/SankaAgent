@@ -45,6 +45,25 @@ Gateway hanya menangani I/O WhatsApp. Router memisahkan command dari percakapan 
 Tahap agent core + gateway Python + bridge WhatsApp. Plan-1 (config, router, policy, command dasar, formatter), plan-2 (sesi per chat, antrean, client OpenCode Go, `/new`, `/stop`), dan plan-3 (gateway Python loopback) selesai; plan-2 sudah diverifikasi live ke OpenCode Go. Plan-4 (bridge Node/Baileys) sudah dipasangkan ke nomor Sanka dan berhasil membalas mention grup; DM/no-mention/logout masih diuji. Plan-5 (tool baca + rekap) sudah terintegrasi; `web_search` via SearXNG dan `doc_read` sudah live, sedangkan `/rekap` dengan sheet Google nyata menunggu kredensial. Rencana kerja ada di [`docs/plan/`](docs/plan/), peta plan di [`docs/plan/ROADMAP.md`](docs/plan/ROADMAP.md).
 
 Konfigurasi contoh: [`config/sanka.example.yaml`](config/sanka.example.yaml).
+Persona runtime: [`config/SOUL.md`](config/SOUL.md). Edit file itu untuk mengubah karakter Sanka; `prompt.py` memuatnya saat startup dan gagal cepat bila file hilang.
+
+## Menjalankan
+
+```bash
+scripts/sanka start               # gateway + bridge di background
+scripts/sanka start gateway       # hanya gateway
+scripts/sanka start bridge        # hanya bridge
+scripts/sanka status              # PID + health keduanya
+scripts/sanka restart             # restart gateway + bridge
+scripts/sanka restart bridge      # restart bridge saja
+scripts/sanka logs                # ikuti log gateway dan bridge
+scripts/sanka logs bridge         # ikuti salah satu
+scripts/sanka pair                # bridge di foreground untuk scan QR pertama
+```
+
+Log dan PID ada di `logs/` (gitignored). `start bridge` memakai sesi WhatsApp yang sudah ada; pairing pertama tetap lewat `scripts/sanka pair`.
+
+Konteks grup ambient (opsional) diatur di `group_context` pada config. `enabled: true` + `capture_all_groups: true` membuat Sanka mencatat teks semua grup yang diikutinya; gunakan `capture_group_ids` untuk membatasi. Data disimpan di luar repo dengan retensi 24 jam. Lihat ADR-0025 dan `docs/SECURITY.md`.
 
 ## Dokumentasi
 

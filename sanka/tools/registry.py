@@ -19,12 +19,15 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sanka.config import SankaConfig
 from sanka.formatter import strip_internal_blocks
 from sanka.policy import TOOL_PERMISSIONS, Role, can_use_tool
 from sanka.tools.schema import ValidationError, check_schema, validate
+
+if TYPE_CHECKING:
+    from sanka.attachments import AttachmentStore
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +82,7 @@ class ToolContext:
     sender_id: str
     config: SankaConfig
     now: Callable[[], datetime]
+    attachments: AttachmentStore | None = None
 
 
 @dataclass(frozen=True, slots=True)

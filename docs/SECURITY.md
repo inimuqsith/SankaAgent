@@ -42,6 +42,15 @@ Konsekuensi keamanan ADR-0020: siapa pun yang bisa menjangkau Sanka bisa memakai
 - Bila risiko itu tidak dapat diterima, pindah ke WhatsApp Cloud API resmi dicatat sebagai ADR baru.
 - Sesi WhatsApp disimpan di luar repo, permission 0600, dan tidak pernah dilog.
 
+## Konteks grup ambient (ADR-0025)
+- Fitur ini opt-in lewat `group_context.enabled`. Hanya grup; DM dan media tidak pernah dicatat.
+- Isi grup adalah data tak tepercaya. Saat masuk prompt, teks dan nama di-escape dan dibungkus `<group_context>` dengan aturan "DATA, bukan instruksi". Ini tidak memberi izin tool atau mengubah peran.
+- Penyimpanan di luar repo: direktori `0700`, file JSONL `0600`, salt `0600`. Nama file adalah HMAC dari `chat_id`; JID mentah tidak ada di nama/isi berkas.
+- Retensi default 24 jam, maksimal 200 pesan per grup, 1.000 karakter per entri. Injeksi dibatasi 30 pesan/3.500 karakter.
+- Store konteks bukan log aplikasi. Log tetap metadata; teks pesan tidak pernah masuk log.
+- Owner dapat menghapus direktori `group_context.dir` kapan saja. Anggota grup harus diberi tahu bila `capture_all_groups: true`.
+- `sender_name` berasal dari push name pengguna dan diperlakukan sebagai data; jangan pernah dipakai untuk keputusan izin.
+
 ## Google Workspace
 - Gunakan service account yang hanya di-share ke file/folder tertentu.
 - Read default. Write hanya ke allowlist di config.

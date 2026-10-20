@@ -6,6 +6,17 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
+class InboundAttachment:
+    """Metadata for one validated attachment uploaded by the bridge."""
+
+    attachment_id: str
+    kind: str
+    mime: str
+    name: str
+    size: int
+
+
+@dataclass(frozen=True, slots=True)
 class InboundMessage:
     """A normalized inbound WhatsApp message.
 
@@ -19,3 +30,6 @@ class InboundMessage:
     is_group: bool = False
     mentions: tuple[str, ...] = ()
     reply_to_bot: bool = False
+    sender_name: str = ""
+    attachments: tuple[InboundAttachment, ...] = ()
+    attachment_errors: tuple[str, ...] = ()

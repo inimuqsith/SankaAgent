@@ -1,0 +1,334 @@
+#!/usr/bin/env bash
+# Sanka lifecycle helper for the Python gateway and the Node WhatsApp bridge.
+#
+# Usage:
+#   scripts/sanka start|stop|restart [all|gateway|bridge]
+#   scripts/sanka status
+#   scripts/sanka logs [all|gateway|bridge]
+#   scripts/sanka pair            # bridge in the foreground for QR pairing
+set -euo pipefail
+
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON="$ROOT/.venv/bin/python"
+BRIDGE_DIR="$ROOT/gateway/bridge"
+LOG_DIR="$ROOT/logs"
+GATEWAY_PID="$LOG_DIR/gateway.pid"
+GATEWAY_LOG="$LOG_DIR/gateway.log"
+BRIDGE_PID="$LOG_DIR/bridge.pid"
+BRIDGE_LOG="$LOG_DIR/bridge.log"
+GATEWAY_HEALTH="http://127.0.0.1:8099/healthz"
+
+bridge_port() {
+  printf '%s\n' "${SANKA_BRIDGE_PORT:-3000}"
+}
+
+bridge_health() {
+  printf 'http://127.0.0.1:%s/healthz\n' "$(bridge_port)"
+}
+
+usage() {
+  cat <<'EOF'
+Sanka lifecycle helper
+
+  scripts/sanka start [all|gateway|bridge]    Start services in the background
+  scripts/sanka stop [all|gateway|bridge]     Graceful stop, SIGKILL after 10s
+  scripts/sanka restart [all|gateway|bridge]  Stop then start
+  scripts/sanka status                        PID and health for both services
+  scripts/sanka logs [all|gateway|bridge]     Follow logs (default: both)
+  scripts/sanka pair                          Run the bridge in the foreground
+                                              to scan the WhatsApp QR code
+EOF
+}
+
+load_env() {
+  local file
+  for file in "$ROOT/.env" "$ROOT/config/secrets.env"; do
+    if [ -f "$file" ]; then
+      set -a
+      # shellcheck disable=SC1090,SC1091
+      . "$file"
+      set +a
+    fi
+  done
+}
+
+pid_from_file() {
+  if [ -s "$1" ]; then
+    cat "$1"
+  fi
+}
+
+listener_pid() {
+  local port=$1
+  ss -ltnpH "sport = :$port" 2>/dev/null \
+    | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' \
+    | head -n 1
+}
+
+# Return a live PID for a service, adopting one started manually.
+resolve_pid() {
+  local pidfile=$1 port=$2 pid listener
+  pid="$(pid_from_file "$pidfile")"
+  listener="$(listener_pid "$port")"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null \
+    && { [ -z "$listener" ] || [ "$listener" = "$pid" ]; }; then
+    printf '%s\n' "$pid"
+    return 0
+  fi
+  if [ -n "$listener" ]; then
+    mkdir -p "$LOG_DIR"
+    printf '%s\n' "$listener" >"$pidfile"
+    printf '%s\n' "$listener"
+  fi
+}
+
+wait_for_http() {
+  local url=$1 attempts=${2:-50} attempt
+  for attempt in $(seq 1 "$attempts"); do
+    if curl -fsS --max-time 1 "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  return 1
+}
+
+wait_for_bridge_connected() {
+  local attempt health
+  health="$(bridge_health)"
+  for attempt in $(seq 1 100); do
+    if curl -fsS --max-time 1 "$health" 2>/dev/null | grep -q '"connected":true'; then
+      return 0
+    fi
+    sleep 0.3
+  done
+  return 1
+}
+
+start_service() {
+  local name=$1 port=$2 pidfile=$3 logfile=$4 health=$5
+  shift 5
+  mkdir -p "$LOG_DIR"
+  load_env
+
+  local pid
+  pid="$(resolve_pid "$pidfile" "$port")"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    echo "$name sudah jalan (pid $pid)"
+    return 0
+  fi
+  rm -f "$pidfile"
+
+  if curl -fsS --max-time 1 "$health" >/dev/null 2>&1; then
+    echo "$name: port $port dipakai proses yang tidak bisa diidentifikasi" >&2
+    return 1
+  fi
+
+  (
+    cd "$ROOT"
+    nohup "$@" >>"$logfile" 2>&1 < /dev/null &
+    echo $! >"$pidfile"
+  )
+
+  if ! wait_for_http "$health"; then
+    echo "$name gagal start. 20 baris log terakhir:" >&2
+    tail -n 20 "$logfile" >&2 || true
+    return 1
+  fi
+
+  local started listener
+  started="$(pid_from_file "$pidfile")"
+  listener="$(listener_pid "$port")"
+  if [ "$started" != "$listener" ]; then
+    echo "$name gagal start: PID $started bukan listener port $port" >&2
+    tail -n 20 "$logfile" >&2 || true
+    return 1
+  fi
+  echo "$name jalan (pid $started); log: $logfile"
+}
+
+stop_service() {
+  local name=$1 port=$2 pidfile=$3 pid attempt
+  pid="$(resolve_pid "$pidfile" "$port")"
+
+  if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$pidfile"
+    echo "$name tidak jalan"
+    return 0
+  fi
+
+  kill "$pid" 2>/dev/null || true
+  for attempt in $(seq 1 50); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$pidfile"
+      echo "$name berhenti"
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  echo "$name tidak berhenti setelah 10 detik; kirim SIGKILL" >&2
+  kill -9 "$pid" 2>/dev/null || true
+  rm -f "$pidfile"
+}
+
+start_gateway() {
+  if [ ! -x "$PYTHON" ]; then
+    echo "python venv tidak ditemukan: $PYTHON" >&2
+    return 1
+  fi
+  start_service gateway 8099 "$GATEWAY_PID" "$GATEWAY_LOG" "$GATEWAY_HEALTH" \
+    "$PYTHON" -u -m gateway
+}
+
+start_bridge() {
+  load_env
+  if ! command -v node >/dev/null 2>&1; then
+    echo "node tidak ditemukan di PATH" >&2
+    return 1
+  fi
+  local port health
+  port="$(bridge_port)"
+  health="$(bridge_health)"
+  start_service bridge "$port" "$BRIDGE_PID" "$BRIDGE_LOG" "$health" \
+    node "$BRIDGE_DIR/src/main.js" || return 1
+  if wait_for_bridge_connected; then
+    echo "bridge terhubung ke WhatsApp"
+  else
+    echo "bridge jalan, tetapi WhatsApp belum connected. Cek: scripts/sanka logs bridge" >&2
+    echo "Pairing pertama: scripts/sanka pair" >&2
+  fi
+}
+
+stop_gateway() {
+  stop_service gateway 8099 "$GATEWAY_PID"
+}
+
+stop_bridge() {
+  load_env
+  stop_service bridge "$(bridge_port)" "$BRIDGE_PID"
+}
+
+start_target() {
+  case "$1" in
+    all)
+      start_gateway
+      start_bridge
+      ;;
+    gateway) start_gateway ;;
+    bridge) start_bridge ;;
+    *)
+      echo "target tidak dikenal: $1 (pakai all|gateway|bridge)" >&2
+      return 2
+      ;;
+  esac
+}
+
+stop_target() {
+  case "$1" in
+    all)
+      stop_gateway
+      stop_bridge
+      ;;
+    gateway) stop_gateway ;;
+    bridge) stop_bridge ;;
+    *)
+      echo "target tidak dikenal: $1 (pakai all|gateway|bridge)" >&2
+      return 2
+      ;;
+  esac
+}
+
+restart_target() {
+  case "$1" in
+    all)
+      stop_gateway
+      stop_bridge
+      start_gateway
+      start_bridge
+      ;;
+    gateway)
+      stop_gateway
+      start_gateway
+      ;;
+    bridge)
+      stop_bridge
+      start_bridge
+      ;;
+    *)
+      echo "target tidak dikenal: $1 (pakai all|gateway|bridge)" >&2
+      return 2
+      ;;
+  esac
+}
+
+status_service() {
+  local name=$1 port=$2 pidfile=$3 health=$4 pid
+  pid="$(resolve_pid "$pidfile" "$port")"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    printf '%-8s: jalan (pid %s)\n' "$name" "$pid"
+  else
+    printf '%-8s: berhenti\n' "$name"
+  fi
+  printf '%-8s: ' "$name health"
+  curl -fsS --max-time 2 "$health" 2>/dev/null || printf 'tidak merespons'
+  printf '\n'
+}
+
+status_all() {
+  status_service gateway 8099 "$GATEWAY_PID" "$GATEWAY_HEALTH"
+  status_service bridge "$(bridge_port)" "$BRIDGE_PID" "$(bridge_health)"
+}
+
+logs_target() {
+  mkdir -p "$LOG_DIR"
+  case "$1" in
+    gateway)
+      touch "$GATEWAY_LOG"
+      tail -n 50 -f "$GATEWAY_LOG"
+      ;;
+    bridge)
+      touch "$BRIDGE_LOG"
+      tail -n 50 -f "$BRIDGE_LOG"
+      ;;
+    all)
+      touch "$GATEWAY_LOG" "$BRIDGE_LOG"
+      tail -n 50 -f "$GATEWAY_LOG" "$BRIDGE_LOG"
+      ;;
+    *)
+      echo "target tidak dikenal: $1 (pakai all|gateway|bridge)" >&2
+      return 2
+      ;;
+  esac
+}
+
+pair_bridge() {
+  load_env
+  if ! command -v node >/dev/null 2>&1; then
+    echo "node tidak ditemukan di PATH" >&2
+    return 1
+  fi
+  echo "Menjalankan bridge di foreground. Scan QR di terminal ini bila muncul." >&2
+  cd "$BRIDGE_DIR"
+  exec node src/main.js
+}
+
+command="${1:-status}"
+target="${2:-all}"
+
+case "$command" in
+  start) start_target "$target" ;;
+  stop) stop_target "$target" ;;
+  restart) restart_target "$target" ;;
+  status)
+    load_env
+    status_all
+    ;;
+  logs) logs_target "$target" ;;
+  pair|bridge) pair_bridge ;;
+  -h|--help|help) usage ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

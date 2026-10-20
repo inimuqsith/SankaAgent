@@ -35,9 +35,20 @@ class FakeClock:
         return self.now
 
 
-def message(text: str, *, sender: str = "628111111111") -> InboundMessage:
+def message(
+    text: str,
+    *,
+    sender: str = "628111111111",
+    chat_id: str = "chat-1",
+    is_group: bool = False,
+    sender_name: str = "",
+) -> InboundMessage:
     return InboundMessage(
-        chat_id="chat-1", sender_id=sender, text=text, is_group=False
+        chat_id=chat_id,
+        sender_id=sender,
+        text=text,
+        is_group=is_group,
+        sender_name=sender_name,
     )
 
 
@@ -143,4 +154,183 @@ def test_reset_clears_context(config: SankaConfig) -> None:
     messages = client.calls[1]
     assert {"role": "user", "content": "pertama"} not in messages
     assert [entry["role"] for entry in messages] == ["system", "user"]
+    agent.shutdown()
+
+
+class FakeGroupContext:
+    def __init__(self, text: str | None) -> None:
+        self.text = text
+        self.calls: list[str] = []
+
+    def context(self, chat_id: str) -> str | None:
+        self.calls.append(chat_id)
+        return self.text
+
+
+def test_group_turn_injects_ambient_context(config: SankaConfig) -> None:
+    client = FakeClient()
+    provider = FakeGroupContext("[10:00] Budi: pagi semua")
+    agent = runtime(config, client, group_context=provider)
+
+    agent.handle(
+        message("halo sanka", chat_id="120363000000000000@g.us", is_group=True),
+        Role.COMMITTEE,
+    )
+
+    system = client.calls[0][0]["content"]
+    assert "<group_context>" in system
+    assert "[10:00] Budi: pagi semua" in system
+    assert provider.calls == ["120363000000000000@g.us"]
+    agent.shutdown()
+
+
+def test_dm_turn_does_not_read_group_context(config: SankaConfig) -> None:
+    client = FakeClient()
+    provider = FakeGroupContext("[10:00] Budi: pagi semua")
+    agent = runtime(config, client, group_context=provider)
+
+    agent.handle(message("halo"), Role.COMMITTEE)
+
+    system = client.calls[0][0]["content"]
+    assert "<group_context>" not in system
+    assert provider.calls == []
+    agent.shutdown()
+
+
+def test_image_attachment_becomes_content_parts(
+    config: SankaConfig, tmp_path
+) -> None:
+    import base64
+
+    from sanka.attachments import AttachmentStore
+    from sanka.models import InboundAttachment
+
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8Dwn4GBgYGJAQoAHgQCAZ7F0XQAAAAASUVORK5CYII="
+    )
+    store = AttachmentStore(
+        str(tmp_path / "attachments"),
+        max_bytes=1024,
+        max_total_bytes=4096,
+        retention_seconds=3600,
+    )
+    chat = "628111111111@s.whatsapp.net"
+    record = store.save(
+        [png],
+        chat_id=chat,
+        sender_id=chat,
+        message_id="msg-1",
+        kind="image",
+        mime="image/png",
+        name="",
+        declared_size=len(png),
+    )
+    attachment = InboundAttachment(
+        attachment_id=record.attachment_id,
+        kind="image",
+        mime="image/png",
+        name=record.name,
+        size=record.size,
+    )
+    client = FakeClient(content="Itu gambar merah.")
+    store_sessions = SessionStore(config.limits.session_idle_ttl_minutes * 60)
+    agent = runtime(
+        config,
+        client,
+        store=store_sessions,
+        attachments=store,
+    )
+
+    reply = agent.handle(
+        InboundMessage(
+            chat_id=chat,
+            sender_id=chat,
+            text="ini apa?",
+            attachments=(attachment,),
+        ),
+        Role.COMMITTEE,
+    )
+
+    assert reply.messages == ("Itu gambar merah.",)
+    content = client.calls[0][-1]["content"]
+    assert isinstance(content, list)
+    assert content[0]["type"] == "text"
+    assert "ini apa?" in content[0]["text"]
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+    history = store_sessions.history(chat)
+    assert isinstance(history[0]["content"], str)
+    assert "base64" not in history[0]["content"]
+    agent.shutdown()
+
+
+def test_document_attachment_adds_metadata_block(
+    config: SankaConfig, tmp_path
+) -> None:
+    from sanka.attachments import AttachmentStore
+    from sanka.models import InboundAttachment
+
+    store = AttachmentStore(
+        str(tmp_path / "attachments"),
+        max_bytes=1024,
+        max_total_bytes=4096,
+        retention_seconds=3600,
+    )
+    chat = "628111111111@s.whatsapp.net"
+    record = store.save(
+        [b"# catatan\n"],
+        chat_id=chat,
+        sender_id=chat,
+        message_id="msg-1",
+        kind="document",
+        mime="text/markdown",
+        name="catatan.md",
+        declared_size=10,
+    )
+    attachment = InboundAttachment(
+        attachment_id=record.attachment_id,
+        kind="document",
+        mime="text/markdown",
+        name=record.name,
+        size=record.size,
+    )
+    client = FakeClient(content="Siap.")
+    agent = runtime(config, client, attachments=store)
+
+    agent.handle(
+        InboundMessage(
+            chat_id=chat,
+            sender_id=chat,
+            text="baca ini",
+            attachments=(attachment,),
+        ),
+        Role.COMMITTEE,
+    )
+
+    content = client.calls[0][-1]["content"]
+    assert isinstance(content, str)
+    assert record.attachment_id in content
+    assert "attachment_read" in content
+    assert "catatan.md" in content
+    agent.shutdown()
+
+
+def test_attachment_errors_reach_the_model(config: SankaConfig) -> None:
+    client = FakeClient(content="Maaf, file gagal diunduh.")
+    agent = runtime(config, client)
+
+    agent.handle(
+        InboundMessage(
+            chat_id="628111111111@s.whatsapp.net",
+            sender_id="628111111111@s.whatsapp.net",
+            text="baca ini",
+            attachment_errors=("download_failed",),
+        ),
+        Role.COMMITTEE,
+    )
+
+    content = client.calls[0][-1]["content"]
+    assert isinstance(content, str)
+    assert "download_failed" in content
+    assert "Jangan mengaku" in content
     agent.shutdown()

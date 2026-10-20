@@ -9,7 +9,7 @@ import pytest
 from gateway.gate import GateReason, check_gate
 from gateway.normalizer import InboundEvent
 from sanka.config import SankaConfig
-from sanka.models import InboundMessage
+from sanka.models import InboundAttachment, InboundMessage
 from sanka.policy import Role
 
 DM_ID = "628111111111@s.whatsapp.net"
@@ -37,6 +37,7 @@ def event(
     sender_id: str = DM_ID,
     timestamp: float = 1000.0,
     is_group: bool | None = None,
+    attachments: tuple[InboundAttachment, ...] = (),
 ) -> InboundEvent:
     group = chat_id.endswith("@g.us") if is_group is None else is_group
     return InboundEvent(
@@ -46,9 +47,19 @@ def event(
             sender_id=sender_id,
             text=text,
             is_group=group,
+            attachments=attachments,
         ),
         timestamp=timestamp,
     )
+
+
+ATTACHMENT = InboundAttachment(
+    attachment_id="a" * 32,
+    kind="document",
+    mime="text/markdown",
+    name="catatan.md",
+    size=5,
+)
 
 
 def with_gateway(config: SankaConfig, **changes: object) -> SankaConfig:
@@ -190,3 +201,16 @@ def test_dm_pairing_only_allows_owner_and_committee(
 ) -> None:
     config = with_gateway(config, dm_policy="pairing")
     assert check_gate(event(), config, role, now=FakeClock()) is expected
+
+
+def test_blank_text_with_attachment_is_not_blank(config: SankaConfig) -> None:
+    clock = FakeClock()
+    assert (
+        check_gate(
+            event("", attachments=(ATTACHMENT,)),
+            config,
+            Role.COMMITTEE,
+            now=clock,
+        )
+        is GateReason.ALLOWED
+    )

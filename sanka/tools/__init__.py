@@ -11,8 +11,10 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from sanka.attachments import AttachmentStore
 from sanka.config import SankaConfig
 from sanka.google import TokenProvider, build_token_provider
+from sanka.tools.attachments import make_attachment_read_tool
 from sanka.tools.docs import make_doc_read_tool
 from sanka.tools.recap import RecapService, make_recap_tool
 from sanka.tools.registry import ToolError, ToolRegistry, ToolSpec
@@ -62,8 +64,9 @@ def build_tools(
     token_provider: TokenProvider | None = None,
     sheets: SheetsApi | None = None,
     search: SearchProvider | None = None,
+    attachments: AttachmentStore | None = None,
 ) -> tuple[ToolSpec, ...]:
-    """Build the four plan-5 tool specs.
+    """Build the read tool specs, including inbound attachments.
 
     Providers are injectable so tests never touch Google or SearXNG. Without
     credentials the sheet tools still register and answer ``not_configured``;
@@ -77,6 +80,7 @@ def build_tools(
     return (
         make_web_search_tool(config, active_search),
         make_doc_read_tool(config),
+        make_attachment_read_tool(attachments),
         make_sheet_read_tool(active_sheets, config),
         make_recap_tool(recap_service),
     )
@@ -89,8 +93,9 @@ def build_registry(
     token_provider: TokenProvider | None = None,
     sheets: SheetsApi | None = None,
     search: SearchProvider | None = None,
+    attachments: AttachmentStore | None = None,
 ) -> ToolRegistry:
-    """Build a registry containing ``web_search``, ``doc_read``, ``sheet_read``, ``recap``."""
+    """Build a registry containing every read tool, including ``attachment_read``."""
 
     registry = ToolRegistry(config)
     for spec in build_tools(
@@ -99,6 +104,7 @@ def build_registry(
         token_provider=token_provider,
         sheets=sheets,
         search=search,
+        attachments=attachments,
     ):
         registry.register(spec)
     return registry

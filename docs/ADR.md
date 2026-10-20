@@ -253,3 +253,133 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
   - Risiko prompt injection meningkat karena lebih banyak pengguna bisa memicu pembacaan dokumen/sheet. Mitigasi struktural tetap: `<data>` adalah data, dua gerbang izin, allowlist alias, angka dari kode, dan sanitasi teks.
   - Tes yang mengandalkan penolakan peserta dihapus/diubah; jumlah tes Python menjadi 470.
   - `code_run`, `file_write`, dan shell tetap tidak bisa dipakai panitia; tidak ada perubahan pada batas keras AGENTS.md.
+
+## ADR-0021 — Formatter menormalkan markdown model ke sintaks WhatsApp
+- Status: Accepted (2026-10-21, disetujui owner bersama plan-9)
+- Tanggal: 2026-10-21
+- Konteks: Model OpenCode Go menulis markdown umum (`**tebal**`, `## judul`, `- daftar`, `[teks](url)`). WhatsApp hanya mengenal `*tebal*`, `_miring_`, `~coret~`, ```mono```, dan tidak punya heading. `Formatter` saat ini hanya membuang blok reasoning dan memotong panjang, sehingga `**Ringkas**` tampil sebagai tebal dengan sisa `*` literal dan `## Ringkasan` tampil apa adanya. Instruksi prompt saja tidak cukup: model tetap kembali ke kebiasaan markdown, dan command deterministik tidak melewati LLM.
+- Keputusan (usulan):
+  1. Normalisasi format dilakukan di `sanka/formatter.py` (`to_whatsapp`), satu-satunya pintu keluar teks, bukan di bridge, command, atau prompt.
+  2. Konversi deterministik: heading → baris tebal, `**` → `*`, `~~` → `~`, link markdown → `teks (url)`, bullet `-`/`*`/`+` → `•`, garis horizontal dihapus.
+  3. Blok kode berpagar dan inline code tidak diubah. Fungsi harus idempoten untuk teks yang sudah memakai sintaks WhatsApp.
+  4. Asterisk tunggal dipertahankan sebagai tebal WhatsApp; konversi markdown `*miring*` tidak dilakukan agar tidak bertabrakan dengan sintaks tujuan.
+  5. Prompt runtime tetap meminta model menulis sintaks WhatsApp sebagai pertahanan berlapis, tetapi kebenaran akhir ada di kode.
+- Alternatif yang dipertimbangkan:
+  - **Hanya memperkuat prompt**: ditolak karena rawan regresi dan tidak menjangkau command deterministik.
+  - **Konversi di bridge Node**: ditolak karena melanggar ADR-0018 (bridge hanya I/O) dan membuat perilaku tidak bisa dites tanpa WhatsApp.
+  - **Mengirim markdown apa adanya**: ditolak; pengguna melihat simbol mentah.
+  - **Mengubah semua `*` tunggal menjadi `_`**: ditolak; akan membalik makna tebal WhatsApp yang diminta prompt.
+- Konsekuensi:
+  - Teks yang dikirim selalu memakai sintaks WhatsApp; bridge tetap bodoh.
+  - Konversi dapat mengubah teks yang sengaja ingin menampilkan `**` literal. Trade-off diterima karena konteksnya balasan chat, bukan dokumentasi.
+  - Perilaku baru harus dites tanpa jaringan di `tests/test_formatter.py`; smoke WhatsApp tetap perlu karena parser klien WhatsApp tidak bisa disimulasikan penuh.
+
+
+## ADR-0022 — Persona L0 dimuat dari `docs/PERSONA.md`
+- Status: Superseded by ADR-0023
+- Tanggal: 2026-10-21
+- Konteks: `sanka/agent/prompt.py` menyimpan L0 sebagai string di kode, sementara `docs/PERSONA.md` adalah dokumen persona yang dibaca manusia. Keduanya bisa berbeda, dan aturan gaya/emoji di dokumen tidak pernah sampai ke model. Owner meminta `docs/PERSONA.md` benar-benar dimuat.
+- Keputusan:
+  1. Blok L0 di `docs/PERSONA.md` ditandai `<!-- SANKA-L0:START -->` dan `<!-- SANKA-L0:END -->`; hanya isi blok itu yang masuk system prompt.
+  2. `sanka/agent/prompt.py` memuat dan meng-cache blok tersebut. File hilang, penanda hilang, atau blok kosong melempar `PersonaError`; tidak ada persona cadangan kedua.
+  3. `AgentRuntime.__init__` memanggil `load_persona()` agar kesalahan aset gagal saat startup, bukan pada pesan pengguna pertama.
+  4. Aturan teknis tool/data dan tanggal tetap di `prompt.py`, karena keduanya terikat kontrak kode dan berubah bersama registry tool.
+- Alternatif yang dipertimbangkan:
+  - **Menyalin persona ke string kode**: ditolak; dua sumber akan berbeda dan keluhan yang sama akan berulang.
+  - **Memuat seluruh `PERSONA.md`**: ditolak; dokumen berisi penjelasan untuk manusia dan contoh format yang bisa membingungkan model. Penanda membuat batas eksplisit.
+  - **Fallback diam-diam ke prompt bawaan**: ditolak; persona yang salah lebih berbahaya daripada startup gagal.
+- Konsekuensi:
+  - Deployment harus menyertakan `docs/PERSONA.md`; `python -m gateway` dari repo sudah memenuhi ini.
+  - Mengubah persona cukup mengedit dokumen, lalu restart proses (cache per proses).
+  - Plan-7 kelak boleh memindahkan blok ke `sanka/persona/l0.md`; ADR baru harus mencabut ADR ini dan menjaga satu sumber teks.
+
+## ADR-0023 — SOUL.md di `config/` dan wrapper operasional
+- Status: Accepted (2026-10-21, diminta owner setelah plan-9)
+- Tanggal: 2026-10-21
+- Konteks: ADR-0022 memuat blok bertanda dari `docs/PERSONA.md`. Owner tidak ingin persona disuntikkan lewat dokumen arsitektur dan lebih memilih file `SOUL.md` di `config/`. Selain itu, restart gateway masih manual (PID, port, `.env`), sehingga owner beberapa kali me-restart bridge dan mengira gateway ikut restart.
+- Keputusan:
+  1. `config/SOUL.md` adalah satu-satunya sumber teks L0. Isinya seluruh persona tanpa penanda HTML/frontmatter; file di-commit sebagai persona default, bukan secret.
+  2. `sanka/agent/prompt.py`: `load_soul(path=None)` membaca `config/SOUL.md`, men-trim, dan melempar `PersonaError` bila file hilang atau kosong. Tidak ada fallback kedua. Aturan tool/data dan tanggal tetap ditambahkan kode.
+  3. `docs/PERSONA.md` menjadi dokumen manusia dan hanya merujuk ke `config/SOUL.md`; blok L0 di dalamnya dihapus.
+  4. `scripts/sanka` menjadi antarmuka operasional gateway: `start`, `stop`, `restart`, `status`, `logs`, dan `bridge`. PID di `logs/gateway.pid`, log di `logs/gateway.log`; keduanya gitignored.
+  5. Wrapper hanya mengurus gateway Python. Bridge Node tetap proses terpisah karena membutuhkan QR/sesi WhatsApp; `scripts/sanka bridge` menjalankannya di foreground.
+- Alternatif yang dipertimbangkan:
+  - **Tetap di `docs/PERSONA.md` dengan penanda**: ditolak owner; persona bukan dokumentasi arsitektur dan penanda menambah kerumitan.
+  - **Persona di dalam kode**: ditolak; setiap perubahan karakter menjadi diff Python.
+  - **systemd/container sekarang**: ditunda; satu host dan satu proses belum membutuhkan supervisor tambahan.
+  - **Wrapper ikut mengelola bridge**: ditolak untuk saat ini; QR dan log Baileys lebih baik terlihat langsung di terminal.
+- Konsekuensi:
+  - Deployment wajib menyertakan `config/SOUL.md`; gateway gagal start dengan pesan jelas bila tidak ada.
+  - Perubahan persona cukup edit `config/SOUL.md`, lalu `scripts/sanka restart`.
+  - `logs/gateway.log` dan `logs/gateway.pid` tidak masuk git.
+  - ADR-0022 dicabut pada bagian lokasi dan mekanisme; keputusan fail-fast tetap berlaku.
+
+## ADR-0024 — Wrapper mengelola gateway dan bridge sekaligus
+- Status: Accepted (2026-10-21, koreksi owner atas ADR-0023)
+- Tanggal: 2026-10-21
+- Konteks: ADR-0023 membuat `scripts/sanka` hanya mengurus gateway Python. Owner menolak pembagian itu: restart setengah-setengah membuat bridge dan gateway bisa berjalan dengan versi/kondisi berbeda, dan pengalaman sebelumnya menunjukkan kebingungan proses mana yang harus di-restart. Keduanya adalah satu unit operasional Sanka.
+- Keputusan:
+  1. `scripts/sanka` mengelola dua service: `gateway` (Python, port 8099) dan `bridge` (Node, port `SANKA_BRIDGE_PORT` default 3000).
+  2. `start`, `stop`, `restart`, dan `logs` menerima target `all|gateway|bridge`; default `all`.
+  3. Start memuat `.env` dan `config/secrets.env`; bridge membutuhkan `SANKA_GATEWAY_TOKEN` dari secrets. Nilai secret tidak pernah dicetak.
+  4. PID dan log per service: `logs/gateway.pid`, `logs/bridge.pid`, `logs/gateway.log`, `logs/bridge.log`; semuanya gitignored.
+  5. Wrapper mengadopsi proses yang dijalankan manual dengan mencocokkan PID listener `ss` pada port terkait, sehingga transisi dari `npm start`/`python -m gateway` tidak membuat proses ganda.
+  6. Stop berurutan: gateway dulu, lalu bridge. SIGTERM, tunggu maksimal 10 detik, baru SIGKILL.
+  7. Pairing pertama tetap manual lewat `scripts/sanka pair` (bridge foreground, QR terlihat di terminal). Start background tidak bisa menampilkan QR.
+- Alternatif yang dipertimbangkan:
+  - **Mempertahankan wrapper gateway saja**: ditolak owner; sumber kebingungan dan restart parsial.
+  - **Satu PID untuk dua proses**: ditolak; bridge dan gateway punya lifecycle dan log berbeda.
+  - **Supervisor systemd sekarang**: ditunda; wrapper `nohup` cukup untuk satu host pengembangan.
+- Konsekuensi:
+  - `scripts/sanka restart` kini memutus dan menyambung ulang WhatsApp sebentar (bridge reconnect memakai sesi yang ada, tanpa QR).
+  - Bridge health dicek hingga 30 detik; bila belum connected, wrapper memberi petunjuk log/pairing alih-alih menggantung.
+  - Keputusan 5 ADR-0023 digantikan ADR ini; keputusan SOUL.md dan fail-fast tetap berlaku.
+
+## ADR-0025 — Konteks ambient chat grup
+- Status: Accepted (2026-10-21, diminta owner)
+- Tanggal: 2026-10-21
+- Konteks: Sanka hanya mendengar pesan grup yang di-mention/di-reply, sehingga tidak memahami obrolan di sekitarnya. Owner meminta Sanka "mendengar" seluruh chat grup agar konteks jawaban lebih baik. Merekam seluruh chat menimbulkan risiko privasi, pertumbuhan data, dan prompt injection; keputusan ini menetapkan batasnya.
+- Keputusan:
+  1. Hanya pesan teks grup (`@g.us`) yang dicatat. DM, media, voice note, dan pesan dari Sanka sendiri tidak dicatat. Command `/...` diabaikan.
+  2. Capture bersifat opt-in lewat `group_context.enabled`. Mode luas memakai `capture_all_groups: true`; mode ketat memakai `capture_group_ids`. Bila tidak ada target, config ditolak.
+  3. Data disimpan di luar repo sebagai JSONL per grup. Nama file adalah HMAC-SHA256 dari `chat_id` dengan salt lokal; `chat_id` mentah tidak ditulis ke nama file maupun isi. Direktori `0700`, file dan salt `0600`.
+  4. Retensi default 24 jam, maksimal 200 pesan per grup, 1.000 karakter per entri. Injeksi ke prompt dibatasi 30 pesan terakhir dan 3.500 karakter; konteks yang lebih tua dipotong lebih dulu.
+  5. Konteks masuk system prompt sebagai blok `<group_context>` yang eksplisit DATA, bukan instruksi. Teks dan nama di-escape (`&`, `<`, `>`) agar tidak bisa menutup blok. Aturan yang sama dengan `<data>` tool berlaku.
+  6. Entri dicatat setelah gate grup lolos. Pesan yang tidak di-mention dicatat segera; pesan yang diproses agent dicatat setelah giliran selesai agar pesan saat ini tidak muncul dua kali.
+  7. `sender_name` berasal dari `pushName`, dibersihkan dan dibatasi 40 karakter; fallback `Peserta <4 digit>`. Nama diperlakukan sebagai data tak tepercaya.
+  8. Store konteks bukan log aplikasi. Log tetap metadata saja; isi pesan tidak masuk log.
+- Alternatif yang dipertimbangkan:
+  - **Menyimpan seluruh chat di log aplikasi**: ditolak; melanggar aturan logging dan sulit diberi retensi/permission.
+  - **Menyimpan di dalam repo**: ditolak; berisiko ter-commit dan bercampur dengan kode.
+  - **Ringkasan otomatis oleh LLM**: ditunda; menambah biaya dan risiko halusinasi. Pemotongan deterministik lebih aman.
+  - **Menyimpan semua grup tanpa opt-in**: ditolak; default harus aman. Owner mengaktifkan eksplisit di config lokal.
+  - **Memakai chat_id sebagai nama file**: ditolak; JID mentah tidak perlu ada di filesystem.
+- Konsekuensi:
+  - Privasi: teks grup tersimpan maksimal 24 jam (default) di disk lokal. Owner harus memberi tahu anggota grup dan dapat menghapus direktori kapan saja.
+  - Prompt sedikit lebih besar; dibatasi agar tidak melampaui budget.
+  - Bila `capture_all_groups: true` dan `group_policy: open`, semua grup yang diikuti Sanka terekam. Gunakan `capture_group_ids` untuk lingkup ketat.
+  - Konteks bukan memori: hilang setelah retensi dan tidak menggantikan plan-7.
+
+## ADR-0026 — Lampiran masuk: upload binary, store terpisah, gambar multimodal, dokumen lewat tool
+- Status: Accepted (2026-10-21, plan-12 disetujui owner)
+- Tanggal: 2026-10-21
+- Konteks: Plan-4 sengaja hanya meneruskan caption media. Akibatnya gambar dan dokumen tidak pernah sampai ke Python; model hanya melihat kalimat caption dan menjawab seolah tidak ada berkas. Owner meminta Sanka benar-benar menerima attachment.
+- Keputusan:
+  1. Bridge tetap hanya I/O. Ia mengunduh `imageMessage`/`documentMessage` dengan `downloadMediaMessage`, membatasi ukuran, lalu mengunggah byte ke `POST /v1/attachments` dengan token yang sama. Metadata (kind, MIME, nama, ukuran) ikut di header; event `/v1/inbound` hanya membawa `attachments[]` berisi ID dan metadata.
+  2. Byte disimpan oleh gateway di `attachments.dir` di luar repo, `0700`/`0600`. Nama file adalah ID acak tanpa ekstensi; nama asli hanya label di sidecar JSON. Retensi default 24 jam dan kuota total dibatasi. ID tidak pernah berupa path.
+  3. Lampiran terikat pada `chat_id`, `sender_id`, dan `message_id`. Normalizer menolak ID yang tidak ada atau metadata yang tidak cocok; `attachment_read` juga menolak chat lain.
+  4. Gambar JPEG/PNG/WebP dikirim ke model sebagai part `image_url` data URL. Model `deepseek-v4.1-flash` sudah diverifikasi menerima format ini (probe 2026-10-21). Tidak ada OCR, resize, atau dependency baru.
+  5. Dokumen PDF/XLSX/CSV/MD/TXT dibaca lewat tool `attachment_read`, memakai extractor yang sama dengan `doc_read` dan batas halaman/baris/karakter yang sama. Isi dokumen tetap DATA di dalam `<data>`.
+  6. Media lain (audio, video, sticker, DOCX) tetap di luar cakupan. Bila unduh/unggah gagal, bridge mengirim `attachment_errors` agar Sanka melaporkan kegagalan dengan jujur, bukan mengaku tidak ada berkas.
+  7. Tidak ada dependency baru. Baileys menyediakan API unduh; Node 22 menyediakan `fetch`; Python memakai `hashlib`/`base64` dan extractor yang ada.
+- Alternatif yang dipertimbangkan:
+  - **Base64 di `/v1/inbound`**: ditolak; body JSON dibatasi 64 KiB, base64 membengkak, dan 25 MB harus ditahan di memori.
+  - **Bridge menulis langsung ke direktori bersama**: ditolak; menambah koppling filesystem dan melewati validasi gateway. Upload HTTP membuat gateway pemilik tunggal store.
+  - **OCR lokal untuk gambar**: ditolak untuk plan ini; model sudah bisa melihat gambar, OCR menambah dependency dan kehilangan konteks visual.
+  - **Menyimpan lampiran di dalam repo**: ditolak; risiko ter-commit dan bercampur dengan kode.
+  - **Membaca gambar lewat tool**: ditolak; tool hanya mengembalikan teks, sehingga gambar harus masuk sebagai content part.
+- Konsekuensi:
+  - Isi lampiran (gambar dan teks dokumen) dikirim ke OpenCode Go, sama seperti teks chat. Retensi lokal bukan jaminan privasi di sisi provider.
+  - Bridge memproses unduhan secara berurutan agar urutan pesan tetap; unduhan besar memperlambat pesan berikutnya.
+  - File yatim dari upload yang gagal di tengah jalan dibersihkan oleh retensi/kuota, bukan oleh transaksi lintas proses.
+  - `attachments.dir` kosong mematikan fitur: upload menjawab `503`, `attachment_read` menjawab `not_configured`, dan pesan teks tetap berjalan.

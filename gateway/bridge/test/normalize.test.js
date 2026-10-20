@@ -34,6 +34,7 @@ function baseEvent(overrides = {}) {
     message_id: '3EB0ABCDEF',
     chat_id: '628123@s.whatsapp.net',
     sender_id: '628123@s.whatsapp.net',
+    sender_name: '',
     text: '',
     is_group: false,
     mentions: [],
@@ -48,12 +49,13 @@ test('normalizes a DM conversation with all contract fields', () => {
   assert.deepEqual(normalizeMessage(msg, makeCtx()), baseEvent({ text: 'halo sanka' }));
 });
 
-test('only the eight contract fields are emitted', () => {
+test('only the nine contract fields are emitted', () => {
   const event = normalizeMessage(makeMessage({ message: { conversation: 'x' } }), makeCtx());
   assert.deepEqual(Object.keys(event), [
     'message_id',
     'chat_id',
     'sender_id',
+    'sender_name',
     'text',
     'is_group',
     'mentions',
@@ -437,4 +439,13 @@ test('never throws on undefined or garbage input', () => {
     ).text,
     'ok',
   );
+});
+
+test('sanitizes sender_name from pushName', () => {
+  const msg = makeMessage({
+    message: { conversation: 'halo' },
+    pushName: '  Budi\n\tSantoso  ',
+  });
+
+  assert.equal(normalizeMessage(msg, makeCtx()).sender_name, 'Budi Santoso');
 });

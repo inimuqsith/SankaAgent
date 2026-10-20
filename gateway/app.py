@@ -17,10 +17,12 @@ from gateway.dispatcher import AgentHandler, Dispatcher
 from gateway.outbound import BridgeClient, HttpBridgeClient, OutboundQueue
 from gateway.server import GatewayServer
 from sanka.agent.runtime import AgentRuntime
+from sanka.attachments import AttachmentStore
 from sanka.commands.basic import build_registry
 from sanka.commands.session import SessionControl
 from sanka.config import LOOPBACK_HOSTS, SankaConfig
 from sanka.formatter import Formatter
+from sanka.group_context import build_group_context
 from sanka.policy import RateLimiter
 from sanka.queue import StopOutcome
 from sanka.secrets import get_secret
@@ -133,6 +135,8 @@ def build_app(
         raise ValueError("gateway token must not be empty")
 
     formatter = Formatter(config.limits.max_reply_chars)
+    group_context = build_group_context(config.group_context)
+    attachments = AttachmentStore.from_config(config)
     resolved_limiter = limiter or RateLimiter(
         config.limits.rate_limit_per_minute,
         config.limits.rate_limit_per_day,
@@ -140,7 +144,9 @@ def build_app(
 
     resolved_agent: AgentHandler | None
     tool_registry = (
-        build_tool_registry(config) if agent is _UNSET else None
+        build_tool_registry(config, attachments=attachments)
+        if agent is _UNSET
+        else None
     )
     if agent is _UNSET:
         resolved_agent = AgentRuntime(
@@ -149,6 +155,8 @@ def build_app(
             limiter=resolved_limiter,
             formatter=formatter,
             tools=tool_registry,
+            group_context=group_context,
+            attachments=attachments,
         )
     else:
         resolved_agent = agent  # type: ignore[assignment]
@@ -190,6 +198,7 @@ def build_app(
         agent=resolved_agent,
         dedup=dedup,
         notices=notices,
+        group_context=group_context,
     )
 
     server = GatewayServer(
@@ -197,6 +206,7 @@ def build_app(
         token=resolved_token,
         host=config.gateway.listen_host,
         port=config.gateway.listen_port,
+        attachments=attachments,
     )
 
     return GatewayApp(

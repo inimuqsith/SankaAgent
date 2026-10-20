@@ -7,7 +7,7 @@ Command diawali `/`, diproses deterministik tanpa LLM. Daftar di bawah adalah us
 | `/help` | Daftar command yang boleh dipakai pengirim | semua |
 | `/ping` | Cek Sanka hidup | semua |
 | `/status` | Status ringkas (model aktif, mode) | panitia, owner |
-| `/whoami` | Peran pengirim | semua |
+| `/whoami` | JID pengirim, peran, dan jenis/JID chat | semua |
 | `/new` | Mulai percakapan baru (reset konteks) | semua |
 | `/stop` | Hentikan pekerjaan yang sedang berjalan | pemilik giliran, owner |
 | `/rekap <nama>` | Jalankan rekap bernama (sheet yang terdaftar) | panitia, owner |
@@ -26,6 +26,20 @@ Sejak ADR-0020 tidak ada peran peserta: owner tetap pemilik nomor di config, dan
 `/rekap` terdaftar hanya jika `RecapService` tersedia. Tanpa definisi `recaps` di config, ia membalas daftar kosong. Angka berasal dari `compute_recap` (pandas), bukan dari model; role gate tetap ada untuk command yang memang owner-only.
 
 Gateway plan-3 sekarang memakai `CommandRegistry.dispatch_result()` sehingga balasan `/rekap` memakai jalur `ResponseKind.RECAP` (dipecah per paragraf, bukan dipotong sebagai `TEXT`). Pemanggil lama `dispatch()` tetap mengembalikan `str`.
+
+## Contoh keluaran
+
+`/whoami` di DM:
+
+```text
+👤 Kamu: 628123456789@s.whatsapp.net
+🎭 Peran: Panitia
+💬 Chat: pribadi
+```
+
+`/whoami` di grup menampilkan `💬 Chat: grup (<jid>@g.us)`. Bila `chat_id` tidak tersedia, baris chat dihilangkan.
+
+Semua balasan command memakai sintaks WhatsApp (`*tebal*`, `•`), bukan markdown. Formatter menormalkan keluaran handler yang masih memakai markdown.
 
 ## Aturan
 - Command tidak dikenal: balas singkat dengan petunjuk `/help`.

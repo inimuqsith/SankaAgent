@@ -13,8 +13,8 @@ from sanka.policy import Role
 if TYPE_CHECKING:
     from sanka.config import SankaConfig
 
-UNKNOWN_COMMAND_REPLY = "Command tidak dikenal. Ketik /help untuk daftar command."
-FORBIDDEN_COMMAND_REPLY = "Command ini tidak tersedia untuk peranmu."
+UNKNOWN_COMMAND_REPLY = "🤔 Command itu belum ada. Coba /help untuk lihat daftar."
+FORBIDDEN_COMMAND_REPLY = "🔒 Command ini tidak tersedia untuk peranmu."
 
 _NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
 

@@ -144,3 +144,113 @@ def test_zero_dedup_ttl_fails_fast(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError, match=r"limits\.inbound_dedup_ttl_minutes"):
         load_config(path)
+
+
+def test_group_context_defaults_to_disabled(config) -> None:
+    assert config.group_context.enabled is False
+    assert config.group_context.capture_all_groups is False
+
+
+def test_enabled_group_context_requires_a_target(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["group_context"] = {"enabled": True}
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match="capture_all_groups"):
+        load_config(path)
+
+
+def test_group_context_rejects_repository_directory(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["group_context"] = {
+        "enabled": True,
+        "capture_all_groups": True,
+        "dir": str(Path.cwd() / "data" / "group-context"),
+    }
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match="outside the repository"):
+        load_config(path)
+
+
+def test_group_context_inject_messages_cannot_exceed_store(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["group_context"] = {
+        "enabled": True,
+        "capture_all_groups": True,
+        "max_messages": 100,
+        "inject_messages": 150,
+    }
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match="inject_messages"):
+        load_config(path)
+
+
+def test_attachments_default_to_disabled(config) -> None:
+    assert config.attachments.dir == ""
+    assert config.attachments.max_bytes == 25_000_000
+    assert config.attachments.max_per_message == 4
+
+
+def test_attachments_accept_absolute_directory_outside_repo(
+    tmp_path: Path,
+) -> None:
+    data = valid_config_dict()
+    directory = tmp_path / "media"
+    data["attachments"] = {"dir": str(directory)}
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    config = load_config(path)
+
+    assert config.attachments.dir == str(directory)
+    assert config.attachments.retention_minutes == 1440
+
+
+@pytest.mark.parametrize(
+    "value, pattern",
+    [
+        ("relative/path", r"attachments\.dir"),
+        ("/home/muqsith/Projects/SankaAgent/media", r"attachments\.dir"),
+    ],
+)
+def test_attachments_reject_unsafe_directories(
+    tmp_path: Path, value: str, pattern: str
+) -> None:
+    data = valid_config_dict()
+    data["attachments"] = {"dir": value}
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match=pattern):
+        load_config(path)
+
+
+@pytest.mark.parametrize(
+    "settings, pattern",
+    [
+        ({"max_bytes": 0}, r"attachments\.max_bytes"),
+        ({"max_per_message": 11}, r"attachments\.max_per_message"),
+        (
+            {"max_bytes": 100, "max_image_bytes": 101},
+            r"attachments\.max_image_bytes",
+        ),
+        ({"retention_minutes": 0}, r"attachments\.retention_minutes"),
+        (
+            {
+                "max_bytes": 1000,
+                "max_image_bytes": 1000,
+                "max_total_bytes": 999,
+            },
+            r"attachments\.max_total_bytes",
+        ),
+    ],
+)
+def test_attachments_reject_invalid_limits(
+    tmp_path: Path, settings: dict[str, Any], pattern: str
+) -> None:
+    data = valid_config_dict()
+    data["attachments"] = settings
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match=pattern):
+        load_config(path)

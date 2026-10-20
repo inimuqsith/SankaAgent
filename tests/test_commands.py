@@ -88,8 +88,42 @@ def test_ping_and_whoami(config: SankaConfig) -> None:
     registry = build_registry(FakeControl())
     ctx = context(Role.COMMITTEE, config)
 
-    assert registry.dispatch("/ping", ctx) == "pong"
-    assert registry.dispatch("/whoami", ctx) == "Peran kamu: panitia."
+    ping = registry.dispatch("/ping", ctx)
+    whoami = registry.dispatch("/whoami", ctx)
+
+    assert "pong" in ping.lower()
+    assert "628000000000" in whoami
+    assert "Panitia" in whoami
+    assert "pribadi (chat)" in whoami
+
+
+def test_whoami_shows_group_chat(config: SankaConfig) -> None:
+    registry = build_registry(FakeControl())
+    ctx = CommandContext(
+        role=Role.OWNER,
+        config=config,
+        sender_id="628111111111@s.whatsapp.net",
+        chat_id="120363000000000000@g.us",
+        is_group=True,
+    )
+
+    reply = registry.dispatch("/whoami", ctx)
+
+    assert "628111111111@s.whatsapp.net" in reply
+    assert "Owner" in reply
+    assert "grup (120363000000000000@g.us)" in reply
+
+
+def test_whoami_omits_chat_line_without_chat_id(config: SankaConfig) -> None:
+    registry = build_registry(FakeControl())
+    ctx = CommandContext(
+        role=Role.COMMITTEE,
+        config=config,
+        sender_id="628000000000",
+        chat_id="",
+    )
+
+    assert "Chat:" not in registry.dispatch("/whoami", ctx)
 
 
 def test_duplicate_command_is_rejected() -> None:

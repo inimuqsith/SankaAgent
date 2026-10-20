@@ -32,7 +32,7 @@ def check_gate(
     Checks run in contract order: blank text, staleness, group policy, then DM
     policy. Groups never consult the DM policy.
     """
-    if not event.message.text.strip():
+    if not event.message.text.strip() and not event.message.attachments:
         return GateReason.BLANK_TEXT
 
     max_age = config.gateway.max_inbound_age_seconds

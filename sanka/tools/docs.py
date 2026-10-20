@@ -7,13 +7,13 @@ foreign extension, or a file larger than ``tools.docs.max_bytes``.
 
 from __future__ import annotations
 
-import csv
 import difflib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from sanka.config import DocsConfig, SankaConfig
+from sanka.tools.extract import read_csv, read_pdf, read_text, read_xlsx, truncate
 from sanka.tools.registry import ToolError, ToolSpec, ToolResult
 
 _ALLOWED_EXTENSIONS = frozenset({".pdf", ".xlsx", ".csv", ".md", ".txt"})
@@ -25,88 +25,6 @@ _KIND_BY_EXTENSION = {
     ".txt": "text",
 }
 _MAX_CANDIDATES = 5
-
-
-def _cell_text(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    return str(value)
-
-
-def _read_pdf(path: Path, max_pages: int) -> tuple[str, int, bool]:
-    try:
-        from pypdf import PdfReader
-    except ImportError as exc:  # pragma: no cover - dependency is declared
-        raise ToolError("not_configured", "Pembaca PDF tidak tersedia.") from exc
-
-    try:
-        reader = PdfReader(str(path))
-        total_pages = len(reader.pages)
-        pages_to_read = min(max_pages, total_pages)
-        parts: list[str] = []
-        for page in reader.pages[:pages_to_read]:
-            extracted = page.extract_text()
-            parts.append(extracted if isinstance(extracted, str) else "")
-    except ToolError:
-        raise
-    except Exception as exc:
-        raise ToolError("upstream_error", "Berkas PDF tidak dapat dibaca.") from exc
-
-    text = "\n".join(parts).strip()
-    return text, pages_to_read, total_pages > pages_to_read
-
-
-def _read_xlsx(path: Path, max_rows: int) -> tuple[str, int, bool]:
-    try:
-        from openpyxl import load_workbook
-    except ImportError as exc:  # pragma: no cover - dependency is declared
-        raise ToolError("not_configured", "Pembaca Excel tidak tersedia.") from exc
-
-    try:
-        workbook = load_workbook(filename=str(path), read_only=True, data_only=True)
-    except Exception as exc:
-        raise ToolError("upstream_error", "Berkas Excel tidak dapat dibaca.") from exc
-
-    try:
-        sheet = workbook.active
-        if sheet is None:
-            return "", 0, False
-        lines: list[str] = []
-        truncated = False
-        for index, row in enumerate(sheet.iter_rows(values_only=True)):
-            if index >= max_rows:
-                truncated = True
-                break
-            lines.append("\t".join(_cell_text(value) for value in row))
-        return "\n".join(lines), len(lines), truncated
-    finally:
-        workbook.close()
-
-
-def _read_csv(path: Path, max_rows: int) -> tuple[str, int, bool]:
-    lines: list[str] = []
-    truncated = False
-    try:
-        with path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.reader(handle)
-            for index, row in enumerate(reader):
-                if index >= max_rows:
-                    truncated = True
-                    break
-                lines.append("\t".join(row))
-    except OSError as exc:
-        raise ToolError("upstream_error", "Berkas CSV tidak dapat dibaca.") from exc
-    return "\n".join(lines), len(lines), truncated
-
-
-def _read_text(path: Path) -> tuple[str, int, bool]:
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        raise ToolError("upstream_error", "Berkas teks tidak dapat dibaca.") from exc
-    return text, 1, False
 
 
 def _resolve_document(raw: str, docs: DocsConfig) -> tuple[Path, Path]:
@@ -167,20 +85,12 @@ def _read_document(
     max_rows: int,
 ) -> tuple[str, int, bool]:
     if kind == "pdf":
-        return _read_pdf(resolved, max_pages)
+        return read_pdf(resolved, max_pages)
     if kind == "xlsx":
-        return _read_xlsx(resolved, max_rows)
+        return read_xlsx(resolved, max_rows)
     if kind == "csv":
-        return _read_csv(resolved, max_rows)
-    return _read_text(resolved)
-
-
-def _truncate(text: str, max_chars: int) -> tuple[str, bool]:
-    if max_chars < 0:
-        return text, False
-    if len(text) <= max_chars:
-        return text, False
-    return text[:max_chars], True
+        return read_csv(resolved, max_rows)
+    return read_text(resolved)
 
 
 _INPUT_SCHEMA: Mapping[str, Any] = {
@@ -259,7 +169,7 @@ def make_doc_read_tool(config: SankaConfig) -> ToolSpec:
             resolved, kind, max_pages, max_rows
         )
         characters = len(text)
-        capped, cap_truncated = _truncate(text, docs.max_chars)
+        capped, cap_truncated = truncate(text, docs.max_chars)
         truncated = truncated or cap_truncated
 
         data = {

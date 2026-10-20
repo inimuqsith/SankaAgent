@@ -370,3 +370,175 @@ def test_non_loopback_host_is_rejected() -> None:
 def test_empty_token_is_rejected() -> None:
     with pytest.raises(ValueError):
         GatewayServer(StubDispatcher(), token="   ", host="127.0.0.1", port=0)
+
+
+def attachment_headers(**overrides: object) -> dict[str, str]:
+    import base64
+
+    headers = {
+        "X-Sanka-Token": TOKEN,
+        "Content-Type": "application/octet-stream",
+        "X-Sanka-Chat-Id": DM_CHAT,
+        "X-Sanka-Sender-Id": DM_CHAT,
+        "X-Sanka-Message-Id": "msg-1",
+        "X-Sanka-Kind": "document",
+        "X-Sanka-Mimetype": "text/markdown",
+        "X-Sanka-Filename-B64": base64.urlsafe_b64encode(
+            "catatan.md".encode()
+        ).decode().rstrip("="),
+    }
+    headers.update(overrides)  # type: ignore[arg-type]
+    return headers
+
+
+@pytest.fixture
+def attachment_gateway(tmp_path) -> Iterator[tuple[httpx.Client, StubDispatcher]]:
+    from sanka.attachments import AttachmentStore
+
+    store = AttachmentStore(
+        str(tmp_path / "attachments"),
+        max_bytes=64,
+        max_total_bytes=1024,
+        retention_seconds=3600,
+    )
+    dispatcher = StubDispatcher()
+    server = GatewayServer(
+        dispatcher,
+        token=TOKEN,
+        host="127.0.0.1",
+        port=0,
+        attachments=store,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = httpx.Client(
+        base_url=f"http://127.0.0.1:{server.bound_port}", timeout=5.0
+    )
+    try:
+        yield client, dispatcher, store
+    finally:
+        client.close()
+        server.shutdown()
+        server.close()
+        thread.join(timeout=5.0)
+
+
+def test_attachment_upload_returns_id_and_stores_bytes(attachment_gateway) -> None:
+    client, _, store = attachment_gateway
+    response = client.post(
+        "/v1/attachments",
+        content=b"# halo\n",
+        headers=attachment_headers(),
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    record = store.get(body["attachment_id"], chat_id=DM_CHAT)
+    assert record is not None
+    assert store.resolve(record).read_bytes() == b"# halo\n"
+    assert body["size"] == 7
+
+
+def test_attachment_upload_requires_token_and_config(attachment_gateway, gateway) -> None:
+    client, _, _ = attachment_gateway
+    response = client.post(
+        "/v1/attachments",
+        content=b"x",
+        headers=attachment_headers(**{"X-Sanka-Token": "wrong"}),
+    )
+    assert response.status_code == 401
+
+    plain_client, _, _ = gateway
+    disabled = plain_client.post(
+        "/v1/attachments",
+        content=b"x",
+        headers=attachment_headers(),
+    )
+    assert disabled.status_code == 503
+
+
+def test_attachment_upload_rejects_size_and_type(attachment_gateway) -> None:
+    client, _, _ = attachment_gateway
+    too_large = client.post(
+        "/v1/attachments",
+        content=b"x" * 65,
+        headers=attachment_headers(),
+    )
+    assert too_large.status_code == 413
+
+    wrong_type = client.post(
+        "/v1/attachments",
+        content=b"x",
+        headers=attachment_headers(**{"Content-Type": "application/json"}),
+    )
+    assert wrong_type.status_code == 415
+
+
+def test_attachment_upload_rejects_bad_metadata(attachment_gateway) -> None:
+    client, _, _ = attachment_gateway
+    response = client.post(
+        "/v1/attachments",
+        content=b"x",
+        headers=attachment_headers(**{"X-Sanka-Chat-Id": "not-a-jid"}),
+    )
+    assert response.status_code == 400
+
+    bad_kind = client.post(
+        "/v1/attachments",
+        content=b"x",
+        headers=attachment_headers(**{"X-Sanka-Kind": "audio"}),
+    )
+    assert bad_kind.status_code == 400
+
+
+def test_inbound_accepts_a_stored_attachment(attachment_gateway) -> None:
+    client, dispatcher, store = attachment_gateway
+    uploaded = client.post(
+        "/v1/attachments",
+        content=b"# halo\n",
+        headers=attachment_headers(),
+    ).json()
+
+    response = client.post(
+        "/v1/inbound",
+        json=payload(
+            text="baca ini",
+            attachments=[
+                {
+                    "attachment_id": uploaded["attachment_id"],
+                    "kind": "document",
+                    "mime": "text/markdown",
+                    "name": "catatan.md",
+                    "size": 7,
+                }
+            ],
+        ),
+        headers={"X-Sanka-Token": TOKEN},
+    )
+
+    assert response.status_code == 202
+    assert len(dispatcher.events) == 1
+    event = dispatcher.events[0]
+    assert event.message.text == "baca ini"
+    assert event.message.attachments[0].attachment_id == uploaded["attachment_id"]
+
+
+def test_inbound_rejects_unknown_attachment(attachment_gateway) -> None:
+    client, _, _ = attachment_gateway
+    response = client.post(
+        "/v1/inbound",
+        json=payload(
+            attachments=[
+                {
+                    "attachment_id": "b" * 32,
+                    "kind": "document",
+                    "mime": "text/markdown",
+                    "name": "catatan.md",
+                    "size": 7,
+                }
+            ]
+        ),
+        headers={"X-Sanka-Token": TOKEN},
+    )
+    assert response.status_code == 400
+    assert response.json()["reason"] == "attachment_unknown"

@@ -218,3 +218,132 @@ def test_reason_never_echoes_payload_values() -> None:
     with pytest.raises(MalformedPayload) as excinfo:
         normalize_inbound(payload(chat_id=secret))
     assert secret not in str(excinfo.value)
+
+
+ATTACHMENT_ID = "a" * 32
+
+
+def attachment_payload(**overrides: object) -> dict[str, object]:
+    data = payload(
+        text="",
+        attachments=[
+            {
+                "attachment_id": ATTACHMENT_ID,
+                "kind": "document",
+                "mime": "text/markdown",
+                "name": "catatan.md",
+                "size": 5,
+            }
+        ],
+    )
+    data.update(overrides)
+    return data
+
+
+class FakeAttachmentStore:
+    def __init__(self, record=None) -> None:
+        self.record = record
+
+    def get(self, attachment_id: str, *, chat_id: str | None = None):
+        if self.record is None or self.record.attachment_id != attachment_id:
+            return None
+        if chat_id is not None and self.record.chat_id != chat_id:
+            return None
+        return self.record
+
+
+def make_record(**changes: object):
+    from sanka.attachments import AttachmentRecord
+
+    values = {
+        "attachment_id": ATTACHMENT_ID,
+        "chat_id": DM_ID,
+        "sender_id": DM_ID,
+        "message_id": "msg-1",
+        "kind": "document",
+        "mime": "text/markdown",
+        "name": "catatan.md",
+        "size": 5,
+        "sha256": "0" * 64,
+        "created_at": 1.0,
+    }
+    values.update(changes)
+    return AttachmentRecord(**values)
+
+
+def test_attachment_metadata_is_validated_against_the_store() -> None:
+    store = FakeAttachmentStore(make_record())
+    event = normalize_inbound(attachment_payload(), attachments=store)
+
+    assert event.message.text == ""
+    assert len(event.message.attachments) == 1
+    attachment = event.message.attachments[0]
+    assert attachment.attachment_id == ATTACHMENT_ID
+    assert attachment.name == "catatan.md"
+    assert attachment.size == 5
+    assert event.message.attachment_errors == ()
+
+
+def test_attachment_requires_a_matching_store_record() -> None:
+    assert_reason(attachment_payload(), "attachment_unknown")
+    assert_reason(
+        attachment_payload(),
+        "attachment_unknown",
+    )
+
+
+def test_attachment_is_bound_to_sender_and_message() -> None:
+    store = FakeAttachmentStore(make_record(sender_id="628222222222@s.whatsapp.net"))
+    assert_reason_with_store(attachment_payload(), "attachment_unknown", store)
+
+    wrong_message = FakeAttachmentStore(make_record(message_id="another"))
+    assert_reason_with_store(attachment_payload(), "attachment_unknown", wrong_message)
+
+
+def test_attachment_shape_rejections() -> None:
+    store = FakeAttachmentStore(make_record())
+    for changes, expected in (
+        ({"attachment_id": "b" * 32}, "attachment_unknown"),
+        ({"attachment_id": "not-hex"}, "attachments_invalid"),
+        ({"kind": "audio"}, "attachments_invalid"),
+        ({"mime": ""}, "attachments_invalid"),
+        ({"size": 0}, "attachments_invalid"),
+        ({"size": True}, "attachments_invalid"),
+    ):
+        entry = attachment_payload()["attachments"][0]  # type: ignore[index]
+        assert isinstance(entry, dict)
+        bad_entry = dict(entry)
+        bad_entry.update(changes)
+        assert_reason_with_store(
+            attachment_payload(attachments=[bad_entry]), expected, store
+        )
+
+
+def test_attachment_duplicate_ids_and_too_many_are_rejected() -> None:
+    store = FakeAttachmentStore(make_record())
+    entry = attachment_payload()["attachments"][0]  # type: ignore[index]
+    assert_reason_with_store(
+        attachment_payload(attachments=[entry, entry]),
+        "attachments_invalid",
+        store,
+    )
+    assert_reason(
+        attachment_payload(attachments=[entry] * 5),
+        "attachments_invalid",
+    )
+
+
+def test_attachment_errors_are_validated_and_deduplicated() -> None:
+    event = normalize_inbound(
+        payload(attachment_errors=["download_failed", "upload_failed", "download_failed"])
+    )
+    assert event.message.attachment_errors == ("download_failed", "upload_failed")
+
+    assert_reason(payload(attachment_errors=["drop_table"]), "attachment_errors_invalid")
+    assert_reason(payload(attachment_errors="download_failed"), "attachment_errors_invalid")
+
+
+def assert_reason_with_store(data: object, reason: str, store: object) -> None:
+    with pytest.raises(MalformedPayload) as excinfo:
+        normalize_inbound(data, attachments=store)  # type: ignore[arg-type]
+    assert excinfo.value.reason == reason

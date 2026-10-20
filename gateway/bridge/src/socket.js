@@ -33,7 +33,7 @@ function withTimeout(promise, timeoutMs) {
   ]);
 }
 
-export function createSocketManager({ config, deliverer, logger }) {
+export function createSocketManager({ config, deliverer, logger, media = null }) {
   const startedAt = Date.now();
   const botJids = new Set();
   const lidCache = createBoundedMap({
@@ -189,6 +189,19 @@ export function createSocketManager({ config, deliverer, logger }) {
           continue;
         }
         dedupe.set(event.message_id, true);
+        if (media) {
+          try {
+            const prepared = await media.prepare(msg, event);
+            if (Array.isArray(prepared?.attachments) && prepared.attachments.length > 0) {
+              event.attachments = prepared.attachments;
+            }
+            if (Array.isArray(prepared?.errors) && prepared.errors.length > 0) {
+              event.attachment_errors = prepared.errors;
+            }
+          } catch {
+            logger.warn({ code: 'prepare_failed' }, 'attachment_prepare_failed');
+          }
+        }
         deliverer.enqueue(event);
       } catch (error) {
         logger.warn(

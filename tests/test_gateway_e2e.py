@@ -139,7 +139,10 @@ def test_dm_command_is_formatted_and_sent(live) -> None:
     assert response.json() == {"status": "accepted"}
     assert wait_until(lambda: len(gateway.bridge.sent) == 1)
     assert gateway.app.outbound.wait_idle(2.0)
-    assert gateway.bridge.sent == [(DM_CHAT, "pong", "m-ping:0")]
+    assert len(gateway.bridge.sent) == 1
+    chat_id, text, key = gateway.bridge.sent[0]
+    assert (chat_id, key) == (DM_CHAT, "m-ping:0")
+    assert "pong" in text.lower()
     assert gateway.bridge.typing_events == []
     assert TOKEN not in response.text
 
@@ -223,7 +226,7 @@ def test_duplicate_message_id_is_not_reprocessed(live) -> None:
     assert second.json() == {"status": "duplicate"}
     assert gateway.app.outbound.wait_idle(1.0)
     assert len(gateway.bridge.sent) == 1
-    assert gateway.bridge.sent[0][1] == "pong"
+    assert "pong" in gateway.bridge.sent[0][1].lower()
 
 
 def test_read_receipts_are_optional(live) -> None:
@@ -286,7 +289,8 @@ def test_degraded_mode_still_answers_commands(live) -> None:
     assert gateway.app.outbound.wait_idle(2.0)
 
     sent = [item[1] for item in gateway.bridge.sent]
-    assert sent == ["pong", "Fitur AI belum aktif."]
+    assert "pong" in sent[0].lower()
+    assert sent[1] == "Fitur AI belum aktif."
     assert gateway.runtime is None
 
 

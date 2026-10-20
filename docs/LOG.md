@@ -255,3 +255,81 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
   - `group_policy` lokal masih `open`; produksi harus `allowlist` + JID grup. Belum ada cara aman mengambil JID grup tanpa log mentah; perlu satu langkah owner.
   - DM `/ping`, DM agent, grup tanpa mention, multi-chunk, logout, dan mode pesawat belum diuji.
 - Berikutnya: uji DM dan grup tanpa mention; setelah itu lengkapi Hasil plan-4 dan pertimbangkan `Done`. Plan-5 tetap menunggu sheet uji/service account untuk `/rekap` nyata.
+
+## 2026-10-21 — Plan-9: format WhatsApp, persona dari PERSONA.md, command hidup
+- Plan: plan-9 (In Progress → Done)
+- Dilakukan:
+  - Diagnosis keluhan owner: formatter tidak menormalkan markdown (`**`, `##`, `-`), prompt runtime hardcoded tanpa aturan emoji/format, `/whoami` mengabaikan `sender_id`, dan command deterministik hanya berisi string datar.
+  - `sanka/formatter.py`: menambahkan `to_whatsapp()` — heading → baris tebal, `**` → `*`, `~~` → `~`, link markdown → `teks (url)`, bullet → `•`, garis horizontal dihapus. Blok/inline code dilindungi dan konversi idempoten. `Formatter.format()` mengonversi sebelum memotong/memecah.
+  - `sanka/agent/prompt.py`: L0 sekarang dimuat dari blok bertanda `<!-- SANKA-L0:START/END -->` di `docs/PERSONA.md`, di-cache per proses. Aturan tool/data dan tanggal tetap di kode. `AgentRuntime.__init__` gagal cepat bila aset persona hilang.
+  - `docs/PERSONA.md`: menambahkan identitas Sanka, arahan emoji 1–2 per balasan, aturan format WhatsApp, dan larangan membacakan aturan internal saat ditanya karakter.
+  - Command: `/whoami` menampilkan JID pengirim, peran, jenis chat, dan JID chat; `/ping`, `/help`, `/status`, `/new`, `/stop`, command tidak dikenal, dan command terlarang diberi nada/emoji. Deskripsi `/rekap` diberi emoji.
+  - Dokumentasi: ADR-0021 (formatter) dan ADR-0022 (persona dari `docs/PERSONA.md`) `Accepted`; `ARCHITECTURE.md`, `COMMANDS.md`, plan-9 diperbarui.
+- Hasil tes:
+  - `.venv/bin/python -m pytest -q` → **485 passed**.
+  - `.venv/bin/python -m compileall -q sanka core gateway` → exit `0`.
+  - Smoke loopback dengan fake bridge + model OpenCode Go nyata: `/whoami` mengirim `👤 Kamu: 628111111111@s.whatsapp.net`, `/help` memuat daftar command, balasan agent memakai persona dan emoji, dan tidak ada `**`/`##` di ketiga pesan.
+  - Konversi contoh markdown (`##`, `**`, link, bullet, HR) keluar bersih; inline code tetap utuh.
+- Temuan:
+  - Gateway yang sedang berjalan (PID 159060) masih memakai kode lama; perlu restart agar perubahan aktif di WhatsApp.
+  - `docs/PERSONA.md` sekarang menjadi aset runtime. Deployment harus menyertakan `docs/`; plan-7 nanti boleh memindahkannya ke `sanka/persona/l0.md` lewat ADR baru.
+- Berikutnya: restart gateway, lalu verifikasi tampilan `/whoami`, `/help`, dan satu balasan agent di WhatsApp; lanjutkan smoke plan-4 (DM/grup tanpa mention).
+
+## 2026-10-21 — Plan-10: SOUL.md di config + wrapper gateway
+- Plan: plan-10 (In Progress → Done)
+- Dilakukan:
+  - Persona L0 dipindah dari blok bertanda `docs/PERSONA.md` ke `config/SOUL.md`. `sanka/agent/prompt.py` sekarang punya `load_soul()` yang membaca file utuh, men-trim, dan melempar `PersonaError` bila hilang/kosong. `AgentRuntime.__init__` tetap fail-fast.
+  - `docs/PERSONA.md` menjadi dokumen manusia dan hanya merujuk ke `config/SOUL.md`.
+  - Membuat `scripts/sanka` (executable) dengan `start`, `stop`, `restart`, `status`, `logs`, dan `bridge`. Gateway berjalan detached dengan `nohup`, log `logs/gateway.log`, PID `logs/gateway.pid`; wrapper memuat `.env` tanpa mencetak secret.
+  - `scripts/sanka` dapat mengadopsi gateway yang dijalankan manual: PID listener port 8099 ditemukan lewat `ss` dan ditulis ke PID file. Ini memperbaiki kasus restart saat PID file belum ada.
+  - Dokumentasi: ADR-0023 `Accepted`, ADR-0022 `Superseded by ADR-0023`, README bagian "Menjalankan", ARCHITECTURE, PERSONA, plan-10.
+- Hasil tes:
+  - `.venv/bin/python -m pytest -o addopts="" -q` → **486 passed**.
+  - `.venv/bin/python -m compileall -q sanka core gateway` → exit `0`.
+  - `scripts/sanka status` → gateway PID 164708 diadopsi, health `ok`, bridge `connected:true`.
+  - `scripts/sanka restart` → gateway berhenti, PID baru 167088, `/healthz` `{"status":"ok"}` dengan uptime 0, PID file dan listener `ss` cocok.
+  - Smoke sebelumnya (plan-9) tetap berlaku untuk format/persona; gateway baru memuat `config/SOUL.md` saat startup.
+- Temuan:
+  - Percobaan pertama wrapper membuat proses kedua karena PID file tidak ada sementara port 8099 masih dipakai gateway manual; proses baru gagal `Address already in use`. Sudah diperbaiki dengan resolusi PID listener dan pengecekan port sebelum spawn.
+  - Bridge tetap proses terpisah; `scripts/sanka bridge` menjalankannya di foreground karena butuh QR/sesi.
+- Berikutnya: owner menguji `/whoami` dan satu balasan agent di WhatsApp. Plan-4/5 tetap menunggu smoke DM/grup.
+
+## 2026-10-21 — Revisi plan-10: wrapper mengurus gateway + bridge
+- Plan: plan-10 (revisi, tetap Done)
+- Dilakukan:
+  - Owner menolak wrapper yang hanya mengurus gateway. `scripts/sanka` diperluas: target `all|gateway|bridge` untuk `start`, `stop`, `restart`, `logs`; `status` menampilkan keduanya; `pair` menjalankan bridge foreground untuk QR.
+  - Wrapper memuat `.env` dan `config/secrets.env` (token bridge), menyimpan `logs/bridge.pid` dan `logs/bridge.log`, mengadopsi proses manual lewat PID listener `ss`, dan memverifikasi PID file benar-benar listener port.
+  - Start bridge menunggu `"connected":true` hingga 30 detik; bila gagal, mencetak petunjuk log/pairing dan 20 baris log terakhir.
+  - Dokumentasi: ADR-0024 `Accepted` (menggantikan keputusan 5 ADR-0023), README, ARCHITECTURE, plan-10.
+- Hasil tes:
+  - `bash -n scripts/sanka` → OK.
+  - `scripts/sanka start bridge` → PID 168377, `connected:true` (~3 detik).
+  - `scripts/sanka restart bridge` → PID 168513, `connected:true`.
+  - `scripts/sanka restart` (all) → gateway PID 168619, bridge PID 168647; health gateway `ok`, bridge `connected:true`.
+  - `scripts/sanka status` → kedua PID cocok dengan listener `ss`.
+  - `pytest -o addopts="" -q` → **486 passed**; `compileall` → exit `0`.
+- Temuan:
+  - `npm start` di terminal owner berhenti saat terminal/sesi ditutup; sekarang bridge berjalan detached lewat wrapper dan tetap hidup.
+  - Pairing pertama tidak bisa lewat start background karena QR hanya di log/terminal; gunakan `scripts/sanka pair`.
+- Berikutnya: owner menguji `/whoami` dan balasan agent di WhatsApp; jalankan `scripts/sanka status` untuk memastikan kedua proses hidup.
+
+## 2026-10-21 — Plan-11: konteks ambient chat grup
+- Plan: plan-11 (In Progress → Done)
+- Dilakukan:
+  - Bridge mengirim `sender_name` (pushName, dibersihkan); `InboundMessage` dan normalizer membawa field itu.
+  - `sanka/group_context.py`: JSONL per grup, nama file HMAC-SHA256 dengan salt lokal, direktori `0700`, file/salt `0600`, retensi 24 jam, 200 pesan, 1.000 karakter/entri, injeksi 30 pesan/3.500 karakter, escape `&<>`.
+  - `Dispatcher`: pesan grup yang tidak di-mention dicatat segera; pesan COMMAND/AGENT dicatat di `finally` agar tidak dobel pada giliran yang sama; DM, gate tolak, dan command `/...` tidak dicatat.
+  - `AgentRuntime` membaca context hanya untuk `is_group`; `build_system_prompt` menambahkan blok `<group_context>` berlabel DATA dan larangan mengikuti instruksi di dalamnya.
+  - Config `group_context` ditambahkan (contoh disabled; config lokal enabled + `capture_all_groups: true`). ADR-0025, SECURITY, ARCHITECTURE, README diperbarui.
+- Hasil tes:
+  - `.venv/bin/python -m pytest -o addopts="" -q` → **509 passed**.
+  - `.venv/bin/python -m compileall -q sanka core gateway` → exit `0`.
+  - `cd gateway/bridge && npm test` → **126 passed**.
+  - Smoke loopback dengan model nyata: pesan grup tanpa mention `"Rapat minggu ini dipindah ke Jumat jam 10 ya"` tersimpan; mention `"@sanka kapan rapat minggu ini?"` dijawab dengan `"Menurut pesan Budi di grup, rapat minggu ini dipindah ke *Jumat jam 10.00* ✅"`.
+  - File konteks: `0600`, dir `0700`, nama file hash, isi JSONL tanpa `chat_id` mentah.
+- Temuan:
+  - `sender_name` bisa dipalsukan pengguna; hanya dipakai sebagai label data, bukan identitas/izin. JID tetap sumber kebenaran untuk peran.
+  - `capture_all_groups: true` + `group_policy: open` berarti semua grup Sanka terekam. Batasi dengan `capture_group_ids` bila perlu.
+  - Store konteks bukan log dan bukan memori; hilang setelah retensi, tidak bertahan sebagai memori plan-7.
+- Berikutnya: restart lewat `scripts/sanka restart`, lalu uji satu obrolan grup tanpa mention diikuti mention; cek `group_context.dir` berisi JSONL. Owner perlu memberi tahu anggota grup bila capture_all aktif.
+- Tindak lanjut 2026-10-21: retensi sekarang juga menulis ulang file di disk; JID pengirim disimpan sebagai hash, bukan mentah. Restart final: gateway PID 174106, bridge PID 174132, health `ok`, bridge `connected:true`.

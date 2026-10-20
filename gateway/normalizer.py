@@ -8,11 +8,19 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from sanka.models import InboundMessage
+from sanka.attachments import AttachmentStore
+from sanka.models import InboundAttachment, InboundMessage
 
 MAX_TEXT_CHARS = 32_768
 MAX_MENTIONS = 32
 MAX_ID_CHARS = 200
+MAX_ATTACHMENTS = 4
+MAX_ATTACHMENT_ERRORS = 8
+
+_ATTACHMENT_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+_ATTACHMENT_ERROR_CODES = frozenset(
+    {"download_failed", "upload_failed", "too_large", "unsupported"}
+)
 
 _JID_PATTERN = re.compile(r"^[0-9A-Za-z._:\-]+@[0-9A-Za-z.\-]+$")
 
@@ -41,7 +49,10 @@ class MalformedPayload(ValueError):
 
 
 def normalize_inbound(
-    payload: object, *, now: Callable[[], float] = time.time
+    payload: object,
+    *,
+    now: Callable[[], float] = time.time,
+    attachments: AttachmentStore | None = None,
 ) -> InboundEvent:
     """Validate ``payload`` and build an :class:`InboundEvent`.
 
@@ -70,6 +81,7 @@ def normalize_inbound(
             raise MalformedPayload("is_group_mismatch")
 
     mentions = _mentions(payload)
+    sender_name = _sender_name(payload)
 
     reply_to_bot = False
     if "reply_to_bot" in payload:
@@ -78,6 +90,14 @@ def normalize_inbound(
             raise MalformedPayload("reply_to_bot_invalid")
         reply_to_bot = supplied_reply
 
+    attachment_items = _attachments(
+        payload,
+        store=attachments,
+        chat_id=chat_id,
+        sender_id=sender_id,
+        message_id=message_id,
+    )
+    attachment_errors = _attachment_errors(payload)
     timestamp = _timestamp(payload, now)
 
     return InboundEvent(
@@ -89,9 +109,90 @@ def normalize_inbound(
             is_group=is_group,
             mentions=mentions,
             reply_to_bot=reply_to_bot,
+            sender_name=sender_name,
+            attachments=attachment_items,
+            attachment_errors=attachment_errors,
         ),
         timestamp=timestamp,
     )
+
+
+def _attachments(
+    payload: dict[object, object],
+    *,
+    store: AttachmentStore | None,
+    chat_id: str,
+    sender_id: str,
+    message_id: str,
+) -> tuple[InboundAttachment, ...]:
+    if "attachments" not in payload:
+        return ()
+    raw = payload["attachments"]
+    if not isinstance(raw, list) or len(raw) > MAX_ATTACHMENTS:
+        raise MalformedPayload("attachments_invalid")
+
+    result: list[InboundAttachment] = []
+    seen: set[str] = set()
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise MalformedPayload("attachments_invalid")
+        attachment_id = entry.get("attachment_id")
+        if (
+            not isinstance(attachment_id, str)
+            or _ATTACHMENT_ID_PATTERN.fullmatch(attachment_id) is None
+            or attachment_id in seen
+        ):
+            raise MalformedPayload("attachments_invalid")
+        seen.add(attachment_id)
+        kind = entry.get("kind")
+        mime = entry.get("mime")
+        size = entry.get("size")
+        if kind not in ("image", "document"):
+            raise MalformedPayload("attachments_invalid")
+        if not isinstance(mime, str) or not 0 < len(mime) <= 100:
+            raise MalformedPayload("attachments_invalid")
+        if isinstance(size, bool) or not isinstance(size, int) or size < 1:
+            raise MalformedPayload("attachments_invalid")
+
+        record = (
+            store.get(attachment_id, chat_id=chat_id)
+            if store is not None
+            else None
+        )
+        if (
+            record is None
+            or record.sender_id != sender_id
+            or record.message_id != message_id
+            or record.kind != kind
+            or record.mime != mime
+            or record.size != size
+        ):
+            raise MalformedPayload("attachment_unknown")
+        result.append(
+            InboundAttachment(
+                attachment_id=record.attachment_id,
+                kind=record.kind,
+                mime=record.mime,
+                name=record.name,
+                size=record.size,
+            )
+        )
+    return tuple(result)
+
+
+def _attachment_errors(payload: dict[object, object]) -> tuple[str, ...]:
+    if "attachment_errors" not in payload:
+        return ()
+    raw = payload["attachment_errors"]
+    if not isinstance(raw, list) or len(raw) > MAX_ATTACHMENT_ERRORS:
+        raise MalformedPayload("attachment_errors_invalid")
+    result: list[str] = []
+    for entry in raw:
+        if not isinstance(entry, str) or entry not in _ATTACHMENT_ERROR_CODES:
+            raise MalformedPayload("attachment_errors_invalid")
+        if entry not in result:
+            result.append(entry)
+    return tuple(result)
 
 
 def _message_id(payload: dict[object, object]) -> str:
@@ -134,6 +235,15 @@ def _mentions(payload: dict[object, object]) -> tuple[str, ...]:
             seen.add(entry)
             result.append(entry)
     return tuple(result)
+
+
+def _sender_name(payload: dict[object, object]) -> str:
+    value = payload.get("sender_name")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise MalformedPayload("sender_name_invalid")
+    return " ".join(value.split())[:64]
 
 
 def _timestamp(payload: dict[object, object], now: Callable[[], float]) -> float:
