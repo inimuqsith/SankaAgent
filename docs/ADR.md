@@ -186,3 +186,20 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
   - **Streaming token**: ditunda. Plan-2 memakai non-streaming agar satu request = satu respons utuh; streaming baru berguna saat gateway perlu typing/partial (plan-3).
 - Konsekuensi: client menjadi permukaan kompatibilitas yang harus dites; perubahan format API OpenCode Go cukup diperbaiki di satu file. Latensi terasa sampai respons selesai, tetapi tidak ada token yang dikirim ke WhatsApp secara parsial.
 
+
+## ADR-0018 — Kontrak HTTP gateway Python ↔ bridge WhatsApp
+- Status: Accepted
+- Tanggal: 2026-10-21
+- Konteks: Plan-2 sudah menyelesaikan agent core. Diperlukan batas yang jelas antara proses Python yang memegang routing/policy/agent/formatter dan proses Node yang memegang koneksi WhatsApp. Tanpa kontrak tetap, plan-3 dan plan-4 tidak bisa dikerjakan atau dites secara terpisah.
+- Keputusan:
+  1. Bridge **mendorong** pesan masuk ke Python lewat `POST /v1/inbound`; Python tidak long-poll. Bridge tetap boleh retry dengan `message_id` yang sama, dan Python membalas `duplicate` untuk id yang sudah diproses.
+  2. Python memanggil bridge lewat `POST /v1/send`, `/v1/typing`, dan `/v1/read`. `send` memakai `idempotency_key`; `409` berarti item itu sudah pernah diterima dan dianggap sukses.
+  3. Semua endpoint hanya menerima koneksi loopback dan token bersama `X-Sanka-Token` dari env yang namanya ditentukan `gateway.auth_token_env`. `/healthz` hanya metadata.
+  4. Python adalah pemilik normalizer, allowlist grup/DM, peran, rate limit, command registry, agent runtime, dan formatter. Bridge tidak memutuskan bisnis apa pun dan tidak memformat teks.
+  5. Server Python memakai stdlib `ThreadingHTTPServer`, batas body 64 KiB, dan validasi loopback saat start. Tidak ada dependency server baru.
+  6. Semua keluaran melewati `Formatter`; `reasoning`, trace tool, dan isi pesan tidak masuk log.
+- Alternatif yang dipertimbangkan:
+  - **Python long-poll bridge**: ditolak untuk plan-3 karena bridge sudah punya koneksi persisten dan bisa retry sendiri; push + idempotensi lebih sederhana.
+  - **Bridge memanggil agent langsung / memegang config**: ditolak karena menduplikasi policy di Node.
+  - **FastAPI/uvicorn**: ditolak karena satu klien loopback tepercaya tidak membutuhkan ASGI/routing tambahan.
+- Konsekuensi: Plan-4 wajib mengikuti kontrak ini; perubahan endpoint/status harus lewat ADR baru. Plan-3 bisa dites penuh dengan bridge palsu tanpa WhatsApp. Token adalah rahasia dan tidak boleh masuk repo/log.

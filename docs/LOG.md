@@ -137,3 +137,14 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
 - Hasil tes: `pip install -e .` berhasil di Python 3.15; import `sanka`, `core`, `httpx`, dan `yaml` berhasil; `pytest -q` tetap 123 tes lulus; `compileall sanka core` lulus.
 - Temuan: dependency runtime saat ini (PyYAML, httpx) mendukung 3.15. Target produksi tetap 3.12; tes di 3.12 belum dijalankan.
 - Berikutnya: plan-3 menunggu persetujuan owner.
+
+## 2026-10-21 — Wave 0 disiapkan untuk session baru
+- Plan: plan-3 (In Progress)
+- Dilakukan:
+  - Owner menyetujui Wave 0 dan meminta eksekusinya di session baru.
+  - Menambahkan ADR-0018 (kontrak HTTP gateway Python ↔ bridge) sebagai `Accepted`.
+  - Menulis `docs/plan/WAVE-0.md`: pembagian 4 subagent (normalizer/dedup/gate, outbound, dispatcher, server/app), file ownership, kontrak antarmuka, dan perintah verifikasi.
+  - Mengubah plan-3 menjadi `In Progress` dan memperbarui prasyarat/langkah agar tidak meminta persetujuan ulang.
+- Hasil tes: belum ada kode baru; belum dites. Implementasi dilakukan di session baru.
+- Temuan: Wave 0 tidak membutuhkan WhatsApp, Google, atau systemd; semua bisa dites dengan bridge palsu.
+- Berikutnya: buka session baru dan jalankan prompt kickoff di `docs/plan/WAVE-0.md`. Plan-4 tidak boleh dimulai sebelum plan-3 `Done`.

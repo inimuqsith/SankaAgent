@@ -115,7 +115,7 @@ Dengan pemisahan ini, setiap plan punya hasil yang bisa diamati dan diff yang ma
 |---|---|---|
 | 1 | Fondasi deterministik | Done |
 | 2 | Agent core | Done — live smoke OpenCode Go berhasil |
-| 3 | Gateway Python | Draft |
+| 3 | Gateway Python | In Progress — Wave 0 di session baru |
 | 4 | Bridge Baileys | Draft |
 | 5 | Tool baca + rekap | Draft |
 | 6 | Tool tulis + proposal | Draft |

@@ -1,6 +1,6 @@
 # Plan 3 — Gateway Python dan normalizer
 
-- Status: Draft
+- Status: In Progress
 - Tanggal: 2026-10-21
 - Pemilik: Abdul Muqsith
 
@@ -28,7 +28,7 @@ Koneksi WhatsApp nyata tetap milik plan-4.
   - `sanka.secrets.get_secret(env_name)` untuk token gateway.
   Plan-3 tetap bisa dikerjakan dengan `agent=None` (mode terdegradasi tanpa LLM) agar normalizer, gate, dan antrean keluar bisa dites lebih dulu, tetapi plan belum boleh `Done` sebelum integrasi runtime palsu dan runtime plan-2 sama-sama lulus.
 - ADR-0013 (`Accepted`) sebagai dasar pola bridge.
-- Owner menyetujui usulan **ADR-0018 — Kontrak HTTP gateway Python ↔ bridge** (ditulis pada langkah pertama plan ini, status `Proposed` sampai disetujui).
+- Owner menyetujui plan ini dan **ADR-0018 — Kontrak HTTP gateway Python ↔ bridge**; ADR sudah `Accepted`.
 - `SANKA_GATEWAY_TOKEN` tersedia di environment atau `config/secrets.env` (0600) untuk menjalankan server sungguhan. Tes memakai token palsu yang diinjeksi.
 
 ## Rancangan
@@ -448,7 +448,7 @@ Tidak ada dependency runtime baru.
 
 ## Langkah
 
-1. Minta persetujuan owner atas plan ini dan usulan **ADR-0018** (kontrak HTTP gateway); tulis ADR-0018 sebagai `Proposed`, ubah status plan menjadi `In Progress`.
+1. Owner sudah menyetujui plan ini dan ADR-0018; status plan adalah `In Progress`. Baca `docs/plan/WAVE-0.md` untuk pembagian subagent.
 2. Tambah key config baru di `sanka/config.py` + validasi (termasuk loopback dan nama env), perbarui `config/sanka.example.yaml`, tambahkan `gateway*` ke `[tool.setuptools.packages.find] include` di `pyproject.toml`, dan tambahkan tes di `tests/test_config.py`.
 3. Implementasikan `gateway/normalizer.py` (`InboundEvent`, `MalformedPayload`, `normalize_inbound`) beserta tes validasi dan default.
 4. Implementasikan `gateway/dedup.py` (`TtlRegistry`) beserta tes TTL, pembersihan, dan kapasitas.
@@ -458,7 +458,7 @@ Tidak ada dependency runtime baru.
 8. Implementasikan `gateway/server.py`, `app.py`, dan `__main__.py`: handler HTTP, batas body, auth token, validasi loopback, perakitan komponen, dan graceful shutdown.
 9. Tulis tes server pada loopback nyata (port `0`) dan tes end-to-end dengan bridge palsu: duplikat, grup tanpa mention, command, agent, formatter, outbound, tanpa kebocoran.
 10. Jalankan `pytest -q` dan `python -m compileall sanka core gateway`. Lakukan smoke manual singkat: jalankan `python -m gateway` dengan config contoh + token uji, `curl 127.0.0.1:8099/healthz`, satu `POST /v1/inbound`, cek satu `send` tercatat pada bridge palsu, lalu hentikan. Tidak ada koneksi WhatsApp.
-11. Perbarui `docs/ARCHITECTURE.md` (bagian gateway + kontrak), `docs/SECURITY.md` (token loopback, batas body), ADR-0018 (status sesuai keputusan owner), `docs/LOG.md`; isi bagian Hasil dan ubah status plan menjadi `Done`.
+11. Perbarui `docs/ARCHITECTURE.md` (bagian gateway + kontrak), `docs/SECURITY.md` (token loopback, batas body), ADR-0018 bila kontrak berubah, `docs/LOG.md`; isi bagian Hasil dan ubah status plan menjadi `Done`.
 
 ## Tes
 
