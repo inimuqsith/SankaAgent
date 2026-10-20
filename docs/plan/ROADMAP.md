@@ -69,7 +69,7 @@ Target fase: bot WhatsApp benar-benar hidup, bisa menjawab DM dan grup yang di-m
 ### Plan 5 — Tool baca dan rekap
 
 - Isi: tool registry dengan izin per peran (penegakan ganda: skema ke LLM dan penolakan saat eksekusi), skema input/output, `web_search`, `doc_read` (PDF/Excel), `sheet_read`, `recap` yang menghitung di kode (pandas), Google service account read-only + allowlist, formatter `RECAP`.
-- Keluar: panitia bisa meminta rekap dari sheet terdaftar; angka berasal dari hasil hitung kode; peserta ditolak; tidak ada akses di luar allowlist; tes memakai fixture, bukan data asli.
+- Keluar: panitia bisa meminta rekap dari sheet terdaftar; angka berasal dari hasil hitung kode; pengguna tak tercantum = panitia (ADR-0020); tidak ada akses di luar allowlist; tes memakai fixture, bukan data asli.
 - Prasyarat: plan-4 (jalur WhatsApp nyata) dan ADR-0011 (matriks izin) disetujui.
 
 ### Plan 6 — Tool tulis dan alur proposal
@@ -117,16 +117,16 @@ Dengan pemisahan ini, setiap plan punya hasil yang bisa diamati dan diff yang ma
 |---|---|---|
 | 1 | Fondasi deterministik | Done |
 | 2 | Agent core | Done — live smoke OpenCode Go berhasil |
-| 3 | Gateway Python | In Progress — Wave 0 di session baru |
-| 4 | Bridge Baileys | Draft |
-| 5 | Tool baca + rekap | Draft |
+| 3 | Gateway Python | Done — Wave 0, 306 tes + smoke loopback |
+| 4 | Bridge Baileys | In Progress — kode + 125 tes; pairing + mention grup sudah berhasil; DM/no-mention/logout pending |
+| 5 | Tool baca + rekap | In Progress — kode + 470 tes; SearXNG + doc_read live; sheet/rekap nyata pending |
 | 6 | Tool tulis + proposal | Draft |
 | 7 | Memori + skill | Draft |
 | 8 | Hardening + deploy | Draft |
 
 ## Langkah berikutnya
 
-1. Owner meninjau hasil plan-2 dan seluruh draft plan-3 sampai plan-8.
-2. Plan-2 sudah `Done`; live smoke OpenCode Go berhasil. Berikutnya owner meninjau plan-3 dan mengubah statusnya menjadi `In Progress` bila disetujui.
-3. Plan-3 boleh dipecah paralel per modul (`normalizer`, `dedup`, `gate`, `outbound`, `dispatcher`, `server`) selama kontrak di plan-3 tidak berubah.
-4. Plan-4 sampai plan-8 tetap berurutan karena saling bergantung. Paralelisasi hanya dilakukan untuk slice di dalam satu plan, bukan antarplan yang belum punya antarmuka stabil.
+1. Owner menyiapkan nomor WhatsApp Sanka + ponsel, `config/sanka.yaml` (termasuk `workspace.read_allowlist` bentuk alias), `SANKA_GATEWAY_TOKEN`, kredensial service account Google, dan instance SearXNG dengan JSON API aktif.
+2. Jalankan pairing plan-4 (`SANKA_BRIDGE_PAIR_ONLY=1 npm start`), lalu smoke DM/grup/restart tanpa QR. Setelah itu plan-4 boleh `Done`.
+3. Smoke plan-5: `/rekap <nama>` sebagai panitia, satu `web_search`, satu `doc_read`, satu `sheet_read` lewat alias. Plan-5 `Done` hanya setelah smoke WhatsApp plan-4 berhasil.
+4. Plan-6 baru boleh mulai setelah registry + allowlist plan-5 dibekukan dan tesnya hijau.

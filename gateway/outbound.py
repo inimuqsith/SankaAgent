@@ -239,12 +239,17 @@ class OutboundQueue:
     # -- enqueue -----------------------------------------------------------
 
     def enqueue_reply(
-        self, chat_id: str, messages: Sequence[str], *, base_key: str
+        self,
+        chat_id: str,
+        messages: Sequence[str],
+        *,
+        base_key: str,
+        kind: ResponseKind = ResponseKind.TEXT,
     ) -> None:
         """Format a reply and queue one ``SEND`` per non-empty chunk."""
         chunks: list[str] = []
         for message in messages:
-            chunks.extend(self._formatter.format(message, ResponseKind.TEXT))
+            chunks.extend(self._formatter.format(message, kind))
         chunks = [chunk for chunk in chunks if chunk.strip()]
         if not chunks:
             return

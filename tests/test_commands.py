@@ -6,6 +6,7 @@ from sanka.commands.basic import build_registry
 from sanka.commands.registry import (
     FORBIDDEN_COMMAND_REPLY,
     UNKNOWN_COMMAND_REPLY,
+    Command,
     CommandContext,
 )
 from sanka.config import SankaConfig
@@ -38,12 +39,12 @@ def context(role: Role, config: SankaConfig) -> CommandContext:
 def test_help_filters_commands_by_role(config: SankaConfig) -> None:
     registry = build_registry(FakeControl())
 
-    participant_help = registry.dispatch("/help", context(Role.PARTICIPANT, config))
+    participant_help = registry.dispatch("/help", context(Role.COMMITTEE, config))
     owner_help = registry.dispatch("/help", context(Role.OWNER, config))
 
     assert "/ping" in participant_help
     assert "/whoami" in participant_help
-    assert "/status" not in participant_help
+    assert "/status" in participant_help
     assert "/status" in owner_help
 
 
@@ -51,7 +52,7 @@ def test_unknown_command_points_to_help(config: SankaConfig) -> None:
     registry = build_registry(FakeControl())
 
     assert (
-        registry.dispatch("/nope", context(Role.PARTICIPANT, config))
+        registry.dispatch("/nope", context(Role.COMMITTEE, config))
         == UNKNOWN_COMMAND_REPLY
     )
     assert "/help" in UNKNOWN_COMMAND_REPLY
@@ -59,8 +60,16 @@ def test_unknown_command_points_to_help(config: SankaConfig) -> None:
 
 def test_forbidden_command_is_rejected(config: SankaConfig) -> None:
     registry = build_registry(FakeControl())
+    registry.register(
+        Command(
+            "owner-only",
+            "Uji gerbang peran",
+            frozenset({Role.OWNER}),
+            lambda ctx, args: "rahasia-owner",
+        )
+    )
 
-    reply = registry.dispatch("/status", context(Role.PARTICIPANT, config))
+    reply = registry.dispatch("/owner-only", context(Role.COMMITTEE, config))
 
     assert reply == FORBIDDEN_COMMAND_REPLY
     assert config.llm.model not in reply

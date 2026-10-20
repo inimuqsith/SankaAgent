@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ipaddress
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -69,3 +71,76 @@ def write_config(path: Path, data: dict[str, Any]) -> Path:
 def config(tmp_path: Path) -> SankaConfig:
     path = write_config(tmp_path / "sanka.yaml", valid_config_dict())
     return load_config(path)
+
+
+class NetworkBlockedError(RuntimeError):
+    """Raised when a test tries to reach a non-loopback network address."""
+
+
+def _is_loopback_host(host: Any) -> bool:
+    if host is None:
+        return False
+    if isinstance(host, bytes):
+        host = host.decode("ascii", "replace")
+    if not isinstance(host, str):
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _check_address(address: Any) -> None:
+    # AF_UNIX sockets use a filesystem path; they never leave the machine.
+    if isinstance(address, (str, bytes)):
+        return
+    if isinstance(address, tuple) and address and _is_loopback_host(address[0]):
+        return
+    raise NetworkBlockedError(
+        f"network access is blocked in tests (target={address!r})"
+    )
+
+
+@pytest.fixture(autouse=True)
+def block_real_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail any test that opens a non-loopback socket.
+
+    Tests use fakes and ``httpx.MockTransport``. Loopback stays available for
+    the small number of tests that run the gateway against a local server.
+    """
+
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+    real_create_connection = socket.create_connection
+    real_getaddrinfo = socket.getaddrinfo
+
+    def guarded_connect(self: socket.socket, address: Any) -> Any:
+        _check_address(address)
+        return real_connect(self, address)
+
+    def guarded_connect_ex(self: socket.socket, address: Any) -> Any:
+        _check_address(address)
+        return real_connect_ex(self, address)
+
+    def guarded_create_connection(
+        address: Any, *args: Any, **kwargs: Any
+    ) -> socket.socket:
+        _check_address(address)
+        return real_create_connection(address, *args, **kwargs)
+
+    def guarded_getaddrinfo(
+        host: Any, port: Any, *args: Any, **kwargs: Any
+    ) -> list[Any]:
+        # ``host=None`` is a local bind/passive lookup.
+        if host is not None and not _is_loopback_host(host):
+            raise NetworkBlockedError(
+                f"DNS access is blocked in tests (host={host!r})"
+            )
+        return real_getaddrinfo(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
+    monkeypatch.setattr(socket, "create_connection", guarded_create_connection)
+    monkeypatch.setattr(socket, "getaddrinfo", guarded_getaddrinfo)

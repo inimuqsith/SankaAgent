@@ -1,6 +1,6 @@
 # Plan 4 — Bridge WhatsApp Web (Node.js + Baileys)
 
-- Status: Draft
+- Status: In Progress
 - Tanggal: 2026-10-21
 - Pemilik: Abdul Muqsith
 
@@ -61,7 +61,7 @@ WhatsApp Web  <--Baileys-->  [bridge Node 127.0.0.1:3000]
 
 Yang **tidak boleh** ada di Node (ditegakkan lewat review, bukan hanya niat):
 
-- Menentukan siapa owner/panitia/peserta, atau membaca daftar nomor dari config.
+- Menentukan siapa owner/panitia, atau membaca daftar nomor dari config.
 - Memutuskan sebuah pesan grup layak diproses; bridge hanya melaporkan `mentions[]` dan `reply_to_bot` sebagai fakta.
 - Menghitung rate limit per pengirim, menolak perintah, atau membalas penolakan.
 - Memotong, menggabungkan, atau memformat teks balasan. Python mengirim chunk final; bridge mengirim apa adanya.
@@ -383,7 +383,7 @@ Manual, butuh ponsel owner dan nomor Sanka (dicatat hasilnya di Hasil):
 - **`409` berarti "sudah terkirim", bukan "gagal".** Kunci idempotensi `<message_id>:<chunk_index>` inilah yang mencegah balasan ganda saat Python retry.
 - **Bridge tidak memotong teks.** Kalau balasan terpotong aneh, perbaiki `Formatter` di Python, bukan bridge. Bridge hanya menolak teks > 4096 karakter sebagai batas aman transport.
 - **Pacing itu perlindungan nomor, bukan fitur.** Jarak 1,2 detik per chat dan 20 pesan/menit global ada untuk mengurangi risiko diblokir, bukan untuk kerapian.
-- **JID `@lid`.** Sebagian akun WhatsApp kini memakai LID, bukan nomor telepon. Bila resolusi LID→PN gagal, `sender_id` tetap JID LID dan `resolve_role` di Python akan menganggap pengirim sebagai peserta. Ini batas nyata plan-4 dan alasan `resolvePn` diuji terpisah.
+- **JID `@lid`.** Sebagian akun WhatsApp kini memakai LID, bukan nomor telepon. Bila resolusi LID→PN gagal, `sender_id` tetap JID LID dan `resolve_role` di Python akan menganggap pengirim sebagai panitia (ADR-0020). Ini batas nyata plan-4 dan alasan `resolvePn` diuji terpisah.
 - **Pesan bisa hilang saat bridge mati.** Antrean masuk hanya in-memory. Pesan yang belum diteruskan ke Python hilang bila proses mati. WhatsApp sendiri akan mengirim ulang pesan yang belum sampai ke perangkat tertaut, tetapi tidak ada jaminan urutan penuh setelah reconnect.
 
 ## Risiko
@@ -401,9 +401,34 @@ Manual, butuh ponsel owner dan nomor Sanka (dicatat hasilnya di Hasil):
 
 ## Catatan perubahan
 
-- `test/helpers.js` ditambahkan sebagai double bersama (`createFakeClock`, `createFakeLogger`, `createFakeTransport`, `jsonResponse`, `startTestServer`) agar empat subagent tidak menulis fake yang berbeda. Tidak mengubah kontrak HTTP atau perilaku.
-- Detail internal factory (`createInboundDeliverer`, `createOutbound`, `createServer`, `createSocketManager`) dipin di `WAVE-1.md` agar modul bisa ditulis paralel. Semua field HTTP dan env name tetap persis seperti rancangan di atas.
+- **2026-10-21 — eksekusi Wave 1.** Node `v22.23.1`, npm `10.9.8` (Fedora 45). Dependency terpasang: Baileys `7.0.0-rc13` (pin persis), pino `9.14.0`, qrcode-terminal `0.12.0` (Apache-2.0, dicek dari `LICENSE`; field `license` di package.json kosong). `package-lock.json` di-commit.
+- Script `test` di `package.json` memakai `node --test 'test/*.test.js'`, bukan `node --test test/`: Node 22.23.1 memperlakukan argumen direktori sebagai modul dan gagal `MODULE_NOT_FOUND`. Tidak mengubah daftar tes atau kontrak.
+- `test/helpers.js` adalah satu-satunya double bersama. `createFakeLogger` menerima dua bentuk pino: `(fields, msg)` dan `(msg, fields)`, agar modul yang memakai logger asli dan fake tetap konsisten.
+- `nextDelay` mengembalikan milidetik integer (dibulatkan) agar tes deterministik; `classifyDisconnect` mengembalikan `{action, delayMs}` dengan `action` ∈ `re-pair|restart-now|retry`.
+- Resolusi LID memakai `sock.signalRepository.lidMapping.getPNForLID` dengan cache TTL 1 jam; bila gagal, `sender_id` tetap JID LID (sesuai risiko plan).
+- `enforcePerms` menerima logger opsional; `main.js` meneruskan logger agar perbaikan mode tercatat dengan hash, bukan path.
+- Tidak ada logika bisnis di Node: tidak ada pembacaan `config/sanka.yaml`, daftar nomor, pemotongan teks, atau panggilan LLM.
 
 ## Hasil
 
-Belum dikerjakan.
+Sudah dijalankan 2026-10-21:
+
+- `cd gateway/bridge && npm ci` → 75 paket terpasang dari `package-lock.json`.
+- `npm test` → **125 tes lulus, 0 gagal** (13 suite) pada Node 22.23.1.
+- `npm audit --omit=dev` → **0 vulnerability**.
+- `node --check` untuk seluruh `src/*.js` dan `test/*.js` → lulus.
+- Smoke startup tanpa WhatsApp:
+  - `env -u SANKA_GATEWAY_TOKEN node src/main.js` → pesan `SANKA_GATEWAY_TOKEN is required (at least 16 characters)`, exit `1`.
+  - `SANKA_GATEWAY_TOKEN=… SANKA_BRIDGE_SESSION_DIR=./session node src/main.js` → pesan path harus absolut di luar repo, exit `1`.
+- Pairing nyata 2026-10-21: QR dipindai owner, `connection_open`, `pairing_complete`, sesi tersimpan. Direktori sesi `0700`, 1.624 file `0600`.
+- Restart bridge normal tanpa QR → `connection_open`, `GET /healthz` `{"connected":true,...}`.
+- Mention grup nyata: `messages_upsert` → `inbound_normalized` (`chat_kind:"group"`, `mentions:1`) → gateway `accepted detail=agent` → `agent_done` → bridge `outbound_sent` ke grup.
+- Temuan pairing: `app-state-sync-key-AAAAAMCo.json` tertulis satu detik setelah sync pertama sehingga Baileys sempat gagal decode; restart memuat key dan error hilang. `bot_ids` dari `creds.json` ternyata berbeda dari `sock.user` live; mention grup hanya cocok setelah `bot_ids` diisi dari `sock.user` (`me.id`/`me.lid`).
+
+Belum dijalankan:
+- DM `/ping` dan DM agent.
+- Grup tanpa mention (harus senyap) dan balasan multi-chunk/typing.
+- Logout → exit `2`; mode pesawat → reconnect backoff.
+- `group_policy` lokal masih `open` untuk smoke; produksi harus kembali ke `allowlist` dengan JID grup nyata.
+
+Karena DM/grup-senyap/logout belum diuji, plan-4 tetap `In Progress`.

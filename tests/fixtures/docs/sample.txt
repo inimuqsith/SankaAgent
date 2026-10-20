@@ -1,0 +1,3 @@
+SANKA DOC READ FIXTURE
+Baris kedua untuk doc_read.
+Baris ketiga berisi teks biasa.

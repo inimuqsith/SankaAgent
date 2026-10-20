@@ -58,7 +58,7 @@ def test_handle_returns_formatted_text_and_stores_history(
     store = SessionStore(config.limits.session_idle_ttl_minutes * 60)
     agent = runtime(config, client, store=store)
 
-    reply = agent.handle(message("Halo"), Role.PARTICIPANT)
+    reply = agent.handle(message("Halo"), Role.COMMITTEE)
 
     assert reply.messages == ("Halo dari Sanka",)
     assert client.calls[0][0]["role"] == "system"
@@ -74,8 +74,8 @@ def test_second_turn_receives_previous_history(config: SankaConfig) -> None:
     client = FakeClient(content="Jawaban")
     agent = runtime(config, client)
 
-    agent.handle(message("pertama"), Role.PARTICIPANT)
-    agent.handle(message("kedua"), Role.PARTICIPANT)
+    agent.handle(message("pertama"), Role.COMMITTEE)
+    agent.handle(message("kedua"), Role.COMMITTEE)
 
     messages = client.calls[1]
     assert messages[-1] == {"role": "user", "content": "kedua"}
@@ -89,8 +89,8 @@ def test_reasoning_is_not_stored_or_resent(config: SankaConfig) -> None:
     store = SessionStore(config.limits.session_idle_ttl_minutes * 60)
     agent = runtime(config, client, store=store)
 
-    reply = agent.handle(message("Halo"), Role.PARTICIPANT)
-    agent.handle(message("lagi"), Role.PARTICIPANT)
+    reply = agent.handle(message("Halo"), Role.COMMITTEE)
+    agent.handle(message("lagi"), Role.COMMITTEE)
 
     assert reply.messages == ("Halo",)
     assert store.history("chat-1")[1] == {
@@ -109,8 +109,8 @@ def test_rate_limit_stops_before_calling_client(config: SankaConfig) -> None:
     client = FakeClient()
     agent = runtime(config, client, limiter=limiter)
 
-    first = agent.handle(message("satu"), Role.PARTICIPANT)
-    second = agent.handle(message("dua"), Role.PARTICIPANT)
+    first = agent.handle(message("satu"), Role.COMMITTEE)
+    second = agent.handle(message("dua"), Role.COMMITTEE)
 
     assert first.messages == ("Halo dari Sanka",)
     assert "Batas pesan" in second.messages[0]
@@ -123,7 +123,7 @@ def test_client_error_returns_friendly_reply(config: SankaConfig) -> None:
     store = SessionStore(config.limits.session_idle_ttl_minutes * 60)
     agent = runtime(config, client, store=store)
 
-    reply = agent.handle(message("Halo"), Role.PARTICIPANT)
+    reply = agent.handle(message("Halo"), Role.COMMITTEE)
 
     assert "bermasalah" in reply.messages[0]
     assert "upstream" not in reply.messages[0]
@@ -136,9 +136,9 @@ def test_reset_clears_context(config: SankaConfig) -> None:
     store = SessionStore(config.limits.session_idle_ttl_minutes * 60)
     agent = runtime(config, client, store=store)
 
-    agent.handle(message("pertama"), Role.PARTICIPANT)
+    agent.handle(message("pertama"), Role.COMMITTEE)
     agent.reset("chat-1")
-    agent.handle(message("kedua"), Role.PARTICIPANT)
+    agent.handle(message("kedua"), Role.COMMITTEE)
 
     messages = client.calls[1]
     assert {"role": "user", "content": "pertama"} not in messages

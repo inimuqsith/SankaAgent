@@ -24,6 +24,7 @@ from sanka.formatter import Formatter
 from sanka.policy import RateLimiter
 from sanka.queue import StopOutcome
 from sanka.secrets import get_secret
+from sanka.tools import build_recap_service, build_registry as build_tool_registry
 
 if TYPE_CHECKING:
     from sanka.commands.registry import CommandRegistry
@@ -138,19 +139,28 @@ def build_app(
     )
 
     resolved_agent: AgentHandler | None
+    tool_registry = (
+        build_tool_registry(config) if agent is _UNSET else None
+    )
     if agent is _UNSET:
         resolved_agent = AgentRuntime(
             config,
             secrets_path=secrets_path,
             limiter=resolved_limiter,
             formatter=formatter,
+            tools=tool_registry,
         )
     else:
         resolved_agent = agent  # type: ignore[assignment]
 
     control = _session_control(resolved_agent)
     resolved_registry = (
-        registry if registry is not None else build_registry(control)
+        registry
+        if registry is not None
+        else build_registry(
+            control,
+            recap_service=build_recap_service(config),
+        )
     )
 
     resolved_bridge = (

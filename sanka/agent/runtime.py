@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from core.agent_loop import agent_runner_loop, exhaust
 
@@ -26,6 +27,7 @@ from sanka.queue import (
 )
 from sanka.secrets import get_secret
 from sanka.sessions import SessionStore
+from sanka.tools.registry import ToolContext, ToolRegistry
 
 LOGGER = logging.getLogger(__name__)
 
@@ -62,8 +64,12 @@ class AgentRuntime:
         store: SessionStore | None = None,
         queue: ChatQueue[AgentReply] | None = None,
         formatter: Formatter | None = None,
+        tools: ToolRegistry | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._config = config
+        self._tools = tools
+        self._now = now or (lambda: datetime.now(timezone.utc))
         if client_factory is None:
             api_key = get_secret(
                 config.llm.api_key_env, secrets_path=secrets_path
@@ -107,6 +113,23 @@ class AgentRuntime:
         except (CancelledError, AgentCancelled):
             return AgentReply((_STOPPED,))
 
+    def _build_handler(self, job: AgentJob[AgentReply]) -> SankaHandler:
+        if self._tools is None:
+            return SankaHandler(job.cancel_event)
+        context = ToolContext(
+            role=job.role,
+            chat_id=job.chat_id,
+            sender_id=job.sender_id,
+            config=self._config,
+            now=self._now,
+        )
+        return SankaHandler(
+            job.cancel_event,
+            tools=self._tools,
+            context=context,
+            max_calls_per_turn=self._config.tools.max_calls_per_turn,
+        )
+
     def reset(self, chat_id: str) -> None:
         """Stop current work and clear the conversation for ``chat_id``."""
 
@@ -126,7 +149,10 @@ class AgentRuntime:
         session = self._store.get_or_create(job.chat_id)
         history = self._store.history(job.chat_id)
         client = self._client_factory(session.opencode_session_id)
-        handler = SankaHandler(job.cancel_event)
+        handler = self._build_handler(job)
+        tools_schema = (
+            self._tools.specs_for(job.role) if self._tools is not None else ()
+        )
 
         try:
             exit_reason = exhaust(
@@ -135,7 +161,7 @@ class AgentRuntime:
                     build_system_prompt(),
                     job.message.text,
                     handler,
-                    (),
+                    tools_schema,
                     max_turns=self._config.llm.max_turns,
                     verbose=False,
                     history=history,

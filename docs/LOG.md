@@ -190,3 +190,68 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
   - Track B tetap terblokir sampai ADR-0011 dan ADR akses Sheets `Accepted`, kredensial Google/Brave tersedia, dan Node 22 terpasang untuk Track A.
   - Gate Track B tidak bisa dilewati dengan handler palsu; bila belum siap, jalankan Track A saja.
 - Berikutnya: owner menyetujui plan-4, plan-5, ADR-0011, dan ADR Sheets. Setelah itu jalankan Wave 1; plan-6 belum dimulai.
+
+## 2026-10-21 — Wave 1 preflight + keputusan izin Google
+- Plan: plan-4 + plan-5 (keduanya masih Draft; belum ada kode ditulis)
+- Dilakukan:
+  - Preflight Wave 1: `git status` bersih; `node -v`/`npm -v` gagal (Node belum terpasang di Fedora 45; tersedia `dnf`, bukan `pacman`); `SANKA_GATEWAY_TOKEN` dan `BRAVE_SEARCH_API_KEY` tidak ada; `.env` (0600) hanya memuat `OPENCODE_GO_API_KEY` (terisi) dan `GOOGLE_SERVICE_ACCOUNT_JSON` (kosong); `config/sanka.yaml` dan direktori sesi WhatsApp belum ada.
+  - Menulis draft **ADR-0019** (`Proposed`) untuk akses Google Sheets lewat endpoint resmi + `google-auth`, allowlist berbasis alias, tanpa `google-api-python-client` untuk saat ini.
+  - Mencatat keputusan owner 2026-10-21: izin/scope API dibuat luas dan pembatasan ditegakkan di kode. `workspace.scopes` ditambahkan ke rancangan plan-5 dengan default `https://www.googleapis.com/auth/spreadsheets` (baca+tulis); plan-5 tetap hanya memanggil `values.get`. ADR-0019, plan-5 (termasuk Catatan perubahan), dan `docs/SECURITY.md` diperbarui.
+- Hasil tes: `.venv/bin/python -m pytest -q` lulus 306 tes (baseline, belum ada kode baru).
+- Temuan:
+  - Gate Wave 1 belum terpenuhi: plan-4/plan-5 masih `Draft`, ADR-0011 masih `Proposed`, Node 22 belum ada, kredensial gateway/Brave belum ada, `config/sanka.yaml` belum ada. Tidak ada kode Track A/B yang ditulis.
+  - Perlu keputusan owner: menyetujui plan + ADR, izin memasang Node 22 (`sudo dnf install nodejs npm` atau nvm), dan konfirmasi apakah cukup adapter REST resmi atau ingin SDK `google-api-python-client`.
+- Berikutnya: setelah gate disetujui, ubah status plan/ADR sesuai persetujuan owner, pasang Node 22, lalu jalankan Track A dan Track B paralel. Plan-6/7/8 belum dimulai.
+
+## 2026-10-21 — Wave 1 dieksekusi (Track A + Track B)
+- Plan: plan-4 + plan-5 (keduanya `In Progress`; belum `Done` karena smoke WhatsApp/manual belum dijalankan)
+- Dilakukan:
+  - Track A: membuat `gateway/bridge/**` (config, logger, session, normalize, backoff, ids, deliver, outbound, http, socket, main, helper tes). Baileys dipin `7.0.0-rc13`, pino `9.14.0`, qrcode-terminal `0.12.0`; `package-lock.json` di-commit. Node `v22.23.1`, npm `10.9.8`.
+  - Track B: dependency baru (`pypdf`, `openpyxl`, `pandas`, `google-auth`), config alias allowlist + `workspace.scopes`, `sanka/google.py`, `sanka/tools/**`, `/rekap`, `Command.kind`/`dispatch_result`, integrasi `AgentRuntime`/handler/prompt, fixture tanpa jaringan, dan SearXNG (bukan Brave).
+  - Integrasi gateway: `gateway/app.py` membangun `ToolRegistry` + `RecapService`; `gateway/dispatcher.py` memakai `dispatch_result`; `gateway/outbound.py` meneruskan `ResponseKind.RECAP`.
+  - Dokumentasi: ADR-0011/0019 `Accepted`, ADR-0013 catatan pin Baileys + satu instance, ADR-0019 draft awal diubah sesuai keputusan scope luas, plan-4/5 Hasil + Catatan perubahan, WAVE-1 status, COMMANDS, ROADMAP, SECURITY.
+- Hasil tes:
+  - `cd gateway/bridge && npm ci && npm test && npm audit --omit=dev` → `124` tes lulus, `0` gagal, `0` vulnerability.
+  - `.venv/bin/python -m pytest -q -o addopts=""` → **477 passed**.
+  - `.venv/bin/python -m compileall -q sanka core gateway` → exit `0`.
+  - Smoke startup bridge: tanpa token → exit `1`; session dir di dalam repo → exit `1`; keduanya dengan pesan yang menyebut env/masalah, tanpa token/JID.
+  - `git status --porcelain` tidak memuat `node_modules`, `config/sanka.yaml`, kredensial, atau direktori sesi.
+- Temuan/deviasi:
+  - Script `npm test` memakai glob `'test/*.test.js'` karena Node 22.23.1 tidak menerima argumen direktori `test/`.
+  - `pandas` dipin `>=2.2,<4` (bukan `<3`) karena Python 3.15 tidak punya wheel pandas 2.x; pandas 3.0.6 dipakai dan tes lulus.
+  - `qrcode-terminal` berlisensi Apache-2.0, bukan MIT; kompatibel dan dicatat di plan-4.
+  - `gateway/app.py`, `dispatcher.py`, `outbound.py` disentuh di luar daftar awal plan-5 untuk menutup jalur `/rekap` dan tool registry.
+  - Token Google nyata, SearXNG nyata, spreadsheet uji, dan QR WhatsApp belum dipakai; semua tes memakai fake/MockTransport.
+- Berikutnya: owner menyiapkan `config/sanka.yaml`, `SANKA_GATEWAY_TOKEN`, service account Google yang di-share ke sheet uji, instance SearXNG dengan JSON API, nomor WhatsApp Sanka + ponsel. Lalu pairing/smoke plan-4, dilanjutkan smoke plan-5. Plan-4/5 baru boleh `Done` setelah itu. Plan-6/7/8 belum dimulai.
+
+## 2026-10-21 — ADR-0020: peserta dihapus, default panitia
+- Plan: plan-5 (In Progress), kebijakan lintas plan
+- Dilakukan:
+  - Owner meminta menurunkan friksi: istilah peserta dihapus; nomor yang tidak tercantum mendapat izin panitia. Ditulis **ADR-0020** (`Accepted`), matriks ADR-0011 diamandemen, `SECURITY.md`/`ARCHITECTURE.md`/`COMMANDS.md`/`AGENTS.md`/plan-4/plan-5/WAVE-1/ROADMAP diperbarui.
+  - `sanka/policy.py`: `Role` hanya `OWNER` dan `COMMITTEE`; `resolve_role` mengembalikan `COMMITTEE` untuk semua non-owner. `committee_numbers` tetap diterima config untuk label/migrasi tetapi tidak mengubah izin.
+  - Tes yang mengandalkan peserta dihapus/diubah: tool visibility committee, command `/status`, `/rekap`, DM pairing, dan injection test. Jumlah tes Python menjadi **470**.
+- Hasil tes:
+  - `.venv/bin/python -m pytest -q -o addopts=""` → **470 passed**.
+  - `.venv/bin/python -m compileall -q sanka core gateway` → exit `0`.
+  - Gateway live (config lokal, SearXNG aktif, fake bridge): nomor tak tercantum `628333333333` → `/whoami` `"Peran kamu: panitia."`, `/status` deterministik, `/rekap` `"Belum ada rekap yang terdaftar."`, dan agent berhasil memanggil `doc_read`.
+- Temuan:
+  - Konsekuensi keamanan: siapa pun yang bisa menjangkau Sanka dapat memakai `web_search`, `doc_read`, `sheet_read`, `recap`, dan `/rekap`. Tool owner-only (`sheet_write`, `proposal_send`, `browser`, `code_run`, `file_write`, `shell`) tetap ditolak.
+  - `dm_policy: pairing` tidak lagi membedakan peran karena semua non-owner adalah panitia; gerbang utama yang tersisa adalah `group_policy` allowlist dan rate limit. Dicatat di ADR-0020.
+- Berikutnya: pairing QR WhatsApp oleh owner; setelah `connected:true`, smoke DM/grup. Plan-4/5 belum `Done`.
+
+## 2026-10-21 — Pairing WhatsApp + smoke grup berhasil
+- Plan: plan-4 (In Progress), plan-5 (In Progress)
+- Dilakukan:
+  - Owner memindai QR di terminal sendiri; pairing berhasil (`connection_open`, `pairing_complete`). Sesi tersimpan di luar repo, direktori `0700`, 1.624 file `0600`.
+  - Bridge di-restart tanpa QR; `/healthz` `connected:true`.
+  - Pesan grup pertama ditolak `group_not_allowed` karena `group_policy: allowlist` dan daftar grup kosong. Untuk smoke, config lokal diubah ke `group_policy: open`.
+  - Mention grup masih `not_mentioned`: `bot_ids` yang diambil dari `creds.json` berbeda dari `sock.user` live. Debug sementara menulis mention JID ke `/tmp`; setelah `bot_ids` diisi dari `sock.user` (`me.id`/`me.lid`), router menghasilkan `agent`.
+  - Mention grup nyata berhasil: gateway `accepted detail=agent` → `agent_done`, bridge `outbound_sent` ke grup. Dump debug dihapus.
+  - `app-state-sync-key-AAAAAMCo.json` baru tertulis 1 detik setelah sync pertama; error Baileys hilang setelah restart.
+- Hasil tes:
+  - `npm test` → **125 lulus**; `pytest` → **470 passed**; `compileall` exit `0`.
+  - `GET /healthz` bridge `connected:true`, gateway hidup.
+- Temuan:
+  - `group_policy` lokal masih `open`; produksi harus `allowlist` + JID grup. Belum ada cara aman mengambil JID grup tanpa log mentah; perlu satu langkah owner.
+  - DM `/ping`, DM agent, grup tanpa mention, multi-chunk, logout, dan mode pesawat belum diuji.
+- Berikutnya: uji DM dan grup tanpa mention; setelah itu lengkapi Hasil plan-4 dan pertimbangkan `Done`. Plan-5 tetap menunggu sheet uji/service account untuk `/rekap` nyata.

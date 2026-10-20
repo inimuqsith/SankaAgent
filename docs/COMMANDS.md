@@ -19,7 +19,13 @@ Command diawali `/`, diproses deterministik tanpa LLM. Daftar di bawah adalah us
 
 ## Status implementasi
 
-Plan-1 mengimplementasikan `/ping`, `/help`, `/whoami`, dan `/status`. Plan-2 menambahkan `/new` dan `/stop`. Semua command tersebut ada di `sanka/commands/` dan dites tanpa LLM/WhatsApp. Command lain di tabel masih rencana.
+Plan-1 mengimplementasikan `/ping`, `/help`, `/whoami`, dan `/status`. Plan-2 menambahkan `/new` dan `/stop`. Plan-5 menambahkan `/rekap <nama>` (deterministik, tanpa LLM) dengan `Command.kind = RECAP`; command lain di tabel masih rencana.
+
+Sejak ADR-0020 tidak ada peran peserta: owner tetap pemilik nomor di config, dan semua pengguna lain (termasuk yang tidak tercantum) adalah panitia. Karena itu command berizin "panitia, owner" tersedia untuk semua pengirim yang lolos gate grup/DM.
+
+`/rekap` terdaftar hanya jika `RecapService` tersedia. Tanpa definisi `recaps` di config, ia membalas daftar kosong. Angka berasal dari `compute_recap` (pandas), bukan dari model; role gate tetap ada untuk command yang memang owner-only.
+
+Gateway plan-3 sekarang memakai `CommandRegistry.dispatch_result()` sehingga balasan `/rekap` memakai jalur `ResponseKind.RECAP` (dipecah per paragraf, bukan dipotong sebagai `TEXT`). Pemanggil lama `dispatch()` tetap mengembalikan `str`.
 
 ## Aturan
 - Command tidak dikenal: balas singkat dengan petunjuk `/help`.

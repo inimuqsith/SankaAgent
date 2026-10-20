@@ -1,7 +1,7 @@
 # Wave 1 — Plan-4 + Plan-5 (dua track paralel)
 
 Dokumen ini adalah instruksi orkestrasi untuk **session baru**.
-Status: **belum siap dieksekusi**. Plan-4 dan plan-5 masih `Draft`; ubah keduanya menjadi `In Progress` setelah owner menyetujui. Track B juga menunggu ADR-0011 dan ADR akses Sheets (`Accepted`).
+Status: **siap dieksekusi**. Plan-4 dan plan-5 sudah `In Progress` (2026-10-21); ADR-0011 dan ADR-0019 sudah `Accepted`; Node 22.23.1 + npm 10.9.8 terpasang. Gate operasional yang tersisa: `config/sanka.yaml`, token gateway, kredensial Google, instance SearXNG, dan nomor WhatsApp + ponsel untuk pairing.
 
 ## Kenapa dua plan, bukan semua plan
 
@@ -30,9 +30,9 @@ Keduanya tidak mengubah kontrak plan-3 dan tidak memulai plan-6.
 
 1. Plan-4 dan plan-5 berstatus `In Progress`.
 2. ADR-0011 (`Accepted`) untuk matriks izin dan akses Workspace read-only.
-3. ADR baru akses Sheets (usulan ADR-0019) `Accepted`: REST + `google-auth`, allowlist alias, tanpa `google-api-python-client`.
-4. Node.js 22 LTS (>=22.11 <25) + npm. **Belum terpasang di workstation ini** per 2026-10-21 (`node -v`/`npm -v` gagal). Install Arch/CachyOS: `sudo pacman -S nodejs npm`; Fedora: `sudo dnf install nodejs npm`; atau `nvm install 22`.
-5. Owner menyiapkan: nomor WhatsApp Sanka + ponsel untuk QR; service account Google yang di-share ke spreadsheet uji (JSON di luar repo, 0600); `BRAVE_SEARCH_API_KEY`; `SANKA_GATEWAY_TOKEN` ≥16 karakter.
+3. ADR akses Sheets (ADR-0019) `Accepted`: endpoint resmi + `google-auth`, scope luas yang dibatasi kode, allowlist alias, tanpa `google-api-python-client` untuk saat ini.
+4. Node.js 22 LTS (>=22.11 <25) + npm. Terpasang 2026-10-21: Node `v22.23.1`, npm `10.9.8` (Fedora 45, `nodejs` + `nodejs-npm`).
+5. Owner menyiapkan: nomor WhatsApp Sanka + ponsel untuk QR; service account Google yang di-share ke spreadsheet uji (JSON di luar repo, 0600); instance SearXNG dengan JSON API aktif (URL di `tools.web_search.base_url`, tanpa kunci untuk instance lokal); `SANKA_GATEWAY_TOKEN` ≥16 karakter.
 6. `config/sanka.yaml` disalin dari contoh dan diisi. Jangan commit file itu.
 
 Bila gate 2–5 belum siap: jalankan Track A saja. Jangan mengisi `ToolRegistry` dengan handler palsu atau memakai kredensial nyata di tes.
@@ -154,7 +154,7 @@ File: `sanka/google.py`, `sanka/tools/sheets.py`, `tests/test_google_auth.py`, `
 
 File: `sanka/tools/web.py`, `sanka/tools/docs.py`, `tests/test_web_search.py`, `tests/test_doc_read.py`, `tests/fixtures/docs/`, `tests/fixtures/docs/build_fixtures.py`.
 
-- `SearchProvider` protocol + `BraveSearchProvider`; satu GET dengan kunci dari env; parse `title/url/snippet`; `max_results`; kunci hilang→`not_configured`.
+- `SearchProvider` protocol + `SearxngSearchProvider`; satu `GET {base_url}/search` dengan `q` dan `format=json`; parse `title/url/content`; `max_results`; `base_url` kosong→`not_configured`; `api_key_env` opsional untuk reverse proxy.
 - `doc_read`: PDF (`pypdf`), XLSX (`openpyxl`), CSV, teks; wajib di bawah `docs.dir`; tolak `../`, absolut, symlink keluar, ekstensi asing, file > `max_bytes`; PDF `max_pages`, Excel/CSV `max_rows`; media tanpa caption bukan urusan di sini.
 - Fixture biner (`sample.pdf`, `sample.xlsx`) di-commit; pembuatnya skrip sekali jalan, bukan dipanggil tes.
 
@@ -232,7 +232,7 @@ Track A (butuh owner + ponsel):
 
 Track B (butuh sheet uji + kunci pencarian):
 
-4. `/rekap <nama>` sebagai panitia → angka sama dengan `compute_recap`; peserta ditolak.
+4. `/rekap <nama>` sebagai panitia → angka sama dengan `compute_recap`; tool owner-only tetap ditolak.
 5. Permintaan agent "rekap X per Y" → tool dipanggil, hasil dibungkus `<data>`, narasi tidak mengarang angka.
 6. `web_search` satu query; `doc_read` satu PDF/XLSX uji; `sheet_read` alias valid; alias/id mentah ditolak.
 7. Tidak ada token, id spreadsheet, atau path lokal di log/balasan.
@@ -248,7 +248,7 @@ Track A:
 
 Track B:
 - `pytest -q` dan `compileall` lulus; tidak ada jaringan nyata di tes.
-- `specs_for`/`execute` membuktikan peserta tidak melihat/memanggil tool terlarang.
+- `specs_for`/`execute` membuktikan pengguna tak tercantum = panitia dan tool owner-only tetap ditolak (ADR-0020).
 - `/rekap` menghasilkan angka identik dengan `compute_recap`; angka tidak dari model.
 - Tidak ada `spreadsheet_id` mentah sebagai argumen; alias allowlist diuji terhadap id/URL/path traversal.
 - `<data>` disanitasi; tidak ada token/path/id di `ToolResult.text`, log, atau balasan.

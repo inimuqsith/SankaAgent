@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Protocol
 from gateway.gate import GateReason, check_gate
 from gateway.normalizer import InboundEvent
 from sanka.commands.registry import CommandContext
+from sanka.formatter import ResponseKind
 from sanka.models import InboundMessage
 from sanka.policy import RateLimiter, Role, resolve_role
 from sanka.router import Route, route
@@ -191,18 +192,25 @@ class Dispatcher:
 
     def _run_command(self, event: InboundEvent, role: Role) -> None:
         message = event.message
-        reply = self._registry.dispatch(
-            message.text,
-            CommandContext(
-                role=role,
-                config=self._config,
-                sender_id=message.sender_id,
-                chat_id=message.chat_id,
-                is_group=message.is_group,
-            ),
+        context = CommandContext(
+            role=role,
+            config=self._config,
+            sender_id=message.sender_id,
+            chat_id=message.chat_id,
+            is_group=message.is_group,
         )
+        dispatch_result = getattr(self._registry, "dispatch_result", None)
+        if callable(dispatch_result):
+            result = dispatch_result(message.text, context)
+            reply, kind = result.text, result.kind
+        else:
+            # Compatibility for injected registries written before plan-5.
+            reply, kind = self._registry.dispatch(message.text, context), ResponseKind.TEXT
         self._outbound.enqueue_reply(
-            message.chat_id, [reply], base_key=event.message_id
+            message.chat_id,
+            [reply],
+            base_key=event.message_id,
+            kind=kind,
         )
         _log("command_done", event, role=role)
 

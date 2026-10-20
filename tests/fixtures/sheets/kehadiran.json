@@ -1,0 +1,17 @@
+{
+  "range": "Kehadiran!A1:E11",
+  "majorDimension": "ROWS",
+  "values": [
+    ["Nama", "Divisi", "Status", "Nominal", "Tanggal"],
+    ["Ayu", "Acara", "Hadir", "1.500.000", "2026-10-01"],
+    ["Bima", "Acara", "Hadir", "750000", "2026-10-01"],
+    ["Citra", "Logistik", "Tidak Hadir", "", "2026-10-02"],
+    ["Dewi", "Logistik", "Hadir", "abc", "2026-10-02"],
+    ["Eko", "Acara", "Hadir", "1500000", "2026-10-03"],
+    ["Fajar", "Media", "Hadir", "900000", "2026-10-03"],
+    ["Gita", "Media", "Tidak Hadir", "", "2026-10-04"],
+    ["Hadi", "Acara", "Hadir", "1500000", "2026-10-04"],
+    ["Indah", "Logistik", "Hadir", "750000", "2026-10-05"],
+    ["Joko", "Media", "Hadir", "", "2026-10-05"]
+  ]
+}

@@ -21,13 +21,38 @@ access:
 workspace:
   # Path or env name for the service-account JSON. Keep the file outside the repo.
   service_account_env: GOOGLE_SERVICE_ACCOUNT_JSON
+  # Google OAuth scopes. Plan-5 only calls values.get; write access arrives in plan-6.
+  scopes:
+    - "https://www.googleapis.com/auth/spreadsheets"
+  # Alias allowlist: tools never accept a raw spreadsheet id.
   read_allowlist: []
-  write_allowlist: []
+  # Example entry (copy it into the list, not as a string):
+  # - alias: kehadiran
+  #   spreadsheet_id: "<spreadsheet id, 20-100 chars>"
+  write_allowlist: []              # plan-6 changes this shape
 
 tools:
   shell_enabled: false             # owner only; this toggle is the second gate
   browser_enabled: false
   browser_profile_dir: ""          # dedicated Chrome profile, never the owner's
+  max_calls_per_turn: 6
+  recap:
+    max_groups: 20
+  web_search:
+    provider: searxng              # only searxng is supported
+    base_url: "http://127.0.0.1:8080"  # loopback may use http; other hosts need https
+    api_key_env: ""                # optional, for a reverse proxy
+    max_results: 5
+    timeout_seconds: 10
+    max_chars: 4000
+  docs:
+    dir: ""                        # absolute path outside the repo
+    max_bytes: 5000000
+    max_chars: 12000
+  sheets:
+    timeout_seconds: 20
+    max_cells: 20000
+    max_chars: 8000
 
 limits:
   max_reply_chars: 3500
@@ -36,6 +61,24 @@ limits:
   outbound_per_minute: 20
   session_idle_ttl_minutes: 60
   inbound_dedup_ttl_minutes: 15
+
+# Deterministic recaps computed by code, keyed by recap name.
+# aliases must exist in workspace.read_allowlist. Example (after filling the allowlist):
+# recaps:
+#   kehadiran:
+#     title: "Rekap Kehadiran"
+#     alias: kehadiran
+#     range: "Kehadiran!A1:F1000"
+#     header_row: 1
+#     filters:
+#       - column: "Status"
+#         equals: "Hadir"
+#     group_by: ["Divisi"]
+#     metrics:
+#       - op: count
+#       - op: sum
+#         column: "Nominal"
+recaps: {}
 
 gateway:
   bridge_url: "http://127.0.0.1:3000"

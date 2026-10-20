@@ -42,7 +42,7 @@ Gateway hanya menangani I/O WhatsApp. Router memisahkan command dari percakapan 
 
 ## Status
 
-Tahap agent core + gateway Python. Plan-1 (config, router, policy, command dasar, formatter), plan-2 (sesi per chat, antrean, client OpenCode Go, `/new`, `/stop`), dan plan-3 (gateway Python: server HTTP loopback, normalizer, dedup, gate, dispatcher, antrean keluar) selesai; plan-2 sudah diverifikasi live ke OpenCode Go dan plan-3 sudah diuji end-to-end dengan bridge palsu. Bridge WhatsApp nyata (Node + Baileys) belum ada. Rencana kerja ada di [`docs/plan/`](docs/plan/), peta plan di [`docs/plan/ROADMAP.md`](docs/plan/ROADMAP.md).
+Tahap agent core + gateway Python + bridge WhatsApp. Plan-1 (config, router, policy, command dasar, formatter), plan-2 (sesi per chat, antrean, client OpenCode Go, `/new`, `/stop`), dan plan-3 (gateway Python loopback) selesai; plan-2 sudah diverifikasi live ke OpenCode Go. Plan-4 (bridge Node/Baileys) sudah dipasangkan ke nomor Sanka dan berhasil membalas mention grup; DM/no-mention/logout masih diuji. Plan-5 (tool baca + rekap) sudah terintegrasi; `web_search` via SearXNG dan `doc_read` sudah live, sedangkan `/rekap` dengan sheet Google nyata menunggu kredensial. Rencana kerja ada di [`docs/plan/`](docs/plan/), peta plan di [`docs/plan/ROADMAP.md`](docs/plan/ROADMAP.md).
 
 Konfigurasi contoh: [`config/sanka.example.yaml`](config/sanka.example.yaml).
 

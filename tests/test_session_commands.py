@@ -40,7 +40,7 @@ def test_new_resets_the_chat(config: SankaConfig) -> None:
     control = FakeControl()
     registry = build_registry(control)
 
-    reply = registry.dispatch("/new", context(Role.PARTICIPANT, config))
+    reply = registry.dispatch("/new", context(Role.COMMITTEE, config))
 
     assert "direset" in reply
     assert control.reset_calls == ["chat-1"]
@@ -49,17 +49,17 @@ def test_new_resets_the_chat(config: SankaConfig) -> None:
 def test_stop_reports_stopped_idle_and_forbidden(config: SankaConfig) -> None:
     registry = build_registry(FakeControl(StopOutcome.STOPPED))
     assert "dihentikan" in registry.dispatch(
-        "/stop", context(Role.PARTICIPANT, config)
+        "/stop", context(Role.COMMITTEE, config)
     )
 
     registry = build_registry(FakeControl(StopOutcome.IDLE))
     assert "Tidak ada pekerjaan" in registry.dispatch(
-        "/stop", context(Role.PARTICIPANT, config)
+        "/stop", context(Role.COMMITTEE, config)
     )
 
     registry = build_registry(FakeControl(StopOutcome.FORBIDDEN))
     assert "tidak bisa" in registry.dispatch(
-        "/stop", context(Role.PARTICIPANT, config)
+        "/stop", context(Role.COMMITTEE, config)
     )
 
 
@@ -78,7 +78,7 @@ def test_stop_passes_requester_and_owner_flag(config: SankaConfig) -> None:
 def test_help_lists_session_commands(config: SankaConfig) -> None:
     registry = build_registry(FakeControl())
 
-    reply = registry.dispatch("/help", context(Role.PARTICIPANT, config))
+    reply = registry.dispatch("/help", context(Role.COMMITTEE, config))
 
     assert "/new" in reply
     assert "/stop" in reply

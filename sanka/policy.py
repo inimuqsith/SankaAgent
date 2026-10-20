@@ -22,7 +22,6 @@ DAY_SECONDS = 86_400.0
 class Role(str, Enum):
     OWNER = "owner"
     COMMITTEE = "panitia"
-    PARTICIPANT = "peserta"
 
 
 ALL_ROLES: frozenset[Role] = frozenset(Role)
@@ -48,14 +47,14 @@ TOOL_PERMISSIONS: Mapping[str, frozenset[Role]] = MappingProxyType(
 def resolve_role(sender_id: str, access: AccessConfig) -> Role:
     """Map a sender number/JID to a role using config, not display names.
 
-    Owner numbers take precedence when an entry appears in both lists.
+    Owner numbers take precedence when an entry appears in both lists. Anyone
+    not explicitly listed is treated as panitia (ADR-0020); there is no
+    separate participant role.
     """
 
     if any(_same_number(sender_id, number) for number in access.owner_numbers):
         return Role.OWNER
-    if any(_same_number(sender_id, number) for number in access.committee_numbers):
-        return Role.COMMITTEE
-    return Role.PARTICIPANT
+    return Role.COMMITTEE
 
 
 def can_use_tool(role: Role, tool: str, *, shell_enabled: bool) -> bool:

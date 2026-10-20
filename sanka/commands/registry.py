@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from sanka.formatter import ResponseKind
 from sanka.policy import Role
 
 if TYPE_CHECKING:
@@ -33,11 +34,20 @@ Handler = Callable[[CommandContext, str], str]
 
 
 @dataclass(frozen=True, slots=True)
+class CommandResult:
+    """A command reply plus the formatter path it must use."""
+
+    text: str
+    kind: ResponseKind = ResponseKind.TEXT
+
+
+@dataclass(frozen=True, slots=True)
 class Command:
     name: str
     description: str
     roles: frozenset[Role]
     handler: Handler
+    kind: ResponseKind = ResponseKind.TEXT
 
     def __post_init__(self) -> None:
         if not _NAME_PATTERN.fullmatch(self.name):
@@ -68,7 +78,12 @@ class CommandRegistry:
         )
 
     def dispatch(self, text: str, context: CommandContext) -> str:
-        """Run the command in ``text`` and return the reply text.
+        """Run the command in ``text`` and return the reply text."""
+
+        return self.dispatch_result(text, context).text
+
+    def dispatch_result(self, text: str, context: CommandContext) -> CommandResult:
+        """Run the command in ``text`` and return text plus formatting kind.
 
         Unknown commands and forbidden commands return a short deterministic
         reply; handlers are never called for them.
@@ -76,10 +91,10 @@ class CommandRegistry:
 
         raw = text.strip()
         if not raw.startswith("/"):
-            return UNKNOWN_COMMAND_REPLY
+            return CommandResult(UNKNOWN_COMMAND_REPLY)
         body = raw[1:].strip()
         if not body:
-            return UNKNOWN_COMMAND_REPLY
+            return CommandResult(UNKNOWN_COMMAND_REPLY)
 
         parts = body.split(maxsplit=1)
         # WhatsApp group syntax: /help@<bot-id>.
@@ -87,7 +102,7 @@ class CommandRegistry:
         arguments = parts[1].strip() if len(parts) > 1 else ""
         command = self._commands.get(name)
         if command is None:
-            return UNKNOWN_COMMAND_REPLY
+            return CommandResult(UNKNOWN_COMMAND_REPLY)
         if context.role not in command.roles:
-            return FORBIDDEN_COMMAND_REPLY
-        return command.handler(context, arguments)
+            return CommandResult(FORBIDDEN_COMMAND_REPLY)
+        return CommandResult(command.handler(context, arguments), command.kind)

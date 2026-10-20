@@ -63,7 +63,7 @@ Tujuan proyek ini juga untuk membuat owner makin paham implementasi, bukan hanya
 ## 5. Batasan keras (jangan dilanggar tanpa ADR baru)
 
 1. Secrets (API key, token, kredensial service account, sesi WhatsApp) tidak boleh masuk git, log, maupun pesan balasan. Gunakan `config/` yang di-ignore dan file contoh `*.example`.
-2. `code_run`, `file_write`, dan shell **hanya untuk owner**. Shell juga hanya aktif bila toggle di konfigurasi menyala. Tidak ada pengecualian untuk panitia atau peserta. Penegakan ada di kode (registry tool berbasis peran), bukan hanya di prompt.
+2. `code_run`, `file_write`, dan shell **hanya untuk owner**. Shell juga hanya aktif bila toggle di konfigurasi menyala. Tidak ada pengecualian untuk panitia atau pengguna lain. Penegakan ada di kode (registry tool berbasis peran), bukan hanya di prompt.
 3. Ke WhatsApp hanya teks final yang dikirim. Reasoning, thought, dan log pemanggilan tool tidak boleh bocor ke pengguna. Pengecualian: command `/verbose` khusus owner.
 4. Tool tulis ke Google Workspace hanya ke file/folder yang ada di allowlist. Read adalah default.
 5. Pengiriman proposal ke owner butuh persetujuan owner (`/approve`). Tidak ada pengiriman otomatis.

@@ -13,7 +13,6 @@ from sanka.models import InboundMessage
 from sanka.policy import Role
 
 DM_ID = "628111111111@s.whatsapp.net"
-OTHER_DM_ID = "628333333333@s.whatsapp.net"
 GROUP_ID = "120363000000000000@g.us"
 OTHER_GROUP_ID = "120363999999999999@g.us"
 
@@ -77,7 +76,7 @@ def test_blank_text_is_rejected_first(config: SankaConfig, text: str, chat_id: s
 
 def test_fresh_dm_is_allowed(config: SankaConfig) -> None:
     clock = FakeClock()
-    assert check_gate(event(), config, Role.PARTICIPANT, now=clock) is GateReason.ALLOWED
+    assert check_gate(event(), config, Role.COMMITTEE, now=clock) is GateReason.ALLOWED
 
 
 def test_stale_event_is_rejected(config: SankaConfig) -> None:
@@ -102,7 +101,7 @@ def test_zero_max_age_disables_staleness(config: SankaConfig) -> None:
     config = with_gateway(config, max_inbound_age_seconds=0)
     clock = FakeClock()
     clock.advance(10_000_000)
-    assert check_gate(event(), config, Role.PARTICIPANT, now=clock) is GateReason.ALLOWED
+    assert check_gate(event(), config, Role.COMMITTEE, now=clock) is GateReason.ALLOWED
 
 
 def test_stale_is_checked_before_group_allowlist(config: SankaConfig) -> None:
@@ -110,14 +109,14 @@ def test_stale_is_checked_before_group_allowlist(config: SankaConfig) -> None:
     clock.advance(config.gateway.max_inbound_age_seconds + 1)
     stale_foreign_group = event(chat_id=OTHER_GROUP_ID)
     assert (
-        check_gate(stale_foreign_group, config, Role.PARTICIPANT, now=clock)
+        check_gate(stale_foreign_group, config, Role.COMMITTEE, now=clock)
         is GateReason.STALE
     )
 
 
 def test_allowlisted_group_is_allowed(config: SankaConfig) -> None:
     assert (
-        check_gate(event(chat_id=GROUP_ID), config, Role.PARTICIPANT, now=FakeClock())
+        check_gate(event(chat_id=GROUP_ID), config, Role.COMMITTEE, now=FakeClock())
         is GateReason.ALLOWED
     )
 
@@ -128,14 +127,14 @@ def test_group_allowlist_is_an_exact_match(config: SankaConfig) -> None:
         check_gate(
             event(chat_id=f"{GROUP_ID} ", is_group=True),
             config,
-            Role.PARTICIPANT,
+            Role.COMMITTEE,
             now=FakeClock(),
         )
         is GateReason.GROUP_NOT_ALLOWED
     )
     assert (
         check_gate(
-            event(chat_id=OTHER_GROUP_ID), config, Role.PARTICIPANT, now=FakeClock()
+            event(chat_id=OTHER_GROUP_ID), config, Role.COMMITTEE, now=FakeClock()
         )
         is GateReason.GROUP_NOT_ALLOWED
     )
@@ -145,7 +144,7 @@ def test_group_open_allows_every_group(config: SankaConfig) -> None:
     config = with_gateway(config, group_policy="open", dm_policy="pairing")
     assert (
         check_gate(
-            event(chat_id=OTHER_GROUP_ID), config, Role.PARTICIPANT, now=FakeClock()
+            event(chat_id=OTHER_GROUP_ID), config, Role.COMMITTEE, now=FakeClock()
         )
         is GateReason.ALLOWED
     )
@@ -157,7 +156,7 @@ def test_groups_never_consult_dm_policy(config: SankaConfig) -> None:
 
     assert (
         check_gate(
-            event(chat_id=GROUP_ID), allowed_group, Role.PARTICIPANT, now=FakeClock()
+            event(chat_id=GROUP_ID), allowed_group, Role.COMMITTEE, now=FakeClock()
         )
         is GateReason.ALLOWED
     )
@@ -165,7 +164,7 @@ def test_groups_never_consult_dm_policy(config: SankaConfig) -> None:
         check_gate(
             event(chat_id=OTHER_GROUP_ID),
             allowed_group,
-            Role.PARTICIPANT,
+            Role.COMMITTEE,
             now=FakeClock(),
         )
         is GateReason.GROUP_NOT_ALLOWED
@@ -184,7 +183,6 @@ def test_dm_open_allows_every_role(config: SankaConfig, role: Role) -> None:
     [
         (Role.OWNER, GateReason.ALLOWED),
         (Role.COMMITTEE, GateReason.ALLOWED),
-        (Role.PARTICIPANT, GateReason.DM_NOT_ALLOWED),
     ],
 )
 def test_dm_pairing_only_allows_owner_and_committee(
@@ -192,12 +190,3 @@ def test_dm_pairing_only_allows_owner_and_committee(
 ) -> None:
     config = with_gateway(config, dm_policy="pairing")
     assert check_gate(event(), config, role, now=FakeClock()) is expected
-
-
-def test_pairing_denial_reports_dm_not_allowed(config: SankaConfig) -> None:
-    config = with_gateway(config, dm_policy="pairing")
-    denied = event(chat_id=OTHER_DM_ID, sender_id=OTHER_DM_ID)
-    assert (
-        check_gate(denied, config, Role.PARTICIPANT, now=FakeClock())
-        is GateReason.DM_NOT_ALLOWED
-    )

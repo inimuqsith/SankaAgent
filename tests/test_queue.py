@@ -13,7 +13,7 @@ from sanka.models import InboundMessage
 from sanka.policy import Role
 from sanka.queue import AgentJob, ChatQueue, QueueBusyError, StopOutcome
 
-ROLE = Role.PARTICIPANT
+ROLE = Role.COMMITTEE
 
 
 def message(

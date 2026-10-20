@@ -29,7 +29,7 @@ def access() -> AccessConfig:
         ("628111111111", Role.OWNER),
         ("628111111111@s.whatsapp.net", Role.OWNER),
         ("628222222222", Role.COMMITTEE),
-        ("628333333333", Role.PARTICIPANT),
+        ("628333333333", Role.COMMITTEE),
     ],
 )
 def test_resolve_role_from_number(sender_id: str, expected: Role) -> None:
@@ -48,9 +48,10 @@ def test_owner_wins_when_listed_twice() -> None:
 @pytest.mark.parametrize(
     ("role", "tool", "expected"),
     [
-        (Role.PARTICIPANT, "web_search", True),
-        (Role.PARTICIPANT, "sheet_read", False),
+        (Role.COMMITTEE, "web_search", True),
         (Role.COMMITTEE, "sheet_read", True),
+        (Role.COMMITTEE, "doc_read", True),
+        (Role.COMMITTEE, "recap", True),
         (Role.COMMITTEE, "sheet_write", False),
         (Role.COMMITTEE, "code_run", False),
         (Role.OWNER, "sheet_write", True),
@@ -72,7 +73,7 @@ def test_shell_requires_owner_and_toggle() -> None:
 
 def test_command_permissions() -> None:
     assert can_run_command(COMMITTEE_ROLES, Role.OWNER) is True
-    assert can_run_command(COMMITTEE_ROLES, Role.PARTICIPANT) is False
+    assert can_run_command(COMMITTEE_ROLES, Role.COMMITTEE) is True
 
 
 class FakeClock:

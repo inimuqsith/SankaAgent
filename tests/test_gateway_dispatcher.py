@@ -12,7 +12,6 @@ from gateway.dedup import TtlRegistry
 from gateway.dispatcher import (
     AI_DISABLED,
     GENERIC_ERROR,
-    PAIRING_NOTICE,
     RATE_NOTICE,
     Dispatcher,
     SubmitOutcome,
@@ -20,9 +19,9 @@ from gateway.dispatcher import (
 )
 from gateway.normalizer import InboundEvent
 from gateway.outbound import OutboundQueue
-from sanka.commands.registry import CommandContext
+from sanka.commands.registry import CommandContext, CommandResult
 from sanka.config import SankaConfig
-from sanka.formatter import Formatter
+from sanka.formatter import Formatter, ResponseKind
 from sanka.models import InboundMessage
 from sanka.policy import RateLimiter, Role
 from tests.gateway_fakes import FakeBridge, FakeClock, FakeRuntime
@@ -215,7 +214,7 @@ def test_group_with_mention_reaches_the_agent(make_harness, config):
     assert harness.dispatcher.submit(event).outcome is SubmitOutcome.ACCEPTED
     harness.wait_sends(1)
     assert len(harness.runtime.calls) == 1
-    assert harness.runtime.calls[0][1] is Role.PARTICIPANT
+    assert harness.runtime.calls[0][1] is Role.COMMITTEE
     assert harness.bridge.sent[0][0] == GROUP
 
 
@@ -241,9 +240,30 @@ def test_command_uses_resolved_role_and_formats_reply(make_harness):
     assert harness.runtime.calls == []
 
 
+class RecapRegistry(FakeRegistry):
+    """Registry double that advertises the RECAP formatter path."""
+
+    def dispatch_result(self, text: str, context: CommandContext) -> CommandResult:
+        self.calls.append((text, context))
+        return CommandResult(self.reply, ResponseKind.RECAP)
+
+
+def test_command_recap_kind_reaches_outbound(make_harness, config):
+    registry = RecapRegistry(reply="aaaa\n\nbbbb\n\ncccc")
+    active = replace(config, limits=replace(config.limits, max_reply_chars=6))
+    harness = make_harness(active_config=active, registry=registry)
+
+    event = make_event("recap-1", chat_id=OWNER, sender_id=OWNER, text="/rekap x")
+    assert harness.dispatcher.submit(event).outcome is SubmitOutcome.ACCEPTED
+    harness.wait_sends(3)
+
+    # TEXT would truncate to one chunk; RECAP keeps every paragraph.
+    assert [text for _, text, _ in harness.bridge.sent] == ["aaaa", "bbbb", "cccc"]
+
+
 @pytest.mark.parametrize(
     ("sender", "expected_role"),
-    [(OWNER, Role.OWNER), (PARTICIPANT, Role.PARTICIPANT)],
+    [(OWNER, Role.OWNER), (PARTICIPANT, Role.COMMITTEE)],
 )
 def test_dm_agent_reply_with_typing(make_harness, sender, expected_role):
     harness = make_harness()
@@ -338,55 +358,6 @@ def test_missing_agent_replies_with_degraded_text(make_harness):
     assert harness.bridge.sent == [(PARTICIPANT, AI_DISABLED, "noai-1:0")]
     assert harness.bridge.typing_events == []
     assert harness.runtime is None
-
-
-def test_pairing_notice_is_sent_once_per_sender(make_harness, config):
-    pairing = replace(
-        config,
-        gateway=replace(config.gateway, dm_policy="pairing"),
-    )
-    harness = make_harness(active_config=pairing)
-
-    first = make_event("pair-1", text="halo")
-    assert harness.dispatcher.submit(first) == SubmitResult(
-        SubmitOutcome.IGNORED, "dm_not_allowed"
-    )
-    harness.wait_sends(1)
-    assert harness.bridge.sent == [(PARTICIPANT, PAIRING_NOTICE, "pair-1:0")]
-
-    second = make_event("pair-2", text="halo lagi")
-    assert harness.dispatcher.submit(second) == SubmitResult(
-        SubmitOutcome.IGNORED, "dm_not_allowed"
-    )
-    assert harness.outbound.wait_idle(2.0)
-    assert [text for _, text, _ in harness.bridge.sent] == [PAIRING_NOTICE]
-    assert harness.runtime.calls == []
-
-    # A known number bypasses the pairing gate.
-    owner_event = make_event("pair-3", chat_id=OWNER, sender_id=OWNER, text="halo")
-    assert harness.dispatcher.submit(owner_event).outcome is SubmitOutcome.ACCEPTED
-    harness.wait_sends(2)
-    assert harness.bridge.sent[-1] == (OWNER, "Balasan agent.", "pair-3:0")
-
-
-def test_pairing_notice_skipped_when_quota_is_gone(make_harness, config):
-    pairing = replace(
-        config,
-        gateway=replace(config.gateway, dm_policy="pairing"),
-    )
-    harness = make_harness(
-        active_config=pairing,
-        limiter=RateLimiter(1, 100, clock=FakeClock()),
-    )
-    assert harness.limiter.allow(PARTICIPANT) is True  # exhaust the quota
-
-    event = make_event("pair-quota", text="halo")
-    assert harness.dispatcher.submit(event) == SubmitResult(
-        SubmitOutcome.IGNORED, "dm_not_allowed"
-    )
-    assert harness.outbound.wait_idle(1.0)
-    assert harness.bridge.sent == []
-    assert len(harness.notices) == 0
 
 
 def test_read_receipts_are_enqueued_when_enabled(make_harness):

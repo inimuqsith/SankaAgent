@@ -10,23 +10,24 @@
 | Peran | Siapa | Penentuan |
 |---|---|---|
 | owner | Abdul Muqsith | Nomor di config, diverifikasi di kode |
-| panitia | Tim atau panitia terverifikasi | Daftar nomor di config |
-| peserta | Selain itu | Default |
+| panitia | Semua pengguna lain, termasuk nomor yang tidak tercantum | Default (ADR-0020) |
 
-## Matriks izin tool (usulan awal, BELUM final, lihat ADR-0011)
-Baris `code_run`, `file_write`, dan shell sudah dikonfirmasi owner-only oleh owner pada 2026-10-20. Baris lain masih usulan.
+Tidak ada peran peserta. Nomor yang tidak tercantum eksplisit mendapat izin panitia. Daftar `access.committee_numbers` tetap diterima untuk label/migrasi, tetapi tidak mengubah izin.
 
-| Tool | owner | panitia | peserta |
-|---|---|---|---|
-| web_search | ya | ya | ya |
-| doc_read / sheet_read | ya | ya | tidak |
-| recap | ya | ya | tidak |
-| sheet_write (allowlist) | ya | tidak | tidak |
-| proposal_send (butuh /approve) | ya | tidak | tidak |
-| browser | ya | tidak | tidak |
-| code_run, file_write, shell | ya (shell butuh toggle) | tidak | tidak |
+## Matriks izin tool (ADR-0020)
+| Tool | owner | panitia |
+|---|---|---|
+| web_search | ya | ya |
+| doc_read / sheet_read | ya | ya |
+| recap | ya | ya |
+| sheet_write (allowlist) | ya | tidak |
+| proposal_send (butuh /approve) | ya | tidak |
+| browser | ya | tidak |
+| code_run, file_write, shell | ya (shell butuh toggle) | tidak |
 
 Aturan penegakan: tool yang tidak diizinkan tidak dikirim ke LLM sebagai pilihan pada giliran itu, dan eksekusinya ditolak lagi di registry sebagai lapisan kedua. `code_run`, `file_write`, dan shell tidak punya pengecualian: hanya owner. Shell tetap butuh toggle `tools.shell_enabled` di config.
+
+Konsekuensi keamanan ADR-0020: siapa pun yang bisa menjangkau Sanka bisa memakai tool baca dan `/rekap`. Batas luar yang tersisa: `group_policy` allowlist, rate limit per pengirim, allowlist alias Sheets, sharing service account, dan sanitasi `<data>`. `dm_policy: pairing` tidak lagi membedakan peran karena semua non-owner adalah panitia; gunakan `group_policy`/rate limit sebagai gerbang utama.
 
 ## WhatsApp gateway
 - Gateway terbagi dua proses: server HTTP Python (`gateway/`) dan bridge Node/Baileys (plan-4). Keduanya hanya loopback.
@@ -44,6 +45,7 @@ Aturan penegakan: tool yang tidak diizinkan tidak dikirim ke LLM sebagai pilihan
 ## Google Workspace
 - Gunakan service account yang hanya di-share ke file/folder tertentu.
 - Read default. Write hanya ke allowlist di config.
+- Scope OAuth boleh luas (ADR-0019) agar penambahan API resmi tidak perlu konfigurasi ulang, tetapi kode hanya boleh memanggil operasi yang diizinkan plan yang sedang berjalan. Plan-5 hanya memanggil `values.get`; panggilan tulis baru masuk lewat plan-6 dan allowlist tulisnya. Pembatasan efektif tetap: sharing service account, allowlist alias, dan review kode.
 - Kredensial di luar git. API key dan token hanya dari environment variable, `config/secrets.env`, atau `.env` di root repo (0600, di-ignore). `config/sanka.yaml` tidak boleh memuat secrets.
 
 ## Browser

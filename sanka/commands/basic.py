@@ -5,6 +5,8 @@ Service-backed and session-backed commands are intentionally absent.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sanka.commands.registry import (
     Command,
     CommandContext,
@@ -13,9 +15,19 @@ from sanka.commands.registry import (
 from sanka.commands.session import SessionControl, register_session_commands
 from sanka.policy import ALL_ROLES, COMMITTEE_ROLES
 
+if TYPE_CHECKING:
+    from sanka.tools.recap import RecapService
 
-def build_registry(control: SessionControl) -> CommandRegistry:
-    """Build the deterministic command registry for plans 1-2."""
+
+def build_registry(
+    control: SessionControl,
+    recap_service: RecapService | None = None,
+) -> CommandRegistry:
+    """Build the deterministic command registry.
+
+    ``/rekap`` is registered only when a recap service is supplied, so a
+    deployment without Sheets credentials does not expose a broken command.
+    """
 
     registry = CommandRegistry()
 
@@ -35,6 +47,10 @@ def build_registry(control: SessionControl) -> CommandRegistry:
         Command("status", "Status ringkas Sanka", COMMITTEE_ROLES, _status)
     )
     register_session_commands(registry, control)
+    if recap_service is not None:
+        from sanka.commands.recap import register_recap_command
+
+        register_recap_command(registry, recap_service)
     return registry
 
 

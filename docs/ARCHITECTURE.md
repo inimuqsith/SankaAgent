@@ -41,7 +41,7 @@ Bridge mendorong pesan masuk (push) dan Python memanggil bridge untuk keluaran; 
 - **gateway**: terbagi dua proses. `gateway/` (Python, plan-3) memegang normalizer, dedup, gate, dispatcher, antrean keluar, server HTTP loopback, peran, rate limit, command registry, agent runtime, dan formatter. Bridge Node/Baileys (plan-4) hanya I/O WhatsApp: push pesan masuk, kirim teks/typing/read, tanpa logika bisnis. Kode atau pola Hermes boleh diadaptasi dengan notice MIT dan penanda `SANKA-MOD:`.
 - **router**: memutuskan jalur command vs LLM dan menerapkan aturan mention di grup.
 - **command registry**: tiap command punya nama, izin peran, handler, dan teks bantuan. Lihat `COMMANDS.md`.
-- **policy**: peran (owner/panitia/peserta), matriks izin tool, rate limit per pengguna. Penegakan di kode.
+- **policy**: peran (owner/panitia; pengguna tak tercantum = panitia), matriks izin tool, rate limit per pengguna. Penegakan di kode.
 - **agent loop**: loop persepsi, pikir, tool, memori (turunan `agent_loop.py` GenericAgent). Sebisa mungkin tidak diubah, diperluas lewat hook.
 - **tool registry**: daftar tool bundle. Tool yang tidak diizinkan untuk peran tertentu tidak muncul di daftar tool yang dilihat LLM pada giliran itu.
 - **formatter**: satu-satunya jalan keluar ke WhatsApp. Aturannya: teks final saja, ringkas, batas panjang, kecuali jenis respons "rekap" yang boleh panjang dan dipecah per pesan.

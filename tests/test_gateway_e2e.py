@@ -187,7 +187,7 @@ def test_group_mention_reaches_agent(live) -> None:
     assert gateway.runtime is not None
     assert len(gateway.runtime.calls) == 1
     _, role = gateway.runtime.calls[0]
-    assert role is Role.PARTICIPANT
+    assert role is Role.COMMITTEE
     assert gateway.bridge.sent[0][0] == GROUP_CHAT
 
 
