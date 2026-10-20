@@ -20,7 +20,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["sanka*", "core*"]
+include = ["sanka*", "core*", "gateway*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

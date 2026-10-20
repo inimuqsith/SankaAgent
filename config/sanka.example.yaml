@@ -15,6 +15,8 @@ access:
   committee_numbers: []
   # WhatsApp group JIDs, e.g. "120363001234567890@g.us"
   allowed_group_ids: []
+  # Bot JIDs/numbers used to match mentions from the bridge.
+  bot_ids: []
 
 workspace:
   # Path or env name for the service-account JSON. Keep the file outside the repo.
@@ -33,6 +35,7 @@ limits:
   rate_limit_per_day: 200
   outbound_per_minute: 20
   session_idle_ttl_minutes: 60
+  inbound_dedup_ttl_minutes: 15
 
 gateway:
   bridge_url: "http://127.0.0.1:3000"
@@ -40,3 +43,9 @@ gateway:
   dm_policy: open                  # open | pairing
   group_policy: allowlist          # allowlist | open
   send_read_receipts: false
+  # Python gateway HTTP surface; loopback only, token from env (ADR-0018).
+  listen_host: 127.0.0.1           # must be 127.0.0.1, ::1, or localhost
+  listen_port: 8099
+  auth_token_env: SANKA_GATEWAY_TOKEN
+  request_timeout_seconds: 10
+  max_inbound_age_seconds: 300     # 0 disables the staleness check

@@ -76,3 +76,71 @@ def test_non_mapping_root_fails_fast(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigError, match="root must be a mapping"):
         load_config(path)
+
+
+def test_loads_gateway_keys(config) -> None:
+    assert config.access.bot_ids == ("628999999999",)
+    assert config.limits.inbound_dedup_ttl_minutes == 15
+    assert config.gateway.listen_host == "127.0.0.1"
+    assert config.gateway.listen_port == 8099
+    assert config.gateway.auth_token_env == "SANKA_GATEWAY_TOKEN"
+    assert config.gateway.request_timeout_seconds == 10
+    assert config.gateway.max_inbound_age_seconds == 300
+
+
+def test_non_loopback_listen_host_fails_fast(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["gateway"]["listen_host"] = "0.0.0.0"
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match=r"gateway\.listen_host"):
+        load_config(path)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("listen_port", 0),
+        ("listen_port", 65536),
+        ("listen_port", True),
+        ("request_timeout_seconds", 0),
+        ("request_timeout_seconds", 61),
+        ("max_inbound_age_seconds", -1),
+        ("max_inbound_age_seconds", 3601),
+    ],
+)
+def test_gateway_integer_ranges_fail_fast(
+    tmp_path: Path, key: str, value: Any
+) -> None:
+    data = valid_config_dict()
+    data["gateway"][key] = value
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match=rf"gateway\.{key}"):
+        load_config(path)
+
+
+def test_invalid_auth_token_env_fails_fast(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["gateway"]["auth_token_env"] = "not-a-name"
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match=r"gateway\.auth_token_env"):
+        load_config(path)
+
+
+def test_zero_max_inbound_age_disables_check(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["gateway"]["max_inbound_age_seconds"] = 0
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    assert load_config(path).gateway.max_inbound_age_seconds == 0
+
+
+def test_zero_dedup_ttl_fails_fast(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["limits"]["inbound_dedup_ttl_minutes"] = 0
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match=r"limits\.inbound_dedup_ttl_minutes"):
+        load_config(path)

@@ -148,3 +148,20 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
 - Hasil tes: belum ada kode baru; belum dites. Implementasi dilakukan di session baru.
 - Temuan: Wave 0 tidak membutuhkan WhatsApp, Google, atau systemd; semua bisa dites dengan bridge palsu.
 - Berikutnya: buka session baru dan jalankan prompt kickoff di `docs/plan/WAVE-0.md`. Plan-4 tidak boleh dimulai sebelum plan-3 `Done`.
+
+## 2026-10-21 — Plan-3 Wave 0 selesai (gateway Python)
+- Plan: plan-3 (Done)
+- Dilakukan:
+  - Mengerjakan Wave 0 dengan empat subagent paralel sesuai pembagian file di `docs/plan/WAVE-0.md`: normalizer/dedup/gate, outbound + fakes, dispatcher, lalu server/app/entrypoint. Parent memegang config, fixture, integrasi, dan dokumentasi.
+  - Menambah key config tervalidasi: `gateway.listen_host` (loopback saja), `listen_port`, `auth_token_env`, `request_timeout_seconds`, `max_inbound_age_seconds`, `access.bot_ids`, `limits.inbound_dedup_ttl_minutes`; memperbarui `config/sanka.example.yaml`, `tests/conftest.py`, dan `pyproject.toml` (`gateway*`).
+  - Implementasi `gateway/`: normalizer (`InboundEvent`, `MalformedPayload`, kode reason stabil), `TtlRegistry` (dedup + notice, thread-safe), gate (blank/stale/allowlist grup/DM pairing), `HttpBridgeClient`, `OutboundQueue` (satu worker, FIFO per chat, round-robin, batas laju, retry 429/5xx, `409` sukses), `Dispatcher` (dedup → role → gate → route → rate limit command → executor), `GatewayServer` (`ThreadingHTTPServer`, token constant-time, body 64 KiB, healthz), `build_app()`, dan `python -m gateway`.
+  - Mode terdegradasi `agent=None` melayani command dengan balasan `"Fitur AI belum aktif."` untuk jalur agent.
+  - Memperbarui `docs/ARCHITECTURE.md` (alur + kontrak gateway), `docs/SECURITY.md` (loopback/token/batas input), `docs/plan/plan-3.md` (Catatan perubahan + Hasil, status `Done`), `docs/plan/ROADMAP.md`, dan `README.md`.
+- Hasil tes: `pytest -o addopts="" -q` lulus **306 tes** (plan-1/plan-2 tetap hijau; 183 tes gateway baru). `python -m compileall -q sanka core gateway` lulus. Smoke loopback nyata dengan `python -m gateway` + bridge palsu: `/healthz` `200`, `POST /v1/inbound` `/ping` `202` dan satu `POST /v1/send` (`pong`, key `smoke-1:0`), kiriman duplikat `200 duplicate`, token salah `401`, `SIGTERM` exit `0`.
+- Temuan:
+  - Dedup in-memory hilang saat restart; perlindungan duplikat kirim tetap di `idempotency_key` bridge (plan-4). Tercatat sebagai risiko plan-3.
+  - `429 overloaded` membuang entri dedup agar retry bridge bisa diterima; tanpa itu retry selalu menjadi `duplicate`.
+  - Notice rate limit memakai bucket 10 menit di registry notice 24 jam karena dispatcher hanya menerima satu `TtlRegistry`.
+  - `httpx` mencatat URL request pada level INFO; entrypoint menurunkannya ke WARNING agar log tetap metadata gateway.
+  - Tes pada Python 3.12 belum dijalankan (mesin ini Python 3.15).
+- Berikutnya: plan-4 (bridge Node + Baileys) mengikuti ADR-0018. Belum dimulai.

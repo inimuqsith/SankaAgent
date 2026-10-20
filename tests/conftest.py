@@ -1,4 +1,4 @@
-"""Shared fixtures for the plan-1 test suite."""
+"""Shared fixtures for the test suite."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ def valid_config_dict() -> dict[str, Any]:
             "owner_numbers": ["628111111111"],
             "committee_numbers": ["628222222222"],
             "allowed_group_ids": ["120363000000000000@g.us"],
+            "bot_ids": ["628999999999"],
         },
         "workspace": {
             "service_account_env": "GOOGLE_SERVICE_ACCOUNT_JSON",
@@ -42,6 +43,7 @@ def valid_config_dict() -> dict[str, Any]:
             "rate_limit_per_day": 200,
             "outbound_per_minute": 20,
             "session_idle_ttl_minutes": 60,
+            "inbound_dedup_ttl_minutes": 15,
         },
         "gateway": {
             "bridge_url": "http://127.0.0.1:3000",
@@ -49,6 +51,11 @@ def valid_config_dict() -> dict[str, Any]:
             "dm_policy": "open",
             "group_policy": "allowlist",
             "send_read_receipts": False,
+            "listen_host": "127.0.0.1",
+            "listen_port": 8099,
+            "auth_token_env": "SANKA_GATEWAY_TOKEN",
+            "request_timeout_seconds": 10,
+            "max_inbound_age_seconds": 300,
         },
     }
 

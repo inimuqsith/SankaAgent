@@ -42,17 +42,19 @@ Target fase: bot WhatsApp benar-benar hidup, bisa menjawab DM dan grup yang di-m
 - Keluar: `pytest` lulus, tidak ada ketergantungan LLM/WhatsApp.
 - Status: selesai 2026-10-20.
 
-### Plan 2 — Agent core: sesi, antrean, OpenCode Go (Draft)
+### Plan 2 — Agent core: sesi, antrean, OpenCode Go (Done)
 
 - Isi: sesi per chat, antrean serial per chat, `/new` dan `/stop`, client OpenCode Go, adaptasi `agent_loop.py`, `AgentRuntime`.
 - Keluar: `AgentRuntime.handle()` teruji dengan client palsu; satu request nyata ke OpenCode Go berhasil; reasoning tidak pernah keluar.
 - Prasyarat: ADR-0015/0016/0017 disetujui.
+- Status: selesai 2026-10-21 (live smoke OpenCode Go berhasil).
 
-### Plan 3 — Gateway Python dan normalizer
+### Plan 3 — Gateway Python dan normalizer (Done)
 
 - Isi: kontrak inbound/outbound dengan bridge, normalizer payload menjadi `InboundMessage`, deduplikasi `message_id`, allowlist grup, penerapan peran dan rate limit untuk command dan agent, pengiriman balasan lewat formatter, antrean keluar, typing/read receipt (tanpa isi pesan di log).
 - Keluar: uji end-to-end dengan bridge palsu: pesan masuk → command/agent → balasan terformat; duplikat tidak diproses dua kali; grup tanpa mention diabaikan; reasoning tidak bocor.
 - Sengaja belum: koneksi WhatsApp nyata.
+- Status: selesai 2026-10-21 (306 tes lulus; smoke loopback dengan bridge palsu).
 
 ### Plan 4 — Bridge WhatsApp Web (Node + Baileys)
 

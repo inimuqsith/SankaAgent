@@ -29,6 +29,13 @@ Baris `code_run`, `file_write`, dan shell sudah dikonfirmasi owner-only oleh own
 Aturan penegakan: tool yang tidak diizinkan tidak dikirim ke LLM sebagai pilihan pada giliran itu, dan eksekusinya ditolak lagi di registry sebagai lapisan kedua. `code_run`, `file_write`, dan shell tidak punya pengecualian: hanya owner. Shell tetap butuh toggle `tools.shell_enabled` di config.
 
 ## WhatsApp gateway
+- Gateway terbagi dua proses: server HTTP Python (`gateway/`) dan bridge Node/Baileys (plan-4). Keduanya hanya loopback.
+- Server menolak start bila `gateway.listen_host` bukan `127.0.0.1`, `::1`, atau `localhost`. Jangan pernah mengekspos port ini, termasuk lewat reverse proxy.
+- Setiap request `POST /v1/inbound` wajib membawa `X-Sanka-Token`; nilainya berasal dari environment variable yang ditunjuk `gateway.auth_token_env` dan dibandingkan dengan `hmac.compare_digest`. Token tidak pernah masuk log, respons, atau pesan. `/healthz` sengaja tanpa auth dan hanya berisi metadata (uptime, kedalaman antrean keluar).
+- Batas input: body 64 KiB, teks 32.768 karakter, `mentions` ≤ 32, `message_id`/JID ≤ 200 karakter. Pelanggaran dijawab `400`/`413` tanpa memproses. `Content-Type` wajib `application/json`; tanpa `Content-Length` dijawab `411`; `Transfer-Encoding: chunked` ditolak.
+- Dedup `message_id` berumur `limits.inbound_dedup_ttl_minutes` (in-memory). Retry bridge untuk id yang sudah diputuskan tidak diproses ulang.
+- Log gateway hanya memuat method, path, status, durasi, digest 8 karakter dari `message_id`/`chat_id`, peran, route, dan hasil. Teks pesan, JID utuh, dan token tidak pernah dilog. Traceback hanya ditulis untuk exception tak terduga, tanpa isi pesan.
+- Batas laju keluar global (`limits.outbound_per_minute`) serta FIFO per chat melindungi nomor dari pola spam.
 - Gateway adalah bagian Sanka. Kode atau pola Hermes boleh diambil bila berguna, lalu diadaptasi; notice MIT dipertahankan dan perubahan ditandai `SANKA-MOD:` (ADR-0013).
 - Jalur Baileys adalah jalur tidak resmi. Risiko nomor diblokir dimitigasi dengan rate limit, tanpa broadcast, dan perilaku non-spam.
 - Bila risiko itu tidak dapat diterima, pindah ke WhatsApp Cloud API resmi dicatat sebagai ADR baru.

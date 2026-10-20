@@ -1,6 +1,6 @@
 # Plan 3 — Gateway Python dan normalizer
 
-- Status: In Progress
+- Status: Done
 - Tanggal: 2026-10-21
 - Pemilik: Abdul Muqsith
 
@@ -520,8 +520,21 @@ Tidak ada dependency runtime baru.
 
 ## Catatan perubahan
 
-Belum ada.
+- `build_app()` tetap bisa dipanggil sebagai `build_app(config, secrets_path=...)`, tetapi mendapat parameter keyword-only tambahan (`token`, `registry`, `agent`, `limiter`, `bridge`) agar tes end-to-end bisa menginjeksi bridge/runtime palsu dan agar mode terdegradasi (`agent=None`) bisa dibuktikan. Tidak ada perubahan kontrak HTTP.
+- `TtlRegistry` mendapat `discard(key)`. Plan menetapkan `message_id` didaftarkan sebelum pemrosesan; karena `429 overloaded` bukan keputusan final, entri dedup dibuang saat pipeline penuh agar retry bridge bisa diterima. Tanpa ini, retry setelah `429` akan selalu menjadi `duplicate` dan pesan hilang.
+- `AccessConfig.bot_ids` diberi default `()` pada dataclass agar konstruksi langsung di tes lama tidak pecah; file config tetap wajib memuat `access.bot_ids`.
+- Notice rate limit memakai bucket waktu 10 menit di registry notice 24 jam (satu notice per pengirim per bucket), karena `Dispatcher` hanya menerima satu `TtlRegistry` notice sesuai signature plan.
+- Server memetakan metode lain (`PUT`/`DELETE`/`PATCH`/`OPTIONS`) ke `405` pada path yang dikenal dan `404` di path lain, sesuai tabel kontrak "lainnya 404/405".
+- Tes gate memakai jam eksplisit; perilaku gate tidak berubah.
 
 ## Hasil
 
-Belum dikerjakan.
+Selesai 2026-10-21.
+
+- `gateway/` berisi `normalizer.py`, `dedup.py`, `gate.py`, `outbound.py`, `dispatcher.py`, `server.py`, `app.py`, dan `__main__.py`.
+- Config baru tervalidasi fail-fast: `gateway.listen_host` (loopback saja), `gateway.listen_port` (1–65535), `gateway.auth_token_env` (nama env), `gateway.request_timeout_seconds` (1–60), `gateway.max_inbound_age_seconds` (0–3600), `access.bot_ids`, `limits.inbound_dedup_ttl_minutes` (1–1440). `config/sanka.example.yaml`, `tests/conftest.py`, dan `pyproject.toml` (`gateway*`) diperbarui.
+- `python -m pytest -o addopts="" -q` lulus **306 tes** (plan-1/plan-2 tetap hijau; 183 tes gateway baru).
+- `python -m compileall -q sanka core gateway` lulus.
+- Smoke loopback nyata berhasil dengan bridge palsu: `python -m gateway` + `GET /healthz` → `200`, `POST /v1/inbound` `/ping` → `202` dan satu `POST /v1/send` berisi `pong` dengan `idempotency_key` `smoke-1:0`; kiriman kedua dengan id sama → `200 duplicate`; token salah → `401`; `SIGTERM` → exit `0` dengan shutdown rapi. Tidak ada WhatsApp, Google, atau jaringan non-loopback.
+- Tidak ada reasoning, teks pesan, JID utuh, atau token di log; `httpx` request log diturunkan ke WARNING saat entrypoint dijalankan.
+- Plan-4 belum dimulai.
