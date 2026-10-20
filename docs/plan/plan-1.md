@@ -59,6 +59,8 @@ InboundMessage
 
 ### Keputusan teknis
 
+Runtime: inti memakai Python 3.12 (rentang 3.11–3.13); bridge WhatsApp memakai Node.js LTS + Baileys dan hanya menangani I/O. Bahasa pengguna: Indonesia. Lihat ADR-0015 (Proposed).
+
 1. **Router**
    - Pesan diawali `/` selalu menjadi command, termasuk di grup, tanpa perlu mention.
    - Di grup, pesan non-command hanya diproses jika `mentions` memuat bot, teks memuat `@sanka` (case-insensitive), atau `reply_to_bot=True`.

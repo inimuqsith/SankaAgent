@@ -131,3 +131,17 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
   3. `config/sanka.example.yaml` dan `config/secrets.example.env` disediakan sebagai contoh, tanpa nilai rahasia.
   4. Adapter Sanka memetakan YAML + env ke bentuk `cfg` yang diharapkan `llmcore.py`; tidak ada `mykey.py` duplikat.
 - Konsekuensi: Startup harus gagal cepat bila env wajib tidak ada. Owner hanya perlu mengelola satu file config non-secret.
+
+## ADR-0015 — Bahasa implementasi: Python untuk inti, Node.js hanya untuk bridge WhatsApp
+- Status: Proposed
+- Tanggal: 2026-10-20
+- Konteks: Inti Sanka memakai GenericAgent yang ditulis dengan Python, dan tool bundle direncanakan sebagai fungsi Python dalam satu proses. Di sisi lain, jalur WhatsApp Web yang dipakai Hermes adalah bridge Node.js dengan Baileys. Perlu ditetapkan bahasa mana yang dipakai di bagian mana agar tidak ada dua implementasi inti.
+- Keputusan (usulan):
+  1. Inti Sanka (router, command, policy, formatter, agent, tool, tes) memakai **Python 3.12**, dengan rentang 3.11–3.13. Hindari 3.14 karena dependency GenericAgent.
+  2. Bridge WhatsApp memakai **Node.js LTS + Baileys** sebagai proses terpisah. Bridge hanya I/O: terima/kirim pesan, typing, media, dan session. Tidak ada logika bisnis Sanka di Node.
+  3. Bahasa yang dilihat pengguna adalah **Bahasa Indonesia** (lihat `PERSONA.md`). Identifier dan komentar kode tetap bahasa Inggris.
+  4. Dependency Python dikelola lewat `pyproject.toml`; dependency bridge lewat `package.json` di direktorinya sendiri.
+- Alternatif yang dipertimbangkan:
+  - **Python saja + WhatsApp Cloud API resmi**: satu bahasa, tetapi butuh akun Meta Business, webhook publik, dan biaya percakapan. Dicatat sebagai opsi cadangan di ADR-0013.
+  - **Semua Node.js**: ditolak karena harness GenericAgent, memori, dan tool sudah Python; menulis ulang berarti membuang basis yang sudah dipilih.
+- Konsekuensi: deployment membutuhkan dua runtime (Python dan Node) hanya saat gateway aktif. Bagian inti tetap bisa dites dengan Python tanpa Node. Jika kelak pindah ke Cloud API, bridge Node bisa dihapus tanpa mengubah inti.

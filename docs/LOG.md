@@ -54,3 +54,10 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
 - Hasil tes: belum ada kode; belum dites.
 - Temuan: session dan antrean async tetap menjadi prasyarat plan-2.
 - Berikutnya: owner meninjau plan-1. Coding dimulai setelah status diubah menjadi `In Progress`.
+
+## 2026-10-20 — ADR bahasa implementasi diajukan
+- Plan: plan-1 (belum dijalankan)
+- Dilakukan: menambahkan ADR-0015 (Proposed) yang menetapkan Python 3.12 untuk inti, Node.js LTS + Baileys hanya untuk bridge WhatsApp, dan Bahasa Indonesia untuk pengguna. Plan-1 mencatat runtime yang sama.
+- Hasil tes: belum ada kode; belum dites.
+- Temuan: dua runtime hanya dibutuhkan saat gateway aktif; inti tetap bisa dites dengan Python saja.
+- Berikutnya: owner menyetujui ADR-0015 dan plan-1 sebelum coding.
