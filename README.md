@@ -5,7 +5,7 @@
 <h1 align="center">SankaAgent</h1>
 
 <p align="center">
-  Asisten acara berbasis AI untuk WhatsApp.<br>
+  Asisten AI untuk tim dan komunitas — langsung di WhatsApp.<br>
   Dikembangkan oleh Abdul Muqsith · AMQS Studio
 </p>
 
@@ -15,13 +15,13 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-2ea44f">
 </p>
 
-Sanka membantu panitia dan peserta acara lewat WhatsApp: merekap spreadsheet, membaca PDF/Excel, mencari informasi, dan menyiapkan proposal. Pesan berawalan `/` diproses sebagai command; pesan lain masuk ke agent AI. Di grup, Sanka hanya menjawab saat di-mention atau di-reply.
+Sanka mengubah chat jadi ruang kerja: rekap spreadsheet, baca PDF/Excel, telusuri referensi, dan susun proposal. Pesan berawalan `/` diproses sebagai command; pesan lain masuk ke agent AI. Di grup, Sanka hanya menjawab saat di-mention atau di-reply.
 
 ## Fitur
 
-- **Rekap spreadsheet** — angka dihitung di kode, bukan oleh LLM.
-- **Baca dokumen** — PDF, Excel, dan Google Sheets.
-- **Web search** — informasi acara dan referensi.
+- **Rekap data** — angka dihitung di kode, bukan oleh LLM.
+- **Dokumen** — PDF, Excel, dan Google Sheets.
+- **Riset** — web search untuk referensi dan fakta.
 - **Proposal** — dikirim ke owner hanya setelah `/approve`.
 - **Output bersih** — teks final saja, tanpa reasoning atau trace tool.
 

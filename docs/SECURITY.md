@@ -1,7 +1,7 @@
 # SECURITY
 
 ## Model ancaman (ringkas)
-- Anggota grup dan peserta tidak tepercaya. Siapa pun bisa menulis pesan yang berusaha memanipulasi Sanka (prompt injection).
+- Anggota grup dan pengguna non-owner tidak tepercaya. Siapa pun bisa menulis pesan yang berusaha memanipulasi Sanka (prompt injection).
 - Isi spreadsheet, PDF, dan halaman web juga bisa berisi instruksi tersembunyi. Semuanya dianggap data, bukan perintah.
 - Nomor WhatsApp yang dipakai dapat diblokir bila perilakunya dianggap spam (gateway tidak resmi). Batasi laju kirim.
 - Kebocoran secrets lewat log atau balasan.
@@ -10,7 +10,7 @@
 | Peran | Siapa | Penentuan |
 |---|---|---|
 | owner | Abdul Muqsith | Nomor di config, diverifikasi di kode |
-| panitia | Panitia acara terverifikasi | Daftar nomor di config |
+| panitia | Tim atau panitia terverifikasi | Daftar nomor di config |
 | peserta | Selain itu | Default |
 
 ## Matriks izin tool (usulan awal, BELUM final, lihat ADR-0011)

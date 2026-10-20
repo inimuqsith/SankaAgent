@@ -5,7 +5,7 @@ Kalau ada konflik antara dokumen ini dan permintaan sesaat, sebutkan konfliknya 
 
 ## 1. Tentang proyek
 
-SankaAgent ("Sanka") adalah asisten acara berbasis AI yang melayani di WhatsApp (grup dan chat pribadi).
+SankaAgent ("Sanka") adalah asisten AI berbasis WhatsApp (grup dan chat pribadi) untuk membantu tim dan komunitas mengelola data, dokumen, dan informasi.
 Dikembangkan oleh Abdul Muqsith (owner), ditenagai AMQS Studio (masih calon).
 
 - Hybrid: pesan diawali `/` = command konvensional (deterministik, tanpa LLM). Pesan tanpa `/` = percakapan dengan AI.
@@ -14,7 +14,7 @@ Dikembangkan oleh Abdul Muqsith (owner), ditenagai AMQS Studio (masih calon).
 - Basis arsitektur/harness: GenericAgent (lsdefine, MIT), diadopsi sebagai basis lalu dimodifikasi. Fork dimiliki penuh, tetapi diff terhadap upstream dijaga minimal.
 - Gateway WhatsApp: perilaku dan kode yang berguna boleh diambil dari Hermes Agent (NousResearch, MIT), lalu diadaptasi untuk Sanka. Notice MIT dipertahankan. Tidak ada vendor mentah.
 - Tool dibundle native (fungsi Python dalam satu proses), bukan MCP. Skema input/output tiap tool dibuat rapi agar mudah dibungkus MCP kelak.
-- Fungsi utama: merekap data spreadsheet, membaca PDF/Excel, web search, membantu panitia acara, dan mengirim proposal ke owner.
+- Fungsi utama: merekap data spreadsheet, membaca PDF/Excel, web search, membantu pekerjaan tim dan komunitas, dan mengirim proposal ke owner.
 - Karakter: lihat `docs/PERSONA.md`.
 
 ## 2. Wajib dibaca sebelum bekerja (urut)
