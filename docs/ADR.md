@@ -108,18 +108,18 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
 - Catatan verifikasi 2026-10-20: OpenCode Go adalah langganan nyata ($10/$40 per bulan) yang ditujukan untuk OpenCode dan coding agent sejenis; traffic dipantau untuk penyalahgunaan. Limit per model: 5 jam = 20%, minggu = 50%, bulan = 100% dari kuota bulanan. Klien disarankan mengirim `x-opencode-session` dan user-agent sendiri. Bot WhatsApp 24/7 berisiko kena limit atau dianggap traffic tidak wajar. Wajib diverifikasi di plan-2: base URL, apakah API key Go berlaku di luar OpenCode, dan provider fallback.
 
 
-## ADR-0013 — Gateway WhatsApp diimplementasikan sendiri dari pemahaman, bukan copy Hermes
+## ADR-0013 — Gateway WhatsApp: ambil yang berguna dari Hermes, adaptasi, jangan vendor mentah
 - Status: Accepted
 - Tanggal: 2026-10-20
-- Konteks: ADR-0002 memilih "ambil hanya sistem gateway WhatsApp dari Hermes". Audit 2026-10-20 menunjukkan adapter WhatsApp Hermes adalah plugin yang bergantung pada `BasePlatformAdapter` dan core gateway yang besar. Owner memutuskan: ambil cara kerjanya dan pahami, jangan ambil kode mentah. GenericAgent juga dipakai sebagai basis yang dimodifikasi, bukan di-vendor apa adanya.
+- Konteks: ADR-0002 memilih "ambil hanya sistem gateway WhatsApp dari Hermes". Audit 2026-10-20 menunjukkan adapter WhatsApp Hermes adalah plugin yang bergantung pada `BasePlatformAdapter` dan core gateway yang besar. Owner mengklarifikasi: bukan berarti tidak mengambil sama sekali; ambil kode yang berguna bila bisa, lalu ubah dan adaptasi. Yang tidak boleh adalah menyalin mentah tanpa perubahan.
 - Keputusan:
-  1. Tidak ada source code Hermes yang di-copy ke repo Sanka.
-  2. `gateway/` adalah implementasi Sanka sendiri dengan pola bridge: proses terpisah memegang koneksi WhatsApp Web (Baileys, MIT), lalu berkomunikasi dengan proses Python lewat HTTP lokal.
+  1. Kode dan pola Hermes boleh diambil sebagian bila memberi nilai. Setiap bagian yang diambil diubah/diadaptasi, mempertahankan notice MIT, dan ditandai `SANKA-MOD:`.
+  2. `gateway/` adalah bagian Sanka sendiri dengan pola bridge: proses terpisah memegang koneksi WhatsApp Web (Baileys, MIT), lalu berkomunikasi dengan proses Python lewat HTTP lokal. Potongan kode bridge, allowlist, atau gating Hermes boleh dipakai ulang setelah diadaptasi.
   3. Perilaku yang diadopsi dari Hermes: reconnect dengan backoff, session persistence di luar repo, long-poll inbound, endpoint kirim/typing, allowlist dan gating grup, deteksi mention/reply, idempotensi kirim, dan rate limit.
   4. Antarmuka ke inti Sanka tetap tipis: `on_message(msg)` menaruh pesan di antrean async per chat; balasan dikirim lewat gateway tanpa membawa reasoning atau trace tool.
-  5. Atribusi Hermes dan Baileys dicantumkan di `README.md`. Lisensi MIT upstream dipertahankan bila ada potongan kode yang benar-benar dipakai ulang.
+  5. Atribusi Hermes dan Baileys dicantumkan di `README.md`. Notice MIT upstream wajib dipertahankan untuk kode yang dipakai ulang.
   6. WhatsApp Cloud API resmi tetap opsi cadangan bila risiko blokir nomor pada jalur tidak resmi tidak dapat diterima. Perpindahan jalur dicatat sebagai ADR baru.
-- Konsekuensi: Gateway harus ditulis dan dites sendiri; tidak ada dependency ke paket Hermes. Risiko pemblokiran nomor pada jalur Baileys tetap ada dan dimitigasi dengan rate limit serta perilaku non-spam. Versi Baileys dan lisensinya diverifikasi sebelum dependency ditambahkan.
+- Konsekuensi: Tidak harus ada dependency ke paket Hermes; kode yang diadaptasi menjadi bagian repo Sanka. Setiap adaptasi dicatat di ADR/LOG dan dicek kepatuhan lisensinya saat review. Risiko pemblokiran nomor pada jalur Baileys tetap ada dan dimitigasi dengan rate limit serta perilaku non-spam.
 
 ## ADR-0014 — Konfigurasi: satu YAML non-secret, secrets lewat env
 - Status: Accepted

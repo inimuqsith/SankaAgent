@@ -12,7 +12,7 @@ Dikembangkan oleh Abdul Muqsith (owner), ditenagai AMQS Studio (masih calon).
 - LLM: inferensi OpenCode Go.
 - Di grup, Sanka hanya merespons jika di-mention atau dipanggil `@sanka` (atau di-reply). Di chat pribadi, semua pesan tanpa `/` diteruskan ke AI.
 - Basis arsitektur/harness: GenericAgent (lsdefine, MIT), diadopsi sebagai basis lalu dimodifikasi. Fork dimiliki penuh, tetapi diff terhadap upstream dijaga minimal.
-- Gateway WhatsApp: perilakunya dipelajari dari Hermes Agent (NousResearch, MIT); implementasinya milik Sanka sendiri, bukan copy kode Hermes. Bagian Hermes lain tidak dipakai.
+- Gateway WhatsApp: perilaku dan kode yang berguna boleh diambil dari Hermes Agent (NousResearch, MIT), lalu diadaptasi untuk Sanka. Notice MIT dipertahankan. Tidak ada vendor mentah.
 - Tool dibundle native (fungsi Python dalam satu proses), bukan MCP. Skema input/output tiap tool dibuat rapi agar mudah dibungkus MCP kelak.
 - Fungsi utama: merekap data spreadsheet, membaca PDF/Excel, web search, membantu panitia acara, dan mengirim proposal ke owner.
 - Karakter: lihat `docs/PERSONA.md`.
@@ -74,11 +74,11 @@ Tujuan proyek ini juga untuk membuat owner makin paham implementasi, bukan hanya
 
 ## 6. Kode upstream (GenericAgent dan Hermes)
 
-- Keduanya berlisensi MIT. Pertahankan notice lisensi aslinya bila ada kode yang dipakai ulang.
-- Upstream **dipelajari, bukan di-vendor mentah**. Clone referensi hanya di `references/` dan folder itu di-ignore git.
-- Ambil basis dan pola kerjanya, lalu tulis ulang bagian yang dibutuhkan Sanka. Jangan copy-paste kode Hermes; gateway WhatsApp diimplementasikan sendiri berdasarkan pemahaman perilakunya.
-- Ubah kode upstream seminimal mungkin dan terisolasi. Beri komentar `SANKA-MOD:` di setiap modifikasi.
-- Catat setiap modifikasi upstream di ADR terkait dan di `docs/LOG.md` (file, alasan, versi/commit upstream). Tidak ada file `UPSTREAM.md` terpisah.
+- Keduanya berlisensi MIT. Pertahankan notice copyright aslinya pada setiap kode yang dipakai ulang.
+- Upstream **boleh diambil sebagian bila berguna**, lalu diubah dan diadaptasi. Yang dilarang: menyalin mentah tanpa adaptasi, atau menghapus notice lisensi.
+- Clone referensi hanya di `references/` dan folder itu di-ignore git.
+- Ambil basis, pola, atau potongan kode yang memberi nilai, lalu sesuaikan dengan arsitektur Sanka. Jangan copy-paste tanpa perubahan.
+- Setiap potongan kode upstream yang dipakai: beri komentar `SANKA-MOD:` di titik perubahan, catat file dan alasan di ADR terkait dan `docs/LOG.md`, dan sertakan versi/commit upstream.
 - Hindari menyentuh inti `agent_loop.py` kalau bisa diselesaikan lewat hook, wrapper, atau registry tool.
 
 ## 7. Struktur repo (rencana awal; boleh berubah lewat ADR)
@@ -87,9 +87,11 @@ Tujuan proyek ini juga untuk membuat owner makin paham implementasi, bukan hanya
 sanka/
   AGENTS.md
   README.md
+  LICENSE
+  assets/                 # gambar dan aset visual
   config/                 # sanka.example.yaml; secrets lewat env / config/secrets.env (di-ignore)
   core/                   # harness berbasis GenericAgent
-  gateway/                # gateway WhatsApp implementasi Sanka (bukan copy Hermes)
+  gateway/                # gateway WhatsApp Sanka; adaptasi kode Hermes bila berguna
   references/             # clone upstream untuk studi; di-ignore git
   sanka/
     router.py             # "/" vs LLM, aturan mention di grup

@@ -29,7 +29,7 @@ Baris `code_run`, `file_write`, dan shell sudah dikonfirmasi owner-only oleh own
 Aturan penegakan: tool yang tidak diizinkan tidak dikirim ke LLM sebagai pilihan pada giliran itu, dan eksekusinya ditolak lagi di registry sebagai lapisan kedua. `code_run`, `file_write`, dan shell tidak punya pengecualian: hanya owner. Shell tetap butuh toggle `tools.shell_enabled` di config.
 
 ## WhatsApp gateway
-- Gateway adalah implementasi Sanka sendiri berdasarkan pemahaman perilaku Hermes, bukan copy kode Hermes (ADR-0013).
+- Gateway adalah bagian Sanka. Kode atau pola Hermes boleh diambil bila berguna, lalu diadaptasi; notice MIT dipertahankan dan perubahan ditandai `SANKA-MOD:` (ADR-0013).
 - Jalur Baileys adalah jalur tidak resmi. Risiko nomor diblokir dimitigasi dengan rate limit, tanpa broadcast, dan perilaku non-spam.
 - Bila risiko itu tidak dapat diterima, pindah ke WhatsApp Cloud API resmi dicatat sebagai ADR baru.
 - Sesi WhatsApp disimpan di luar repo, permission 0600, dan tidak pernah dilog.

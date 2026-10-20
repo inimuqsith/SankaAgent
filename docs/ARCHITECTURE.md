@@ -30,7 +30,7 @@ WhatsApp
 
 ## Komponen
 
-- **gateway**: tanggung jawabnya hanya I/O WhatsApp. Antarmuka ke dalam sengaja tipis: `on_message(msg)`, lalu pesan masuk ke antrean per chat. Jangan ada logika agent di sini. Implementasinya milik Sanka sendiri: proses bridge memegang koneksi WhatsApp Web, client Python menormalkan pesan. Tidak ada kode Hermes yang di-copy.
+- **gateway**: tanggung jawabnya hanya I/O WhatsApp. Antarmuka ke dalam sengaja tipis: `on_message(msg)`, lalu pesan masuk ke antrean per chat. Jangan ada logika agent di sini. Implementasinya bagian dari Sanka; kode Hermes yang berguna boleh diadaptasi dengan notice MIT dan penanda `SANKA-MOD:`.
 - **router**: memutuskan jalur command vs LLM dan menerapkan aturan mention di grup.
 - **command registry**: tiap command punya nama, izin peran, handler, dan teks bantuan. Lihat `COMMANDS.md`.
 - **policy**: peran (owner/panitia/peserta), matriks izin tool, rate limit per pengguna. Penegakan di kode.

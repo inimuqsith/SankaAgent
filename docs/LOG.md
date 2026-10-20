@@ -37,3 +37,13 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
   - Model sesi dan antrean async belum diputuskan; perlu ADR sebelum plan-1.
   - Koreksi entri sebelumnya: `docs/UPSTREAM.md` dibatalkan dan plan-1..6 belum pernah dibuat di disk.
 - Berikutnya: owner meninjau ADR-0013/0014 dan sisa ADR-0011, lalu plan-1.
+
+## 2026-10-20 — Klarifikasi reuse upstream, foto Sanka, README modern
+- Plan: persiapan plan-1 (belum ada kode)
+- Dilakukan:
+  - Mengklarifikasi kebijakan upstream: kode boleh diambil sebagian bila berguna, lalu diubah/diadaptasi; notice MIT dipertahankan dan perubahan ditandai `SANKA-MOD:`. Yang dilarang adalah vendor mentah tanpa adaptasi. Diperbarui di `AGENTS.md`, ADR-0013, `ARCHITECTURE.md`, `SECURITY.md`, dan `README.md`.
+  - Menambahkan `assets/sanka.png` (resize 640 px dari foto owner, 196 KB) dan menulis ulang `README.md` dengan header, badge, diagram, tabel fitur, dan tabel dokumentasi.
+  - Mengoreksi catatan sesi sebelumnya: gateway tidak harus "ditulis sendiri dari nol"; kode/pola Hermes boleh diadaptasi.
+- Hasil tes: PNG valid 639x640; seluruh tautan aset README menunjuk file yang ada; belum ada tes kode karena belum ada kode.
+- Temuan: belum ada. Model sesi dan antrean async masih perlu ADR sebelum plan-1.
+- Berikutnya: owner meninjau README, ADR-0013/0014, dan sisa ADR-0011, lalu plan-1.
