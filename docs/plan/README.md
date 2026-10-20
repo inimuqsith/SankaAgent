@@ -1,6 +1,7 @@
 # Plan
 
-Setiap pekerjaan non-trivial punya satu plan. Salin template di bawah ke `plan-N.md`, lalu minta persetujuan owner sebelum menulis kode. Status plan: `Draft`, `In Progress`, `Blocked`, `Done`.
+Setiap pekerjaan non-trivial punya satu plan. Peta seluruh plan ada di [`ROADMAP.md`](ROADMAP.md).
+Salin template di bawah ke `plan-N.md`, lalu minta persetujuan owner sebelum menulis kode. Status plan: `Draft`, `In Progress`, `Blocked`, `Done`.
 
 ## Template
 

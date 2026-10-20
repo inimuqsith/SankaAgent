@@ -111,7 +111,7 @@ def _parse(root: Mapping[str, Any]) -> SankaConfig:
         llm=LLMConfig(
             provider=_str(llm, "provider", "llm.provider"),
             model=_str(llm, "model", "llm.model"),
-            base_url=_str(llm, "base_url", "llm.base_url", allow_empty=True),
+            base_url=_str(llm, "base_url", "llm.base_url"),
             api_key_env=_str(llm, "api_key_env", "llm.api_key_env"),
             timeout_seconds=_int(llm, "timeout_seconds", "llm.timeout_seconds"),
             max_turns=_int(llm, "max_turns", "llm.max_turns"),

@@ -4,7 +4,7 @@
 llm:
   provider: opencode-go            # verified in plan-2
   model: deepseek-v4.1-flash
-  base_url: ""                     # fill after plan-2 verification
+  base_url: "https://opencode.ai/inference/go/openai/v1"
   api_key_env: OPENCODE_GO_API_KEY # secret lives in env / config/secrets.env
   timeout_seconds: 120
   max_turns: 40

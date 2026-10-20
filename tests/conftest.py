@@ -16,7 +16,7 @@ def valid_config_dict() -> dict[str, Any]:
         "llm": {
             "provider": "opencode-go",
             "model": "deepseek-v4.1-flash",
-            "base_url": "",
+            "base_url": "https://opencode.ai/inference/go/openai/v1",
             "api_key_env": "OPENCODE_GO_API_KEY",
             "timeout_seconds": 120,
             "max_turns": 40,

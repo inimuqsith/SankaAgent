@@ -76,3 +76,64 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
   - Rate limit memakai jendela bergulir (60 detik/24 jam), bukan hari kalender, dan hilang saat restart.
   - ADR-0015 masih `Proposed`; implementasi mengikuti plan-1. Persetujuan owner masih diperlukan.
 - Berikutnya: owner meninjau diff plan-1 dan mengisi `config/sanka.yaml`. Plan-2 memerlukan ADR session/antrean sebelum adapter OpenCode Go.
+
+## 2026-10-21 — Plan-2 disusun
+- Plan: plan-2 (Draft)
+- Dilakukan:
+  - Menulis `docs/plan/plan-2.md`: sesi per chat, antrean serial per chat, client OpenCode Go non-streaming, adaptasi `agent_loop.py`, `/new` dan `/stop`, serta tes tanpa WhatsApp/jaringan.
+  - Mengajukan ADR-0016 (sesi dan antrean) dan ADR-0017 (adaptasi harness + client sendiri) dengan status `Proposed`.
+  - Memeriksa dokumentasi OpenCode Go: base URL `https://opencode.ai/inference/go/openai/v1`, model ID `deepseek-v4.1-flash`, endpoint `chat/completions`, dan kewajiban `x-opencode-session` serta User-Agent sendiri.
+- Hasil tes: belum ada kode; belum dites.
+- Temuan:
+  - Header autentikasi (`Authorization: Bearer`) masih asumsi dan harus diverifikasi dengan kunci nyata di langkah pertama plan-2.
+  - Dokumentasi OpenCode Go membatasi pemakaian per 5 jam, minggu, dan bulan per model; ini perlu dipantau setelah agent aktif.
+  - `llmcore.py` upstream terlalu besar untuk kebutuhan Sanka; plan-2 hanya mengadaptasi `agent_loop.py` dan menulis client sendiri.
+- Berikutnya: owner meninjau plan-2 dan ADR-0015/0016/0017. Coding dimulai setelah status plan menjadi `In Progress`.
+
+## 2026-10-21 — Roadmap plan disusun
+- Plan: roadmap plan-1 sampai plan-8
+- Dilakukan:
+  - Menulis `docs/plan/ROADMAP.md`: 8 plan, prasyarat, kriteria keluar, dan definisi "bot inti hidup" di akhir plan-4.
+  - Memisahkan gateway Python (plan-3) dari bridge Baileys (plan-4), tool baca/rekap (plan-5) dari tool tulis/proposal (plan-6), serta menjadikan hardening/deploy plan-8.
+  - Menautkan roadmap dari `docs/plan/README.md`.
+- Hasil tes: belum ada kode; hanya dokumen. Tidak ada tes yang dijalankan.
+- Temuan:
+  - Tabel indikatif 6 plan di plan-1 terlalu menggabungkan gateway/bridge dan tool baca/tulis. Roadmap baru menggantikannya.
+  - Plan-2 masih `Draft`; coding belum dimulai.
+- Berikutnya: owner meninjau roadmap dan plan-2. Plan-2 menjadi `In Progress` setelah disetujui.
+
+## 2026-10-21 — Plan-2 dikerjakan, plan-3 sampai plan-8 disusun paralel
+- Plan: plan-2 (Blocked), plan-3..8 (Draft), roadmap
+- Dilakukan:
+  - Menerima instruksi owner untuk mengerjakan plan secara paralel dengan subagent.
+  - Plan-2: menambahkan `core/agent_loop.py`, `sanka/secrets.py`, `sanka/sessions.py`, `sanka/queue.py`, `sanka/agent/{client,prompt,handler,runtime}.py`, dan `sanka/commands/session.py`; menambah `/new` dan `/stop`, `httpx`, base URL OpenCode Go, serta validasi `llm.base_url` tidak kosong.
+  - Plan-2 dipecah paralel: loop agent, secrets, client HTTP, serta sesi/antrean dikerjakan subagent terpisah, lalu diintegrasikan lewat runtime dan command registry.
+  - Menulis draft `plan-3.md` sampai `plan-8.md` lewat enam subagent paralel, lalu menyeragamkan path gateway (`gateway/`), kontrak rate limit, dan nomor ADR (0018 gateway, 0019 Google, 0020 proposal, 0021 memori, 0022 sandbox, 0023 supervisor, 0024 audit).
+  - Memperbarui `docs/plan/ROADMAP.md`, `docs/plan/README.md`, `docs/COMMANDS.md`, `README.md`, ADR-0012, dan ADR-0015/0016/0017 menjadi `Accepted`.
+- Hasil tes: `pytest -q` lulus 122 tes (62 tes plan-2); `python -m compileall -q sanka core` lulus. Smoke manual dengan client palsu: agent menjawab, `/new` mereset, `/stop` melaporkan idle.
+- Temuan:
+  - Plan-2 belum bisa `Done`: `OPENCODE_GO_API_KEY` tidak ada, `config/secrets.env` dan `config/sanka.yaml` belum dibuat, sehingga request live dan verifikasi header `Authorization: Bearer` belum dijalankan. Status plan-2 = `Blocked`.
+  - Lingkungan hanya Python 3.15; target proyek 3.11–3.13. Tes di 3.12 belum dijalankan.
+  - Draft plan-3..8 masih perlu ditinjau owner. Beberapa keputusan saling memengaruhi: plan-5 mengubah bentuk allowlist menjadi alias, plan-6 mengganti nama `proposal_send` menjadi `proposal_prepare`, dan plan-7 membutuhkan keputusan lingkup memori DM vs grup.
+  - Eksekusi antarplan tidak bisa benar-benar paralel karena plan-3 bergantung pada plan-2, plan-4 pada plan-3, plan-5 pada plan-4, plan-6 pada plan-5, dan plan-8 pada semuanya. Paralelisasi dilakukan di dalam plan, bukan antarplan.
+- Berikutnya: owner mengisi API key + `config/sanka.yaml`, menjalankan live smoke plan-2, lalu meninjau draft plan-3..8. Plan-3 baru masuk `In Progress` setelah plan-2 `Done`.
+
+## 2026-10-21 — Plan-2 diverifikasi live dan selesai
+- Plan: plan-2 (Done)
+- Dilakukan:
+  - Mengunci `.env` ke 0600 (sebelumnya 0644) dan memperluas `sanka.secrets.get_secret` agar urutannya environment → `config/secrets.env` → `.env`.
+  - Menambahkan tes fallback `.env` dan memperbarui ADR-0012/0014, `docs/SECURITY.md`, README, plan-2, dan roadmap.
+  - Menjalankan live smoke: `AgentRuntime` mengirim satu pesan ke `deepseek-v4.1-flash` lewat `https://opencode.ai/inference/go/openai/v1/chat/completions` dan menerima balasan `ok`.
+- Hasil tes: `pytest -q` lulus 123 tes (63 tes plan-2); `python -m compileall -q sanka core` lulus. Live smoke OpenCode Go berhasil; header Bearer, `x-opencode-session`, dan User-Agent diterima.
+- Temuan:
+  - Plan-2 selesai; status `Done`.
+  - `pip install -e .` masih tidak bisa diuji di Python 3.15 (target 3.11–3.13).
+  - `.env` berisi `GOOGLE_SERVICE_ACCOUNT_JSON` juga; nilainya belum dipakai sampai plan-5.
+- Berikutnya: owner meninjau plan-3; setelah disetujui, plan-3 menjadi `In Progress` dan implementasinya boleh dipecah paralel per modul.
+
+## 2026-10-21 — Batas Python dilonggarkan
+- Plan: plan-2 (Done)
+- Dilakukan: mengubah `requires-python` dari `>=3.11,<3.14` menjadi `>=3.11`; memperbarui AGENTS.md §8, ADR-0015 (catatan), dan plan-2.
+- Hasil tes: `pip install -e .` berhasil di Python 3.15; import `sanka`, `core`, `httpx`, dan `yaml` berhasil; `pytest -q` tetap 123 tes lulus; `compileall sanka core` lulus.
+- Temuan: dependency runtime saat ini (PyYAML, httpx) mendukung 3.15. Target produksi tetap 3.12; tes di 3.12 belum dijalankan.
+- Berikutnya: plan-3 menunggu persetujuan owner.

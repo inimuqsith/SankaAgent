@@ -19,7 +19,7 @@ Command diawali `/`, diproses deterministik tanpa LLM. Daftar di bawah adalah us
 
 ## Status implementasi
 
-Plan-1 sudah mengimplementasikan `/ping`, `/help`, `/whoami`, dan `/status` di `sanka/commands/basic.py` (dites tanpa LLM dan WhatsApp). Command lain di tabel masih rencana.
+Plan-1 mengimplementasikan `/ping`, `/help`, `/whoami`, dan `/status`. Plan-2 menambahkan `/new` dan `/stop`. Semua command tersebut ada di `sanka/commands/` dan dites tanpa LLM/WhatsApp. Command lain di tabel masih rencana.
 
 ## Aturan
 - Command tidak dikenal: balas singkat dengan petunjuk `/help`.

@@ -100,12 +100,13 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
 - Konsekuensi: Perlu persetujuan owner. Setelah disetujui, ubah status menjadi `Accepted` lewat ADR turunan atau catatan di LOG.
 
 ## ADR-0012 — LLM: OpenCode Go
-- Status: Accepted (pilihan penyedia). Detail API: belum diverifikasi.
+- Status: Accepted (pilihan penyedia). Detail API: terverifikasi 2026-10-21.
 - Tanggal: 2026-10-20
 - Konteks: Owner memakai inferensi OpenCode Go.
 - Keputusan: LLM utama memakai OpenCode Go.
 - Konsekuensi: Format API (apakah kompatibel dengan format OpenAI) belum diverifikasi. Diverifikasi di plan-2 sebelum menulis adapter di `llmcore.py`.
-- Catatan verifikasi 2026-10-20: OpenCode Go adalah langganan nyata ($10/$40 per bulan) yang ditujukan untuk OpenCode dan coding agent sejenis; traffic dipantau untuk penyalahgunaan. Limit per model: 5 jam = 20%, minggu = 50%, bulan = 100% dari kuota bulanan. Klien disarankan mengirim `x-opencode-session` dan user-agent sendiri. Bot WhatsApp 24/7 berisiko kena limit atau dianggap traffic tidak wajar. Wajib diverifikasi di plan-2: base URL, apakah API key Go berlaku di luar OpenCode, dan provider fallback.
+- Catatan verifikasi 2026-10-21: dokumentasi OpenCode Go menyebut base URL `https://opencode.ai/inference/go/openai/v1` untuk model `deepseek-v4.1-flash` melalui `POST /chat/completions` (OpenAI-compatible), dengan `x-opencode-session` dan User-Agent sendiri. `config/sanka.example.yaml` sudah memakai base URL itu. Live smoke pada 2026-10-21 berhasil: `Authorization: Bearer <API key>`, `x-opencode-session`, dan User-Agent diterima, dan respons `ok` diterima dari model. Plan-2 menjadi `Done`.
+- Catatan 2026-10-20: OpenCode Go adalah langganan nyata ($10/$40 per bulan) yang ditujukan untuk OpenCode dan coding agent sejenis; traffic dipantau untuk penyalahgunaan. Limit per model: 5 jam = 20%, minggu = 50%, bulan = 100% dari kuota bulanan. Klien disarankan mengirim `x-opencode-session` dan user-agent sendiri. Bot WhatsApp 24/7 berisiko kena limit atau dianggap traffic tidak wajar. Wajib diverifikasi di plan-2: base URL, apakah API key Go berlaku di luar OpenCode, dan provider fallback.
 
 
 ## ADR-0013 — Gateway WhatsApp: ambil yang berguna dari Hermes, adaptasi, jangan vendor mentah
@@ -131,9 +132,10 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
   3. `config/sanka.example.yaml` dan `config/secrets.example.env` disediakan sebagai contoh, tanpa nilai rahasia.
   4. Adapter Sanka memetakan YAML + env ke bentuk `cfg` yang diharapkan `llmcore.py`; tidak ada `mykey.py` duplikat.
 - Konsekuensi: Startup harus gagal cepat bila env wajib tidak ada. Owner hanya perlu mengelola satu file config non-secret.
+- Catatan 2026-10-21: `.env` di root repo juga diterima sebagai fallback setelah environment dan `config/secrets.env`. Urutannya: environment, `config/secrets.env`, lalu `.env`; semua file wajib 0600 dan tetap di-ignore git. Alasan: owner memakai `.env` untuk pengembangan lokal.
 
 ## ADR-0015 — Bahasa implementasi: Python untuk inti, Node.js hanya untuk bridge WhatsApp
-- Status: Proposed
+- Status: Accepted
 - Tanggal: 2026-10-20
 - Konteks: Inti Sanka memakai GenericAgent yang ditulis dengan Python, dan tool bundle direncanakan sebagai fungsi Python dalam satu proses. Di sisi lain, jalur WhatsApp Web yang dipakai Hermes adalah bridge Node.js dengan Baileys. Perlu ditetapkan bahasa mana yang dipakai di bagian mana agar tidak ada dua implementasi inti.
 - Keputusan (usulan):
@@ -146,3 +148,41 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
   - **Python saja + WhatsApp Cloud API resmi**: satu bahasa, tetapi butuh akun Meta Business, webhook publik, dan biaya percakapan. Dicatat sebagai opsi cadangan di ADR-0013.
   - **Semua Node.js**: ditolak karena harness GenericAgent, memori, dan tool sudah Python; menulis ulang berarti membuang basis yang sudah dipilih.
 - Konsekuensi: deployment membutuhkan dua runtime (Python dan Node) hanya saat gateway aktif. Bagian inti tetap bisa dites dengan Python tanpa Node. Jika kelak pindah ke Cloud API, bridge Node bisa dihapus tanpa mengubah inti.
+- Catatan 2026-10-21: batas atas `<3.14` dicabut. Sanka hanya mengadaptasi `agent_loop.py`, bukan dependency GenericAgent, dan dependency runtime (`httpx`, PyYAML) mendukung Python 3.15. `requires-python` menjadi `>=3.11`; target produksi tetap 3.12. Editable install dan tes dijalankan di 3.15.
+
+## ADR-0016 — Sesi per chat dan antrean serial per chat
+- Status: Accepted
+- Tanggal: 2026-10-21
+- Konteks: Jalur `AGENT` butuh konteks percakapan dan harus menangani pesan beruntun. Dua pesan dari chat yang sama tidak boleh menulis riwayat bersamaan, sedangkan chat berbeda sebaiknya tidak saling menunggu. Command `/new` dan `/stop` juga butuh batas yang jelas.
+- Keputusan (usulan):
+  1. Satu sesi per `chat_id` (grup dan DM terpisah), disimpan in-memory: riwayat pesan, `session_id` stabil untuk header OpenCode Go, `updated_at`, dan status berjalan. Tidak ada persistensi ke disk di plan-2; restart menghapus semua sesi.
+  2. Sesi kedaluwarsa setelah `limits.session_idle_ttl_minutes` tanpa aktivitas. Pembersihan lazy saat sesi diakses, bukan timer global.
+  3. Riwayat dipangkas dari pesan tertua bila melewati batas karakter (60.000 karakter untuk plan-2). Pesan `assistant` di awal hasil pangkasan dibuang agar riwayat dimulai dari `user`.
+  4. Setiap chat punya antrean FIFO sendiri dan dieksekusi satu per satu. Chat berbeda boleh berjalan paralel. Jumlah chat aktif dibatasi (16); bila penuh, pengirim menerima balasan "sedang sibuk" alih-alih menunggu tanpa batas.
+  5. Rate limit per pengirim dari `policy.RateLimiter` dicek sebelum pekerjaan masuk antrean.
+  6. `/stop` hanya menghentikan pekerjaan di chat pengirim. Boleh dilakukan pengirim pekerjaan itu atau owner. Pekerjaan yang masih antre dibuang; panggilan HTTP yang sedang berjalan tidak diputus paksa, hasilnya dibuang setelah selesai (kooperatif). Ini batas jujur untuk plan-2.
+  7. `/new` menghentikan pekerjaan berjalan, membuang antrean chat itu, menghapus riwayat, dan membuat `session_id` baru agar cache prompt lama tidak terbawa.
+- Alternatif yang dipertimbangkan:
+  - **Satu antrean global**: ditolak karena satu rekap panjang memblokir semua chat.
+  - **Tanpa antrean, proses paralel per pesan**: ditolak karena riwayat sesi bisa saling menimpa dan urutan balasan kacau.
+  - **Broker eksternal (Redis/RabbitMQ)**: ditolak untuk plan-2; belum ada kebutuhan multi-proses.
+- Konsekuensi: `/stop` tidak menghemat kuota untuk request yang sudah terkirim. Persistensi dan pemulihan sesi setelah restart ditunda sampai gateway/deployment membutuhkannya.
+
+## ADR-0017 — Integrasi harness: adaptasi `agent_loop.py`, client OpenCode Go sendiri
+- Status: Accepted
+- Tanggal: 2026-10-21
+- Konteks: GenericAgent menyediakan loop agent kecil (132 baris) tetapi `llmcore.py` besar (1.270 baris) dan berisi banyak protokol yang tidak dipakai Sanka (Claude native, Codex, mixin, mykey). OpenCode Go menyediakan endpoint OpenAI-compatible.
+- Keputusan (usulan):
+  1. Salin `agent_loop.py` dari GenericAgent commit `e6b1bcec92e7789eb80975980b5fd47a2abea860` ke `core/agent_loop.py`, dengan notice MIT `Copyright (c) 2025 lsdefine`, lalu adaptasi minimal yang ditandai `SANKA-MOD:`.
+  2. Tidak memakai `llmcore.py`. Client ditulis sendiri di `sanka/agent/client.py` dengan `httpx`, terbatas pada `POST {base_url}/chat/completions` mode non-streaming.
+  3. Client mengirim `Authorization: Bearer <API key>`, `x-opencode-session: <session_id>` per chat, dan User-Agent `sanka-agent/<versi>`. API key tidak pernah masuk log atau pesan.
+  4. Respons dipetakan ke `ChatResponse(content, tool_calls, usage)`. Hanya `content` yang boleh keluar; `reasoning_content` dan trace tool dibuang.
+  5. Plan-2 tidak mendaftarkan tool apa pun. `tool_calls` sudah diurai tetapi belum dieksekusi; tool masuk lewat registry di plan-4.
+  6. Retry hanya untuk 429 dan 5xx, maksimal 3 kali dengan backoff eksponensial dan menghormati `Retry-After`. Error 4xx lain langsung gagal dengan pesan yang tidak memuat API key atau isi pesan pengguna.
+  7. Dependency baru: `httpx` (runtime) dan `respx` atau `httpx.MockTransport` untuk tes tanpa jaringan. Tes memakai `MockTransport`, jadi tidak perlu dependency tambahan.
+- Alternatif yang dipertimbangkan:
+  - **Vendor `llmcore.py` utuh**: ditolak karena menambah 1.270 baris yang tidak terpakai, memperbesar diff upstream, dan membawa asumsi provider lain.
+  - **OpenAI SDK resmi**: ditolak untuk plan-2 karena kontrol header `x-opencode-session` dan penanganan error lebih mudah dilakukan langsung dengan `httpx`.
+  - **Streaming token**: ditunda. Plan-2 memakai non-streaming agar satu request = satu respons utuh; streaming baru berguna saat gateway perlu typing/partial (plan-3).
+- Konsekuensi: client menjadi permukaan kompatibilitas yang harus dites; perubahan format API OpenCode Go cukup diperbaiki di satu file. Latensi terasa sampai respons selesai, tetapi tidak ada token yang dikirim ke WhatsApp secara parsial.
+

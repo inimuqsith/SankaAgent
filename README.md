@@ -42,7 +42,7 @@ Gateway hanya menangani I/O WhatsApp. Router memisahkan command dari percakapan 
 
 ## Status
 
-Tahap fondasi. Plan-1 (config, router, policy, command dasar, formatter) sudah diimplementasikan dan dites tanpa LLM/WhatsApp. Bot WhatsApp dan integrasi LLM belum ada. Rencana kerja ada di [`docs/plan/`](docs/plan/).
+Tahap agent core. Plan-1 (config, router, policy, command dasar, formatter) dan plan-2 (sesi per chat, antrean, client OpenCode Go, `/new`, `/stop`) selesai dan sudah diverifikasi live ke OpenCode Go. Bot WhatsApp dan gateway belum ada. Rencana kerja ada di [`docs/plan/`](docs/plan/), peta plan di [`docs/plan/ROADMAP.md`](docs/plan/ROADMAP.md).
 
 Konfigurasi contoh: [`config/sanka.example.yaml`](config/sanka.example.yaml).
 

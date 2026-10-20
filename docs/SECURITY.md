@@ -37,7 +37,7 @@ Aturan penegakan: tool yang tidak diizinkan tidak dikirim ke LLM sebagai pilihan
 ## Google Workspace
 - Gunakan service account yang hanya di-share ke file/folder tertentu.
 - Read default. Write hanya ke allowlist di config.
-- Kredensial di luar git. API key dan token hanya dari environment variable atau `config/secrets.env` (0600, di-ignore). `config/sanka.yaml` tidak boleh memuat secrets.
+- Kredensial di luar git. API key dan token hanya dari environment variable, `config/secrets.env`, atau `.env` di root repo (0600, di-ignore). `config/sanka.yaml` tidak boleh memuat secrets.
 
 ## Browser
 - Gunakan profil Chrome khusus Sanka, hanya terlogin ke akun yang memang dibutuhkan. Jangan memakai profil pribadi owner.

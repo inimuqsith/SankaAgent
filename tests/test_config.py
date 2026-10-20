@@ -61,6 +61,15 @@ def test_missing_file_fails_fast(tmp_path: Path) -> None:
         load_config(tmp_path / "nope.yaml")
 
 
+def test_empty_base_url_fails_fast(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["llm"]["base_url"] = ""
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match=r"llm\.base_url"):
+        load_config(path)
+
+
 def test_non_mapping_root_fails_fast(tmp_path: Path) -> None:
     path = tmp_path / "sanka.yaml"
     path.write_text("- just\n- a list\n", encoding="utf-8")

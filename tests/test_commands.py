@@ -10,6 +10,20 @@ from sanka.commands.registry import (
 )
 from sanka.config import SankaConfig
 from sanka.policy import Role
+from sanka.queue import StopOutcome
+
+
+class FakeControl:
+    def __init__(self) -> None:
+        self.reset_calls: list[str] = []
+
+    def reset(self, chat_id: str) -> None:
+        self.reset_calls.append(chat_id)
+
+    def stop(
+        self, chat_id: str, requester_id: str, is_owner: bool
+    ) -> StopOutcome:
+        return StopOutcome.IDLE
 
 
 def context(role: Role, config: SankaConfig) -> CommandContext:
@@ -22,7 +36,7 @@ def context(role: Role, config: SankaConfig) -> CommandContext:
 
 
 def test_help_filters_commands_by_role(config: SankaConfig) -> None:
-    registry = build_registry()
+    registry = build_registry(FakeControl())
 
     participant_help = registry.dispatch("/help", context(Role.PARTICIPANT, config))
     owner_help = registry.dispatch("/help", context(Role.OWNER, config))
@@ -34,7 +48,7 @@ def test_help_filters_commands_by_role(config: SankaConfig) -> None:
 
 
 def test_unknown_command_points_to_help(config: SankaConfig) -> None:
-    registry = build_registry()
+    registry = build_registry(FakeControl())
 
     assert (
         registry.dispatch("/nope", context(Role.PARTICIPANT, config))
@@ -44,7 +58,7 @@ def test_unknown_command_points_to_help(config: SankaConfig) -> None:
 
 
 def test_forbidden_command_is_rejected(config: SankaConfig) -> None:
-    registry = build_registry()
+    registry = build_registry(FakeControl())
 
     reply = registry.dispatch("/status", context(Role.PARTICIPANT, config))
 
@@ -53,7 +67,7 @@ def test_forbidden_command_is_rejected(config: SankaConfig) -> None:
 
 
 def test_status_is_deterministic_and_shows_model(config: SankaConfig) -> None:
-    registry = build_registry()
+    registry = build_registry(FakeControl())
 
     reply = registry.dispatch("/status", context(Role.COMMITTEE, config))
 
@@ -62,7 +76,7 @@ def test_status_is_deterministic_and_shows_model(config: SankaConfig) -> None:
 
 
 def test_ping_and_whoami(config: SankaConfig) -> None:
-    registry = build_registry()
+    registry = build_registry(FakeControl())
     ctx = context(Role.COMMITTEE, config)
 
     assert registry.dispatch("/ping", ctx) == "pong"

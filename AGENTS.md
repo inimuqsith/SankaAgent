@@ -109,7 +109,7 @@ sanka/
 
 ## 8. Konvensi kode
 
-- Python 3.11 atau 3.12. Hindari 3.14 (tidak kompatibel dengan sebagian dependency GenericAgent).
+- Python 3.11 atau lebih baru; target produksi 3.12. `pyproject.toml` memakai `requires-python = ">=3.11"`. Jangan memakai fitur yang hanya ada di versi sangat baru tanpa tes.
 - Nama identifier dan komentar kode dalam bahasa Inggris. Dokumen di `docs/` dalam bahasa Indonesia.
 - Type hints untuk fungsi publik. Tool punya skema input/output yang eksplisit dan docstring singkat.
 - Router, command registry, policy, dan formatter harus bisa dites tanpa LLM dan tanpa WhatsApp (pytest).

@@ -10,11 +10,12 @@ from sanka.commands.registry import (
     CommandContext,
     CommandRegistry,
 )
+from sanka.commands.session import SessionControl, register_session_commands
 from sanka.policy import ALL_ROLES, COMMITTEE_ROLES
 
 
-def build_registry() -> CommandRegistry:
-    """Build the deterministic command registry for plan-1."""
+def build_registry(control: SessionControl) -> CommandRegistry:
+    """Build the deterministic command registry for plans 1-2."""
 
     registry = CommandRegistry()
 
@@ -33,6 +34,7 @@ def build_registry() -> CommandRegistry:
     registry.register(
         Command("status", "Status ringkas Sanka", COMMITTEE_ROLES, _status)
     )
+    register_session_commands(registry, control)
     return registry
 
 
