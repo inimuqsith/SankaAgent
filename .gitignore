@@ -1,0 +1,41 @@
+# Secrets and local config
+config/sanka.yaml
+config/secrets.env
+config/*.local.yaml
+.env
+*.pem
+*.key
+!config/*.example.*
+
+# WhatsApp / Google session material
+/data/
+/sessions/
+*.session
+service-account*.json
+
+# Runtime output
+/logs/
+/temp/
+/memory/
+*.log
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node (WhatsApp bridge)
+node_modules/
+npm-debug.log*
+
+# Upstream references: study only, never vendored
+/references/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

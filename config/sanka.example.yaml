@@ -1,0 +1,42 @@
+# SankaAgent configuration (non-secret only).
+# Copy to config/sanka.yaml. Never put API keys or tokens in this file.
+
+llm:
+  provider: opencode-go            # verified in plan-2
+  model: deepseek-v4.1-flash
+  base_url: ""                     # fill after plan-2 verification
+  api_key_env: OPENCODE_GO_API_KEY # secret lives in env / config/secrets.env
+  timeout_seconds: 120
+  max_turns: 40
+
+access:
+  # Phone numbers in international format, e.g. "62812..."
+  owner_numbers: []
+  committee_numbers: []
+  # WhatsApp group JIDs, e.g. "120363001234567890@g.us"
+  allowed_group_ids: []
+
+workspace:
+  # Path or env name for the service-account JSON. Keep the file outside the repo.
+  service_account_env: GOOGLE_SERVICE_ACCOUNT_JSON
+  read_allowlist: []
+  write_allowlist: []
+
+tools:
+  shell_enabled: false             # owner only; this toggle is the second gate
+  browser_enabled: false
+  browser_profile_dir: ""          # dedicated Chrome profile, never the owner's
+
+limits:
+  max_reply_chars: 3500
+  rate_limit_per_minute: 6
+  rate_limit_per_day: 200
+  outbound_per_minute: 20
+  session_idle_ttl_minutes: 60
+
+gateway:
+  bridge_url: "http://127.0.0.1:3000"
+  require_mention: true
+  dm_policy: open                  # open | pairing
+  group_policy: allowlist          # allowlist | open
+  send_read_receipts: false
