@@ -47,3 +47,10 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
 - Hasil tes: PNG valid 639x640; seluruh tautan aset README menunjuk file yang ada; belum ada tes kode karena belum ada kode.
 - Temuan: belum ada. Model sesi dan antrean async masih perlu ADR sebelum plan-1.
 - Berikutnya: owner meninjau README, ADR-0013/0014, dan sisa ADR-0011, lalu plan-1.
+
+## 2026-10-20 — Plan-1 disusun
+- Plan: plan-1
+- Dilakukan: menulis `docs/plan/plan-1.md` untuk fondasi inti (config, router, command registry, policy, formatter) yang bisa dites tanpa LLM dan WhatsApp. Mencatat dependency PyYAML dan pytest, serta menunda command yang butuh layanan/sesi.
+- Hasil tes: belum ada kode; belum dites.
+- Temuan: session dan antrean async tetap menjadi prasyarat plan-2.
+- Berikutnya: owner meninjau plan-1. Coding dimulai setelah status diubah menjadi `In Progress`.
