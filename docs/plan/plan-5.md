@@ -422,7 +422,7 @@ Semua dependency runtime masuk `pyproject.toml` dengan batas versi atas, dan dic
 
 ## Langkah
 
-1. Minta persetujuan owner untuk plan ini, ADR-0011 (`Accepted`), dan ADR baru soal akses Sheets (REST + `google-auth`, allowlist alias). Ubah status plan menjadi `In Progress`.
+1. Minta persetujuan owner untuk plan ini, ADR-0011 (`Accepted`), dan ADR baru soal akses Sheets (REST + `google-auth`, allowlist alias). Ubah status plan menjadi `In Progress`. Baca `docs/plan/WAVE-1.md`; Track B boleh dikerjakan paralel dengan plan-4 karena file-nya tidak bertabrakan.
 2. Verifikasi `google-auth`: buat token dari service account nyata di luar repo, pastikan adapter `Request` di atas `httpx` cukup, lalu catat hasilnya (termasuk fallback `requests` bila perlu) di ADR baru. Jangan simpan kredensial di repo.
 3. Tambahkan dependency ke `pyproject.toml`; perbarui `config.py` (`AllowlistedSheet`, `SearchConfig`, `DocsConfig`, `SheetsConfig`, `RecapDefinition`, `recaps`) beserta validasinya dan `config/sanka.example.yaml`.
 4. Implementasikan `sanka/tools/schema.py` (validator subset + penolakan keyword tak dikenal) dan tesnya.
@@ -515,7 +515,9 @@ Semua dependency runtime masuk `pyproject.toml` dengan batas versi atas, dan dic
 
 ## Catatan perubahan
 
-Belum ada.
+- `WAVE-1.md` menjalankan plan ini sebagai Track B paralel dengan plan-4 (Track A). Prasyarat "plan-4 `Done`" dilonggarkan menjadi "plan-4 `In Progress` dan kontrak `/v1` beku" karena file plan-5 tidak menyentuh bridge dan semua tesnya memakai fake. Status plan-5 tetap `In Progress` sampai smoke WhatsApp plan-4 berhasil; plan-5 tidak boleh `Done` lebih dulu.
+- Kontrak internal (`ToolRegistry`, `ToolResult`, `ToolError`, bentuk alias allowlist) dipin di `WAVE-1.md` agar empat subagent Python bisa bekerja paralel. Tidak mengubah kontrak di rancangan ini.
+- `test/fakes.py` dan fixture autouse pemblokir jaringan ditambahkan oleh parent Track B, bukan subagent, agar semua tes memakai double yang sama.
 
 ## Hasil
 

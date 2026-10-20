@@ -165,3 +165,28 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
   - `httpx` mencatat URL request pada level INFO; entrypoint menurunkannya ke WARNING agar log tetap metadata gateway.
   - Tes pada Python 3.12 belum dijalankan (mesin ini Python 3.15).
 - Berikutnya: plan-4 (bridge Node + Baileys) mengikuti ADR-0018. Belum dimulai.
+
+## 2026-10-21 — Wave 1 disiapkan
+- Plan: plan-4 (Draft; belum dieksekusi)
+- Dilakukan:
+  - Menulis `docs/plan/WAVE-1.md`: tujuan, prasyarat, pembagian 4 subagent + parent untuk bridge Node/Baileys, kontrak modul, API `test/helpers.js`, perintah verifikasi, dan smoke manual.
+  - Menautkan WAVE-1 dari langkah 1 `docs/plan/plan-4.md`.
+  - Mencatat bahwa Node.js/npm belum terpasang di workstation (perintah `node -v`/`npm -v` gagal), sehingga pemasangan Node 22 LTS menjadi langkah parent sebelum scaffold.
+- Hasil tes: belum ada kode bridge; tidak ada tes yang dijalankan.
+- Temuan:
+  - Plan-4 masih `Draft`; Wave 1 belum boleh dieksekusi sampai owner menyetujui plan-4 dan statusnya menjadi `In Progress`.
+  - Manual pairing/QR dan smoke WhatsApp nyata membutuhkan nomor Sanka + ponsel owner; tidak bisa dilakukan otomatis oleh agent.
+- Berikutnya: owner meninjau plan-4 + WAVE-1. Setelah disetujui, jalankan Wave 1 di session baru; plan-5 belum dimulai.
+
+## 2026-10-21 — Wave 1 diperluas menjadi dua track
+- Plan: plan-4 + plan-5 (keduanya masih Draft)
+- Dilakukan:
+  - Menulis ulang `docs/plan/WAVE-1.md` menjadi dua track paralel: Track A plan-4 bridge Node/Baileys dan Track B plan-5 tool baca/rekap. File kedua track tidak bertabrakan (`gateway/bridge/**` vs file Python).
+  - Menjelaskan kenapa plan-6/7/8 tidak ikut: plan-6 memakai registry/allowlist plan-5 dan menulis file yang sama; plan-7 menimpa prompt/runtime dan menunggu keputusan memori owner; plan-8 menerima semua plan.
+  - Mencatat override prasyarat plan-5 ("plan-4 Done" → "plan-4 In Progress + kontrak `/v1` beku"), dengan syarat plan-5 tidak boleh `Done` sebelum smoke WhatsApp plan-4 berhasil. Override dicatat di plan-5 Catatan perubahan.
+  - Menautkan WAVE-1 dari langkah 1 plan-5; menambahkan `tests/test_config.py` ke kepemilikan parent Track B.
+- Hasil tes: belum ada kode baru; tidak ada tes yang dijalankan.
+- Temuan:
+  - Track B tetap terblokir sampai ADR-0011 dan ADR akses Sheets `Accepted`, kredensial Google/Brave tersedia, dan Node 22 terpasang untuk Track A.
+  - Gate Track B tidak bisa dilewati dengan handler palsu; bila belum siap, jalankan Track A saja.
+- Berikutnya: owner menyetujui plan-4, plan-5, ADR-0011, dan ADR Sheets. Setelah itu jalankan Wave 1; plan-6 belum dimulai.

@@ -89,6 +89,7 @@ gateway/
       http.js              # createServer({token, outbound, status}) dengan node:http
       socket.js            # createSocketManager({config, deliverer, logger})
     test/
+      helpers.js           # fakes bersama: jam, logger, transport, HTTP test server
       config.test.js
       logger.test.js
       session.test.js
@@ -305,7 +306,7 @@ Yang sengaja tidak dipakai: `express` (cukup `node:http`, empat route, body limi
 
 ## Langkah
 
-1. Minta persetujuan owner atas plan ini; pastikan ADR kontrak `/v1` dari plan-3 sudah `Accepted`, lalu ubah status plan menjadi `In Progress`.
+1. Minta persetujuan owner atas plan ini; pastikan ADR kontrak `/v1` dari plan-3 sudah `Accepted`, lalu ubah status plan menjadi `In Progress`. Baca `docs/plan/WAVE-1.md` untuk pembagian subagent dan prasyarat Node.
 2. Buat `gateway/bridge/package.json` (`private: true`, `type: module`, `engines.node >=22.11 <25`), pasang tiga dependency dengan pin di atas, commit `package-lock.json`, dan catat versi Node (`node -v`) di Hasil.
 3. Implementasikan `config.js` + `config.test.js`: semua env, default, dan penolakan nilai tidak valid.
 4. Implementasikan `logger.js` + `logger.test.js`: level, redaksi `text`/`message`/`caption`/token, `maskJid()` (hash 6 heks + domain), dan bukti bahwa objek sesi/QR tidak bisa lolos ke output.
@@ -400,7 +401,8 @@ Manual, butuh ponsel owner dan nomor Sanka (dicatat hasilnya di Hasil):
 
 ## Catatan perubahan
 
-Belum ada.
+- `test/helpers.js` ditambahkan sebagai double bersama (`createFakeClock`, `createFakeLogger`, `createFakeTransport`, `jsonResponse`, `startTestServer`) agar empat subagent tidak menulis fake yang berbeda. Tidak mengubah kontrak HTTP atau perilaku.
+- Detail internal factory (`createInboundDeliverer`, `createOutbound`, `createServer`, `createSocketManager`) dipin di `WAVE-1.md` agar modul bisa ditulis paralel. Semua field HTTP dan env name tetap persis seperti rancangan di atas.
 
 ## Hasil
 
