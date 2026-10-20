@@ -42,7 +42,7 @@ Gateway hanya menangani I/O WhatsApp. Router memisahkan command dari percakapan 
 
 ## Status
 
-Tahap arsitektur. Belum ada kode aplikasi. Rencana kerja ada di [`docs/plan/`](docs/plan/).
+Tahap fondasi. Plan-1 (config, router, policy, command dasar, formatter) sudah diimplementasikan dan dites tanpa LLM/WhatsApp. Bot WhatsApp dan integrasi LLM belum ada. Rencana kerja ada di [`docs/plan/`](docs/plan/).
 
 Konfigurasi contoh: [`config/sanka.example.yaml`](config/sanka.example.yaml).
 

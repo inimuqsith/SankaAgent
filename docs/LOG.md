@@ -61,3 +61,18 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
 - Hasil tes: belum ada kode; belum dites.
 - Temuan: dua runtime hanya dibutuhkan saat gateway aktif; inti tetap bisa dites dengan Python saja.
 - Berikutnya: owner menyetujui ADR-0015 dan plan-1 sebelum coding.
+
+## 2026-10-20 — Plan-1 fondasi inti diimplementasikan
+- Plan: plan-1 (Done)
+- Dilakukan:
+  - Menambahkan `pyproject.toml` (PyYAML runtime, pytest dev, target Python 3.11–3.13) dan package `sanka/`.
+  - Implementasi `models.py`, `config.py` (validasi fail-fast dengan nama key), `router.py` (COMMAND/AGENT/IGNORE, mention grup), `policy.py` (peran, matriks tool, rate limit in-memory), `commands/registry.py`, `commands/basic.py` (`/ping`, `/help`, `/whoami`, `/status`), dan `formatter.py` (buang blok internal, potong teks, pecah rekap).
+  - Menulis 59 tes di `tests/` untuk config, router, policy, command, dan formatter.
+  - Memperbarui `docs/COMMANDS.md` (status implementasi), `README.md` (status proyek), dan plan-1 (Catatan perubahan + Hasil).
+- Hasil tes: `pytest -q` lulus 59 tes (pytest 9.1.1) di Python 3.15; `python -m compileall sanka` lulus. Smoke manual dengan `config/sanka.example.yaml`: routing grup/DM, `/help` per peran, dan rate limit berjalan sesuai rencana. Tidak ada import ke LLM, WhatsApp, Google, Baileys, atau GenericAgent.
+- Temuan:
+  - Mesin ini hanya punya Python 3.15, sedangkan target ADR-0015/`pyproject.toml` adalah 3.11–3.13. Kode menghindari fitur 3.14+, tetapi tes pada 3.12 belum dijalankan.
+  - `config/sanka.yaml` belum dibuat; `config/sanka.example.yaml` masih berisi daftar owner/panitia kosong.
+  - Rate limit memakai jendela bergulir (60 detik/24 jam), bukan hari kalender, dan hilang saat restart.
+  - ADR-0015 masih `Proposed`; implementasi mengikuti plan-1. Persetujuan owner masih diperlukan.
+- Berikutnya: owner meninjau diff plan-1 dan mengisi `config/sanka.yaml`. Plan-2 memerlukan ADR session/antrean sebelum adapter OpenCode Go.

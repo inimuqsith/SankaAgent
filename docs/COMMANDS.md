@@ -17,6 +17,10 @@ Command diawali `/`, diproses deterministik tanpa LLM. Daftar di bawah adalah us
 | `/skill rm <nama>` | Hapus skill | owner |
 | `/verbose on\|off` | Tampilkan jejak tool (debug) | owner |
 
+## Status implementasi
+
+Plan-1 sudah mengimplementasikan `/ping`, `/help`, `/whoami`, dan `/status` di `sanka/commands/basic.py` (dites tanpa LLM dan WhatsApp). Command lain di tabel masih rencana.
+
 ## Aturan
 - Command tidak dikenal: balas singkat dengan petunjuk `/help`.
 - Setiap handler dites tanpa LLM dan tanpa WhatsApp.

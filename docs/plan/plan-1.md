@@ -1,6 +1,6 @@
 # Plan 1 — Fondasi inti: config, router, command, policy, formatter
 
-- Status: Draft
+- Status: Done
 - Tanggal: 2026-10-20
 - Pemilik: Abdul Muqsith
 
@@ -154,8 +154,17 @@ Keduanya dicatat di plan ini sesuai aturan repo.
 
 ## Catatan perubahan
 
-Belum ada.
+- 2026-10-20: Owner meminta plan-1 dikerjakan lewat sesi coding; status diubah ke `In Progress` lalu `Done`.
+- Rate limit memakai jendela bergulir 60 detik dan 86.400 detik (bukan batas hari kalender). Alasannya lebih sederhana dan tidak butuh zona waktu.
+- `CommandRegistry.dispatch` menerima bentuk `/command@bot-id` yang biasa ditulis WhatsApp di grup.
+- Lingkungan pengembangan hanya menyediakan Python 3.15, sedangkan `pyproject.toml` dan ADR-0015 menargetkan 3.11–3.13. Tes dijalankan di 3.15; kode tidak memakai fitur khusus 3.14/3.15. Verifikasi ulang di 3.12 masih perlu saat runtime target tersedia.
 
 ## Hasil
 
-Belum dikerjakan.
+Selesai 2026-10-20.
+
+- File baru: `pyproject.toml`, `sanka/__init__.py`, `sanka/models.py`, `sanka/config.py`, `sanka/router.py`, `sanka/policy.py`, `sanka/formatter.py`, `sanka/commands/__init__.py`, `sanka/commands/registry.py`, `sanka/commands/basic.py`, dan lima file tes.
+- Tes: `pytest -q` lulus 59 tes. `python -m compileall sanka` lulus tanpa error.
+- Smoke test manual: `config/sanka.example.yaml` termuat; `/help` menyaring command sesuai peran; pesan grup `/help` menjadi `COMMAND`; DM non-command menjadi `AGENT`; rate limit menolak permintaan ke-7 pada batas 6/menit.
+- Tidak ada import ke LLM, WhatsApp, Google, Baileys, atau GenericAgent di package `sanka`.
+- Catatan: saat entri ini ditulis, `config/sanka.yaml` belum dibuat (hanya file contoh), jadi pemakaian nyata menunggu owner menyalin contoh dan mengisi nomor owner/panitia.
