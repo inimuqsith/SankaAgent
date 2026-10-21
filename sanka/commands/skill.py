@@ -12,11 +12,11 @@ async def _skill(ctx: CommandContext) -> str:
         return "error: skill tidak tersedia"
     raw = ctx.args.strip()
     if not raw:
-        return store.index() or "Belum ada skill lokal."
+        return store.index() or "📚 Belum ada skill lokal."
     action, _, rest = raw.partition(" ")
     action = action.lower()
     if action in {"list", "daftar"}:
-        return store.index() or "Belum ada skill lokal."
+        return store.index() or "📚 Belum ada skill lokal."
     try:
         if action in {"read", "file"}:
             name, _, filename = rest.partition(" ")
@@ -31,7 +31,7 @@ async def _skill(ctx: CommandContext) -> str:
 
 COMMAND = Handler(
     name="skill",
-    description="Daftar atau muat prosedur lokal (SKILL.md).",
+    description="📚 Daftar atau muat prosedur lokal (SKILL.md).",
     fn=_skill,
     aliases=("skills", "sop"),
     usage="[list|view|read] [nama] [file]",

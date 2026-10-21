@@ -146,12 +146,12 @@ async def backfill(ctx: CommandContext) -> str:
     if app.backfill is not None and not app.backfill.done():
         return "Backfill masih berjalan."
     app.backfill = asyncio.create_task(_run(ctx))
-    return "Menyiapkan perangkat sementara. QR akan dikirim di DM ini; scan dari WhatsApp > Perangkat tertaut."
+    return "🗂️ Menyiapkan perangkat sementara. QR akan dikirim di DM ini; scan dari WhatsApp > Perangkat tertaut."
 
 
 COMMAND = Handler(
     name="backfill",
-    description="Tarik riwayat lama lewat perangkat sementara (scan QR sekali).",
+    description="🗂️ Tarik riwayat lama lewat perangkat sementara (scan QR sekali).",
     fn=backfill,
     defaults={"owner": True, "member": False},
 )

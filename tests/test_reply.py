@@ -97,7 +97,7 @@ def test_dm_reply_quotes_event_wrapper() -> None:
     assert context.stanzaID == "3EB0DM"
     assert context.participant == "628999999999@s.whatsapp.net"
     assert context.quotedMessage.conversation == "/tidak-ada"
-    assert reply.extendedTextMessage.text == "Command /tidak-ada tidak dikenal."
+    assert reply.extendedTextMessage.text == "🤔 Command /tidak-ada tidak dikenal. Ketik /help untuk daftar command."
 
 
 def test_group_reply_targets_group_not_sender() -> None:

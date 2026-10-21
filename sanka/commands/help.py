@@ -1,4 +1,4 @@
-"""Command /help: daftar command dan tool hasil baca metadata registry."""
+"""Command /help: kartu command ala WhatsApp dari metadata registry."""
 
 from __future__ import annotations
 
@@ -7,21 +7,21 @@ from . import CommandContext
 
 
 def _aliases(handler: Handler) -> str:
-    return f" ({', '.join('/' + alias for alias in handler.aliases)})" if handler.aliases else ""
+    return f" ({', '.join(handler.aliases)})" if handler.aliases else ""
 
 
 async def help_command(ctx: CommandContext) -> str:
-    lines = [f"Role: {ctx.role.name}"]
+    lines = ["🧭 *Command Sanka*"]
     for handler in ctx.commands:
         usage = f" {handler.usage}" if handler.usage else ""
         lines.append(f"/{handler.name}{usage}{_aliases(handler)} - {handler.description}")
-    lines.append(f"Tool: {', '.join(handler.name for handler in ctx.tools) or '(tidak ada)'}")
+    lines.append("Ketik command di atas, atau ngobrol biasa tanpa slash.")
     return "\n".join(lines)
 
 
 COMMAND = Handler(
     name="help",
-    description="Daftar command dan tool untuk role ini.",
+    description="🧭 Daftar command sesuai peranmu.",
     fn=help_command,
     aliases=("h", "bantuan"),
     defaults={"owner": True, "member": True},

@@ -10,7 +10,7 @@ from . import CommandContext
 async def _kirim(ctx: CommandContext) -> str:
     raw = ctx.args.strip()
     if not raw:
-        return "Gunakan /kirim <path> [caption]."
+        return "📤 Gunakan /kirim <path> [caption]."
     target, _, caption = raw.partition(" ")
     try:
         path = resolve_path(ctx.app.config, target)
@@ -21,7 +21,7 @@ async def _kirim(ctx: CommandContext) -> str:
 
 COMMAND = Handler(
     name="kirim",
-    description="Kirim file/foto/stiker dari workspace ke chat ini.",
+    description="📤 Kirim file/foto/stiker dari workspace ke chat ini.",
     fn=_kirim,
     aliases=("sendfile", "file"),
     usage="<path> [caption]",

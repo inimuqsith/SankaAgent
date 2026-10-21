@@ -26,7 +26,7 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sand
 
 | Bagian | Isi |
 | --- | --- |
-| `persona` | system prompt dasar |
+| `persona` | system prompt dasar: soul/karakter Sanka |
 | `llm` | `base_url`, `model`, `api_key_env`, `max_turns`, `timeout_seconds` |
 | `workspace` | direktori kerja tool `read`/`write`/`shell`/`sandbox`; `read`/`write` menolak path di luarnya |
 | `whatsapp` | `session_db`, `history_db`, `require_mention`, `bot_name` |

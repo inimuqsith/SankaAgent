@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from neonize.proto.Neonize_pb2 import Message
 from neonize.utils import extract_text
 
+from sanka.commands import REGISTRY as COMMANDS
+from sanka.commands.help import help_command
 from sanka.config import (
     Config,
     LLMConfig,
@@ -142,6 +146,16 @@ def test_format_reply() -> None:
     assert len(chunks) == 2
     assert all(len(chunk) <= 3500 for chunk in chunks)
     assert format_reply("   ") == []
+
+
+def test_help_renders_whatsapp_command_card() -> None:
+    ctx = SimpleNamespace(commands=(COMMANDS.get("help"), COMMANDS.get("ping")))
+    lines = asyncio.run(help_command(ctx)).splitlines()
+
+    assert lines[0] == "🧭 *Command Sanka*"
+    assert "/ping (p) - 🏓 Cek Sanka hidup." in lines
+    assert lines[-1] == "Ketik command di atas, atau ngobrol biasa tanpa slash."
+    assert not any(line.startswith("Tool:") for line in lines)
 
 
 def test_load_config_resolves_paths_from_config_dir(tmp_path: Path, monkeypatch) -> None:

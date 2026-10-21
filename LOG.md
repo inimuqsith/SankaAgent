@@ -391,3 +391,20 @@
   konfigurasi atau pembacaan aktif.
 - Verifikasi: `pytest -q` 70 lulus; selftest OK; bot live di-restart 03:35:02 (PID 111844) dan
   tersambung ke WhatsApp.
+
+## 2026-10-22 (soul + kartu command)
+
+- `config.yaml` + `config.example.yaml`: `persona` diisi ulang dengan soul Sanka dari SankaAgentOld
+  (Si Kecil Penjelajah Sanankerto): identitas, gaya bicara, format WhatsApp, dan aturan jawaban.
+  Tetap satu sumber di config, tanpa `SOUL.md` baru (AGENTS: hanya empat docs).
+- `sanka/commands/help.py`: `/help` kembali menjadi kartu WhatsApp `🧭 *Command Sanka*`, berisi
+  command sesuai izin role, alias, usage, dan penutup "ngobrol biasa tanpa slash"; baris role/tool
+  dihapus. Deskripsi command memakai emoji.
+- `sanka/commands/{ping,reset,kirim,memori,skill,backfill}.py`: balasan command memakai gaya lama
+  (`🏓 Pong! Sanka hidup dan siap.`, `🧹 Siap! ...`, `🧠`/`🔎`/`✅`/`📚`/`📤`/`🗂️`); error serius
+  tetap tanpa emoji. Daftar memori memakai `•`.
+- `sanka/wa.py`: command tak dikenal memberi petunjuk `/help`; command terlarang memakai `🔒`.
+- Uji: `test_help_renders_whatsapp_command_card` mengunci header/footer dan tidak adanya baris tool;
+  ekspektasi balasan command tak dikenal diperbarui.
+- Verifikasi: `pytest -q` 71 lulus; `python -m sanka selftest` SELFTEST OK; persona nyata 2354 char
+  masuk system prompt; bot live di-restart (PID 113710) dan tersambung ke WhatsApp.
