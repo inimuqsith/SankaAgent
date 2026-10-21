@@ -298,3 +298,18 @@
   migrasi DB lama, tool, parse id (`"7"` diterima, `true` ditolak), refleksi + fallback. Verifikasi:
   `pytest -q` 61 lulus; `python -m sanka selftest` SELFTEST OK; DB asli `~/.sanka/memory.db` sudah
   punya kolom `superseded_by`.
+
+## 2026-10-22 (jalur kirim stiker/foto/dokumen)
+
+- `sanka/wa.py`: `send_kind()` membaca header file, bukan nama. WebP dengan dimensi ≤512 px dan
+  penanda alpha/animasi dikirim lewat `send_sticker`; JPEG/PNG dan WebP lain lewat `send_image`;
+  sisanya tetap `send_document`. Parser menangani VP8X, VP8 lossy, dan VP8L tanpa dependensi baru.
+- Caption stiker tidak didukung WhatsApp, jadi dikirim sebagai pesan teks setelah stiker; entri
+  konteks tetap satu `(stiker terkirim: ...)`. Hasil tool kini menyebut jenisnya (`stiker`/`foto`/
+  `file terkirim`) supaya model tahu apa yang benar-benar terkirim.
+- Deskripsi tool `send`, `/kirim`, README, dan TASK diperbarui. Uji kontrak baru memakai header
+  WebP sintetis: stiker 342 px, WebP 800×600 sebagai foto, JPEG sebagai foto, `.bin` sebagai dokumen.
+- Verifikasi: `pytest -q` 63 lulus; `python -m sanka selftest` SELFTEST OK. Smoke file asli:
+  `selfie-topi-hitam.webp` (342×342, animasi, 242 KB) terdeteksi stiker dan konversi Neonize
+  menghasilkan WebP 512×512 animasi 411 KB (<500 KB); stiker statis 512×512 135 KB juga terdeteksi
+  stiker.

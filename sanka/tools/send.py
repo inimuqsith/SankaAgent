@@ -19,14 +19,20 @@ async def _send(args: dict, ctx: ToolContext) -> str:
 TOOL = Handler(
     name="send",
     family="write",
-    description="Kirim file dari workspace ke chat ini sebagai dokumen WhatsApp.",
+    description=(
+        "Kirim file dari workspace ke chat ini. Stiker WebP (≤512 px, transparan/animasi) "
+        "dikirim sebagai stiker, foto JPEG/PNG/WebP sebagai gambar, lainnya sebagai dokumen."
+    ),
     fn=_send,
     aliases=("kirim", "file"),
     parameters={
         "type": "object",
         "properties": {
             "path": {"type": "string", "description": "Path file di dalam workspace."},
-            "caption": {"type": "string", "description": "Keterangan singkat (opsional)."},
+            "caption": {
+                "type": "string",
+                "description": "Keterangan singkat (opsional); pada stiker dikirim sebagai pesan teks terpisah.",
+            },
         },
         "required": ["path"],
         "additionalProperties": False,

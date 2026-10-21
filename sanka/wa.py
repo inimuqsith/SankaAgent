@@ -51,10 +51,48 @@ log = logging.getLogger(__name__)
 
 TYPING_REFRESH = 8
 MAX_SEND_BYTES = 100 * 1024 * 1024
+STICKER_MAX_SIDE = 512
+PHOTO_MAGIC = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
 REFLECT_MIN_CHARS = 8
 REFLECT_MESSAGES = 8
 REFLECT_CONTEXT_CHARS = 3000
 SENSITIVE = re.compile(r"(api[\s_-]?key|password|passwd|token|secret|otp|kredensial)", re.IGNORECASE)
+
+
+def _webp_shape(head: bytes) -> tuple[int, int, bool] | None:
+    """(lebar, tinggi, bertanda stiker) dari header WebP; None bila bukan WebP yang dikenal."""
+    if len(head) < 30 or head[:4] != b"RIFF" or head[8:12] != b"WEBP":
+        return None
+    chunk = head[12:16]
+    if chunk == b"VP8X":  # extended: flag alpha (0x10) / animasi (0x02) + kanvas 24-bit
+        flags = head[20]
+        width = int.from_bytes(head[24:27], "little") + 1
+        height = int.from_bytes(head[27:30], "little") + 1
+        return width, height, bool(flags & 0x12)
+    if chunk == b"VP8 ":  # lossy tanpa alpha
+        width = int.from_bytes(head[26:28], "little") & 0x3FFF
+        height = int.from_bytes(head[28:30], "little") & 0x3FFF
+        return width, height, False
+    if chunk == b"VP8L":  # lossless: 14 bit lebar/tinggi + bit alpha
+        bits = int.from_bytes(head[21:25], "little")
+        return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1, bool(bits >> 28)
+    return None
+
+
+def send_kind(path: Path) -> str:
+    """Klasifikasi isi file untuk jalur kirim: `sticker`, `photo`, atau `file` (dokumen)."""
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(30)
+    except OSError:
+        return "file"
+    if head.startswith(PHOTO_MAGIC):
+        return "photo"
+    shape = _webp_shape(head)
+    if shape is None:
+        return "file"
+    width, height, marked = shape
+    return "sticker" if marked and max(width, height) <= STICKER_MAX_SIDE else "photo"
 
 
 def _reflect_context(sessions: Sessions, chat_id: str, current: ChatMessage) -> str:
@@ -142,7 +180,7 @@ class App:
             log.info("refleksi memori: %d entri disimpan chat=%s", saved, chat_id)
 
     async def send_file(self, chat_id: str, path: Path, caption: str = "") -> str:
-        """Kirim file workspace ke chat; sukses dicatat ke jendela konteks."""
+        """Kirim file workspace ke chat; stiker/foto/dokumen dipilih dari isi file."""
         if self.client is None:
             return "error: client WhatsApp tidak tersedia"
         try:
@@ -156,19 +194,29 @@ class App:
             return f"error: {type(exc).__name__}: {exc}"
         if size > MAX_SEND_BYTES:
             return f"error: file terlalu besar ({human_size(size)}; maksimal {human_size(MAX_SEND_BYTES)})"
+        kind = send_kind(target)
         try:
-            sent = await self.client.send_document(
-                _jid(chat_id),
-                str(target),
-                caption=caption or None,
-                filename=target.name,
-            )
+            jid = _jid(chat_id)
+            if kind == "sticker":  # stiker tidak punya caption; kirim teksnya terpisah
+                sent = await self.client.send_sticker(jid, str(target))
+                if caption:
+                    await self.client.send_message(jid, caption)
+            elif kind == "photo":
+                sent = await self.client.send_image(jid, str(target), caption=caption or None)
+            else:
+                sent = await self.client.send_document(
+                    jid,
+                    str(target),
+                    caption=caption or None,
+                    filename=target.name,
+                )
         except SendMessageError as exc:
             log.exception("gagal mengirim file %s ke %s", target, chat_id)
             return f"error: gagal mengirim file: {exc}"
         except Exception as exc:  # kegagalan transport tidak boleh mematikan turn
             log.exception("gagal mengirim file %s ke %s", target, chat_id)
             return f"error: gagal mengirim file: {type(exc).__name__}: {exc}"
+        noun = {"sticker": "stiker", "photo": "foto"}.get(kind, "file")
         self.sessions.append(
             chat_id,
             ChatMessage(
@@ -176,11 +224,11 @@ class App:
                 sender_name=self.config.whatsapp.bot_name,
                 sender_id="",
                 when=datetime.now(),
-                text=f"(file terkirim: {target.name}{f' — {caption}' if caption else ''})",
+                text=f"({noun} terkirim: {target.name}{f' — {caption}' if caption else ''})",
                 outgoing=True,
             ),
         )
-        return f"ok: file terkirim: {target.name} ({human_size(size)})"
+        return f"ok: {noun} terkirim: {target.name} ({human_size(size)})"
 
 
 def _jid(chat_id: str):

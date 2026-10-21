@@ -73,6 +73,73 @@ def test_app_send_file_records_outgoing_message(tmp_path: Path) -> None:
     assert "di luar workspace" in asyncio.run(app.send_file("123@g.us", Path("/etc/passwd")))
 
 
+def _webp(width: int, height: int, flags: int = 0x1A) -> bytes:
+    """Header VP8X minimal: cukup untuk klasifikasi, bukan webp utuh."""
+    head = bytearray(30)
+    head[0:4] = b"RIFF"
+    head[4:8] = (22).to_bytes(4, "little")
+    head[8:12] = b"WEBP"
+    head[12:16] = b"VP8X"
+    head[16:20] = (10).to_bytes(4, "little")
+    head[20] = flags
+    head[24:27] = (width - 1).to_bytes(3, "little")
+    head[27:30] = (height - 1).to_bytes(3, "little")
+    return bytes(head)
+
+
+def test_app_send_file_routes_by_content(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    (tmp_path / "stiker.webp").write_bytes(_webp(342, 342))
+    (tmp_path / "foto.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"0" * 26)
+    (tmp_path / "papan.webp").write_bytes(_webp(800, 600, 0x18))
+    (tmp_path / "catatan.bin").write_bytes(b"hello")
+    client = NewAClient.__new__(NewAClient)
+    calls: list[tuple] = []
+
+    async def send_sticker(to, file):
+        calls.append(("sticker", to, file))
+        return SimpleNamespace(ID="S1")
+
+    async def send_image(to, file, caption=None):
+        calls.append(("image", to, file, caption))
+        return SimpleNamespace(ID="I1")
+
+    async def send_document(to, file, caption=None, filename=None):
+        calls.append(("document", to, file, caption, filename))
+        return SimpleNamespace(ID="D1")
+
+    async def send_message(to, message):
+        calls.append(("text", to, message))
+        return SimpleNamespace(ID="T1")
+
+    client.send_sticker = send_sticker
+    client.send_image = send_image
+    client.send_document = send_document
+    client.send_message = send_message
+    app = App(config, None, None, Sessions())
+    app.client = client
+
+    result = asyncio.run(app.send_file("123@g.us", tmp_path / "stiker.webp", "stiker keren"))
+    assert result == "ok: stiker terkirim: stiker.webp (30 B)"
+    assert [call[0] for call in calls] == ["sticker", "text"]
+    assert calls[0][2] == str(tmp_path / "stiker.webp")
+    assert calls[1][2] == "stiker keren"
+    assert app.sessions.get("123@g.us")[-1].text == "(stiker terkirim: stiker.webp — stiker keren)"
+
+    assert asyncio.run(app.send_file("123@g.us", tmp_path / "foto.jpg")) == "ok: foto terkirim: foto.jpg (30 B)"
+    assert calls[-1][0] == "image" and calls[-1][2] == str(tmp_path / "foto.jpg") and calls[-1][3] is None
+
+    assert asyncio.run(app.send_file("123@g.us", tmp_path / "papan.webp")) == (
+        "ok: foto terkirim: papan.webp (30 B)"
+    )
+    assert calls[-1][0] == "image"
+
+    assert asyncio.run(app.send_file("123@g.us", tmp_path / "catatan.bin", "lampiran")) == (
+        "ok: file terkirim: catatan.bin (5 B)"
+    )
+    assert calls[-1][0] == "document" and calls[-1][4] == "catatan.bin"
+
+
 def test_kirim_command_parses_path_and_caption(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     path = tmp_path / "laporan.txt"

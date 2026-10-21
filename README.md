@@ -164,9 +164,12 @@ dengan log. Command `/skill` menampilkan indeks, `/skill <nama>` memuat isinyaâ€
 memakai/mengubah skill ada pada model, bukan command user.
 
 **Kirim file.** Tool `send` dan command `/kirim <path> [caption]` mengirim file di dalam workspace
-sebagai dokumen WhatsApp ke chat aktif (maksimal 100 MB). File yang terkirim dicatat di jendela
-konteks sebagai `(file terkirim: ...)`, jadi percakapan berikutnya tahu hasil kerja sudah diantar.
-Owner dan member bisa memakainya; role yang tidak diberi `send`/`command kirim` tidak bisa.
+ke chat aktif (maksimal 100 MB). Jalur kirim dipilih dari isi file, bukan namanya: WebP berukuran
+stiker (â‰¤512 px, transparan/animasi) dikirim sebagai stiker, JPEG/PNG/WebP lain sebagai foto,
+sisanya sebagai dokumen. Stiker tidak punya caption, jadi caption dikirim sebagai pesan teks
+terpisah. File yang terkirim dicatat di jendela konteks sebagai `(stiker|foto|file terkirim: ...)`,
+jadi percakapan berikutnya tahu hasil kerja sudah diantar. Owner dan member bisa memakainya; role
+yang tidak diberi `send`/`command kirim` tidak bisa.
 
 ## Menambah command atau tool
 

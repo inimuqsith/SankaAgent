@@ -21,7 +21,7 @@ async def _kirim(ctx: CommandContext) -> str:
 
 COMMAND = Handler(
     name="kirim",
-    description="Kirim file dari workspace ke chat ini.",
+    description="Kirim file/foto/stiker dari workspace ke chat ini.",
     fn=_kirim,
     aliases=("sendfile", "file"),
     usage="<path> [caption]",

@@ -38,8 +38,9 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   menerima blok memori aktif dan memakai jalur yang sama; supersede invalid jatuh ke add biasa. DB
   lama dimigrasi otomatis saat start.
 - [x] Pengiriman file hasil kerja: tool `send` dan command `/kirim` (owner + member/panitia)
-  mengirim dokumen dari workspace ke chat aktif lewat Neonize, dengan batas ukuran dan pencatatan
-  ke jendela konteks.
+  mengirim dari workspace ke chat aktif lewat Neonize, dengan batas ukuran dan pencatatan ke
+  jendela konteks. Jalur dipilih dari isi file: stiker WebP ≤512 px (transparan/animasi) sebagai
+  stiker, JPEG/PNG/WebP lain sebagai foto, sisanya dokumen; caption stiker dikirim sebagai teks.
 
 ## Nanti
 
