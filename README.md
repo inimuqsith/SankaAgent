@@ -280,8 +280,8 @@ Dokploy (Application, bukan Compose):
 2. Aktifkan **Auto Deploy** agar setiap push ke `main` memicu deploy ulang.
 3. Isi environment `OPENCODE_GO_API_KEY`; jangan taruh di repo.
 4. Bind mount `/opt/sanka/.sanka` -> `/app/.sanka` dan file `/opt/sanka/config.yaml` ->
-   `/app/config.yaml`. Path relatif di config resolve dari `/opt/sanka`, jadi data tetap di
-   `/opt/sanka/.sanka`.
+   `/app/config.yaml`. Path relatif di config resolve dari folder config di container (`/app`), jadi
+   `.sanka/...` menjadi `/app/.sanka` dan dipetakan ke `/opt/sanka/.sanka`.
 5. Replicas **1**, update order **stop-first**, tanpa domain/port: bot hanya membuka koneksi keluar.
 
 Cutover data:
