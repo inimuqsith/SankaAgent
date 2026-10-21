@@ -39,9 +39,12 @@ class RoleConfig:
 
 @dataclass(frozen=True)
 class SandboxConfig:
-    runtime: str = "podman"
+    runtime: str = ""  # kosong = autodetect podman lalu docker
     image: str = "docker.io/library/python:3.12-slim"
     timeout_seconds: float = 120.0
+    network: str = "none"  # none | bridge | nama network lain
+    host_workspace: Path | None = None  # source mount bila daemon ada di host
+    env: tuple[str, ...] = ()  # variabel tambahan yang boleh masuk container
 
 
 @dataclass(frozen=True)
@@ -242,6 +245,12 @@ def load_config(path: str | None = None) -> Config:
     skills_dir = _reject_legacy(
         _expand(str(skills_raw.get("dir") or ".sanka/skills"), base), "skills.dir"
     )
+    host_ws_raw = sandbox_raw.get("host_workspace")
+    host_workspace = _expand(str(host_ws_raw), base) if host_ws_raw else None
+    # Path host tidak selalu terlihat dari container (daemon di host), jadi baru divalidasi
+    # sebagai direktori saat tool dipanggil. Di sini cukup tolak path yang jelas salah.
+    if host_workspace is not None and host_workspace.exists() and not host_workspace.is_dir():
+        raise _fail(f"config: sandbox.host_workspace '{host_workspace}' bukan direktori")
     secure_db(session_db)
     secure_db(history_db)
 
@@ -264,9 +273,12 @@ def load_config(path: str | None = None) -> Config:
         roles=roles,
         default_role=default_role,
         sandbox=SandboxConfig(
-            runtime=str(sandbox_raw.get("runtime") or "podman"),
+            runtime=str(sandbox_raw.get("runtime") or "").strip(),
             image=str(sandbox_raw.get("image") or "docker.io/library/python:3.12-slim"),
             timeout_seconds=float(sandbox_raw.get("timeout_seconds") or 120),
+            network=str(sandbox_raw.get("network") or "none").strip(),
+            host_workspace=host_workspace,
+            env=_str_tuple(sandbox_raw.get("env")),
         ),
         mcp=_mcp_servers(raw.get("mcp")),
         web_search=WebSearchConfig(

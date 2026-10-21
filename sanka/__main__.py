@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import shutil
 import sys
 
 from neonize.aioze.client import NewAClient
@@ -29,6 +28,7 @@ try:
     from .permissions import commands_for, tool_patterns, tools_for
     from .skills import SkillStore
     from .tools import REGISTRY, ToolContext, execute
+    from .tools.sandbox import resolve_runtime
     from .wa import App, Sessions, bot_digits, handle_message
 except RegistryError as exc:  # plugin invalid menggagalkan start dengan satu pesan
     sys.exit(f"sanka: {exc}")
@@ -88,8 +88,9 @@ async def selftest(config: Config) -> int:
         passed = "shell-ok" in shell
         results.append(_report("shell", "PASS" if passed else "FAIL", "" if passed else shell[:120]))
 
-        if shutil.which(config.sandbox.runtime) is None:
-            _report("sandbox", "SKIP", f"{config.sandbox.runtime} tidak ada")
+        runtime = resolve_runtime(config.sandbox)
+        if runtime is None:
+            _report("sandbox", "SKIP", f"{config.sandbox.runtime or 'podman/docker'} tidak ada")
         else:
             box = await execute(
                 specs,

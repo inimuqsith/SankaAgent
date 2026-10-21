@@ -1,5 +1,23 @@
 # LOG
 
+## 2026-10-22 (sandbox podman/docker)
+
+- Tool `sandbox` mendukung dua runtime: `podman` (flag `--userns=keep-id`, mount `:Z`) dan
+  `docker` (tanpa keduanya). `sandbox.runtime` kosong = autodetect podman lalu docker; bila tidak
+  ada, tool mengembalikan error berisi cara memperbaiki, bukan exception.
+- `sandbox.host_workspace` (opsional) jadi source bind mount saat daemon ada di host (Docker/
+  Dokploy): path `/app/...` tidak ada di host. Path ini tidak divalidasi `is_dir()` dari container
+  karena namespace berbeda; nilai yang terlihat sebagai file tetap ditolak saat start.
+- Isolasi baru: `--rm`, `--network none` (override `sandbox.network`), rootfs read-only + tmpfs
+  `/tmp`, output 16 KB terakhir ditandai `(dipotong)`, timeout per panggilan tetap membunuh proses.
+  Env container hanya `TZ`/`LANG` (+ `sandbox.env`); env CLI minimal, API key tidak ikut.
+- `Dockerfile`: Docker CLI statis 27.5.1 di `/usr/local/bin/docker` (curl dipasang lalu dibuang).
+  Podman tidak masuk image.
+- Verifikasi: `pytest -q` 84 lulus; `python -m sanka selftest` PASS termasuk sandbox Podman; smoke
+  langsung Podman: `/work` ter-mount, uid 1000, tmpfs writable, tulis workspace ok; resep unduh
+  Docker CLI diuji di `python:3.12-slim` (Docker version 27.5.1). Docker daemon tidak ada di mesin
+  dev, jadi jalur docker diuji lewat argv/mock.
+
 ## 2026-10-22 (deploy + arsip)
 
 - `Dockerfile` produksi: `python:3.12-slim`, ffmpeg + libmagic + tzdata, install package, user uid

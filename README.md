@@ -18,7 +18,8 @@ cp .env.example .env            # isi OPENCODE_GO_API_KEY
 cp config.example.yaml config.yaml
 ```
 
-Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sandbox`.
+Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Tool `sandbox` memakai Podman di host
+atau Docker CLI di container (lihat [Sandbox](#sandbox)).
 
 ## Konfigurasi
 
@@ -32,7 +33,7 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sand
 | `whatsapp` | `session_db`, `history_db`, `require_mention`, `bot_name` |
 | `roles` | `users` (nomor), `tools`, `commands`; pola glob (`*`, `mcp__*`) |
 | `default_role` | role untuk nomor tak dikenal |
-| `sandbox` | `runtime` (podman), `image`, `timeout_seconds` |
+| `sandbox` | `runtime` (`podman`/`docker`/kosong = autodetect), `image`, `timeout_seconds`, `network`, `host_workspace`, `env` |
 | `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
 | `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
@@ -63,6 +64,42 @@ usage, alias, dan izinnya untuk role pengirim.
 
 Kalau WhatsApp mengalamatkan pengirim lewat LID (`...@lid`), cocokkan role dengan digit LID itu,
 bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
+
+## Sandbox
+
+`sandbox` menjalankan satu perintah shell di container terpisah dengan workspace di `/work`
+(alias `container`, default hanya owner). Runtime dipilih dari `sandbox.runtime`:
+
+- `podman` — host/laptop; mount memakai `:Z` (SELinux) dan `--userns=keep-id` agar file di
+  workspace tetap milik uid pemanggil.
+- `docker` — container/Dokploy; kedua flag Podman itu tidak dikirim.
+- kosong — autodetect: `podman` bila ada di `PATH`, lalu `docker`. Bila tidak ada keduanya, tool
+  mengembalikan error berisi cara memperbaikinya (bukan exception).
+
+Isolasi default: `--rm`, `--network none` (isi `sandbox.network: bridge` bila butuh jaringan),
+root filesystem read-only dengan tmpfs `/tmp`, dan output dipotong ke 16 KB terakhir dengan
+penanda `(dipotong)`. `timeout` per panggilan (default `sandbox.timeout_seconds`) membunuh proses
+runtime dan mengembalikan `error: timeout setelah N detik`.
+
+Container tidak mewarisi environment bot. Hanya `TZ` dan `LANG` yang diteruskan; tambahkan nama
+lain lewat `sandbox.env: ["NO_PROXY"]` bila perlu. API key tidak pernah masuk argv/env sandbox.
+
+### Podman vs Docker dan `host_workspace`
+
+Bind mount diresolusi oleh daemon, bukan oleh proses bot. Kalau bot berjalan di container dan
+runtime-nya adalah daemon Docker di host (Dokploy), `workspace` dari config
+(`/app/.sanka/workspace`) tidak ada di host. Set `sandbox.host_workspace` ke path workspace versi
+host, misalnya `/opt/sanka/.sanka/workspace`, supaya daemon me-mount folder yang benar. Bila
+kosong, source mount memakai `workspace` dari config — benar untuk Podman yang berjalan di mesin
+yang sama dengan bot.
+
+Path `host_workspace` berada di namespace host sehingga tidak selalu terlihat dari container bot;
+karena itu keberadaannya tidak dicek di sana dan path yang salah dilaporkan daemon. Nilai yang
+terlihat tetapi berupa file tetap ditolak saat start.
+
+Memberi container bot akses `/var/run/docker.sock` (atau socket Podman) setara memberi **root di
+host**: siapa pun yang bisa memakai `sandbox` bisa me-mount seluruh filesystem host atau
+menjalankan container privileged. Batasi `tools` role dan hanya lakukan bila memang dibutuhkan.
 
 ## Konteks percakapan & lampiran
 
@@ -297,7 +334,27 @@ chown -R 1000:1000 /opt/sanka && chmod 700 /opt/sanka/.sanka && chmod 600 /opt/s
 Satu session WhatsApp hanya boleh dipakai satu proses. Jangan jalankan bot server sebelum bot lokal
 berhenti; kalau `whatsapp.db` tidak terbawa, server akan meminta pairing QR baru.
 
-Di dalam container `sandbox` (Podman) tidak tersedia: hapus dari `roles` atau terima balasan error.
+### Sandbox di Dokploy
+
+Image sudah membawa Docker CLI, tetapi tool `sandbox` butuh daemon. Di Dokploy, jalankan bot
+dengan daemon host hanya bila perlu:
+
+- mount `/var/run/docker.sock:/var/run/docker.sock` dan pastikan uid 1000 bisa membukanya
+  (biasanya dengan menambahkan container ke group pemilik socket, mis. gid `999`),
+- set `sandbox.runtime: docker`,
+- set `sandbox.host_workspace` ke workspace versi host, bukan `/app/...`:
+
+```yaml
+sandbox:
+  runtime: docker
+  image: "docker.io/library/python:3.12-slim"
+  network: none
+  host_workspace: /opt/sanka/.sanka/workspace
+```
+
+Mount socket berarti container bot bisa menjadi root di host (lihat [Sandbox](#sandbox)). Tanpa
+socket, `sandbox` mengembalikan error dari daemon; tool lain tetap berjalan dan bot tetap start.
+
 `web_search.base_url` yang menunjuk `127.0.0.1:8080` tidak bisa dijangkau dari container; kosongkan
 untuk fallback `ddgs`, atau arahkan ke SearXNG yang satu network. Docker mengirim `SIGINT` saat stop
 (`STOPSIGNAL`) supaya SQLite ditutup rapi sebelum container diganti.

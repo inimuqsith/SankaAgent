@@ -61,9 +61,14 @@ roles:
 default_role: member
 
 sandbox:
-  runtime: podman
+  runtime: docker          # podman | docker | kosong = autodetect (podman dulu)
   image: "docker.io/library/python:3.12-slim"
   timeout_seconds: 120
+  network: none            # none | bridge (container sandbox tanpa jaringan = default)
+  # Wajib diisi bila runtime menunjuk daemon Docker di HOST (mis. socket di-mount):
+  # path source bind mount diresolusi di host, bukan di dalam container.
+  # host_workspace: /home/advin/sanka/.sanka/workspace
+  # env: ["NO_PROXY"]      # selain TZ/LANG, variabel ini saja yang diteruskan ke sandbox
 
 web_search:
   base_url: ""          # instance SearXNG, mis. "http://127.0.0.1:8080"; kosong = hanya ddgs
