@@ -1,0 +1,17 @@
+[project]
+name = "sanka-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "neonize>=0.5.2,<0.6",
+  "openai>=2,<4",
+  "mcp>=2.3,<3",
+  "PyYAML>=6",
+  "ddgs>=9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

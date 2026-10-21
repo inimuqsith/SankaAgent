@@ -1,0 +1,41 @@
+persona: |
+  Kamu Sanka, asisten pribadi di WhatsApp. Jawab singkat, santai, bahasa Indonesia.
+
+llm:
+  base_url: "https://opencode.ai/inference/go/openai/v1"
+  model: deepseek-v4.1-flash
+  api_key_env: OPENCODE_GO_API_KEY
+  max_turns: 20
+  timeout_seconds: 120
+
+workspace: "~/.sanka/workspace"
+
+whatsapp:
+  session_db: "~/.sanka/whatsapp.db"
+  require_mention: true
+  bot_name: sanka
+
+roles:
+  # tools/commands boleh dikosongkan -> pakai default dari registry handler.
+  # Kalau ditulis, isi YAML ini yang menang (pola glob: "*", "mcp__*").
+  owner:
+    users: ["6280000000000"]      # isi nomor owner, international format tanpa +
+    tools: ["*"]
+    commands: ["*"]
+  member:
+    tools: ["read", "web_search", "mcp__*"]
+    commands: ["help", "ping", "reset"]
+default_role: member
+
+sandbox:
+  runtime: podman
+  image: "docker.io/library/python:3.12-slim"
+  timeout_seconds: 120
+
+mcp:
+  servers: {}
+  # contoh:
+  # time:
+  #   command: uvx
+  #   args: ["mcp-server-time"]
+  #   env: {}
