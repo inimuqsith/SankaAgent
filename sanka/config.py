@@ -51,6 +51,20 @@ class WebSearchConfig:
 
 
 @dataclass(frozen=True)
+class MemoryConfig:
+    path: Path = Path("~/.sanka/memory.db")
+    max_items: int = 20
+    max_chars: int = 3000
+    auto_extract: bool = True
+
+
+@dataclass(frozen=True)
+class SkillsConfig:
+    dir: Path = Path("~/.sanka/skills")
+    max_index_chars: int = 3000
+
+
+@dataclass(frozen=True)
 class MCPServerConfig:
     name: str
     command: str
@@ -69,6 +83,8 @@ class Config:
     sandbox: SandboxConfig
     mcp: dict[str, MCPServerConfig]
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
+    skills: SkillsConfig = field(default_factory=SkillsConfig)
 
     def api_key(self) -> str:
         return os.environ[self.llm.api_key_env]
@@ -188,6 +204,8 @@ def load_config(path: str | None = None) -> Config:
     wa_raw = raw.get("whatsapp") if isinstance(raw.get("whatsapp"), dict) else {}
     sandbox_raw = raw.get("sandbox") if isinstance(raw.get("sandbox"), dict) else {}
     search_raw = raw.get("web_search") if isinstance(raw.get("web_search"), dict) else {}
+    memory_raw = raw.get("memory") if isinstance(raw.get("memory"), dict) else {}
+    skills_raw = raw.get("skills") if isinstance(raw.get("skills"), dict) else {}
 
     workspace = _expand(str(raw.get("workspace") or "~/.sanka/workspace"))
     workspace.mkdir(parents=True, exist_ok=True)
@@ -195,6 +213,8 @@ def load_config(path: str | None = None) -> Config:
     session_db.parent.mkdir(parents=True, exist_ok=True)
     history_db = _expand(str(wa_raw.get("history_db") or session_db.parent / "history.db"))
     history_db.parent.mkdir(parents=True, exist_ok=True)
+    memory_db = _expand(str(memory_raw.get("path") or "~/.sanka/memory.db"))
+    skills_dir = _expand(str(skills_raw.get("dir") or "~/.sanka/skills"))
     secure_db(session_db)
     secure_db(history_db)
 
@@ -225,5 +245,15 @@ def load_config(path: str | None = None) -> Config:
         web_search=WebSearchConfig(
             base_url=str(search_raw.get("base_url") or "").strip().rstrip("/"),
             timeout_seconds=float(search_raw.get("timeout_seconds") or 10),
+        ),
+        memory=MemoryConfig(
+            path=memory_db,
+            max_items=int(memory_raw.get("max_items") or 20),
+            max_chars=int(memory_raw.get("max_chars") or 3000),
+            auto_extract=bool(memory_raw.get("auto_extract", True)),
+        ),
+        skills=SkillsConfig(
+            dir=skills_dir,
+            max_index_chars=int(skills_raw.get("max_index_chars") or 3000),
         ),
     )

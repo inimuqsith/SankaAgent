@@ -11,8 +11,8 @@ from sanka.config import (
     RoleConfig,
     SandboxConfig,
     WhatsAppConfig,
+    load_config,
 )
-from sanka.config import load_config
 from sanka.format import format_reply
 from sanka.permissions import allows, role_for
 from sanka.tools.web_search import searx_hits
@@ -152,6 +152,22 @@ def test_system_prompt_lists_bot_numbers() -> None:
     assert "73041086251252" in prompt
 
 
+def test_system_prompt_includes_memory_and_skills() -> None:
+    config = make_config()
+
+    prompt = system_prompt(
+        config,
+        "owner",
+        BOT,
+        memory="Memori tersimpan:\n- #1 [preference] suka kopi",
+        skills="Skill lokal:\n- deploy: Deploy aman.",
+    )
+
+    assert "suka kopi" in prompt
+    assert "deploy: Deploy aman." in prompt
+    assert prompt.index("suka kopi") < prompt.index("deploy: Deploy aman.")
+
+
 def test_searx_hits_drop_entries_without_url() -> None:
     payload = {
         "results": [
@@ -183,3 +199,28 @@ def test_web_search_config_from_yaml(tmp_path, monkeypatch) -> None:
 
     assert config.web_search.base_url == "http://127.0.0.1:8080"
     assert config.web_search.timeout_seconds == 7
+
+
+def test_memory_and_skills_config_from_yaml(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    target = tmp_path / "config.yaml"
+    target.write_text(
+        "persona: p\n"
+        "llm:\n  api_key_env: SANKA_TEST_KEY\n"
+        f"workspace: \"{tmp_path / 'ws'}\"\n"
+        f"whatsapp:\n  session_db: \"{tmp_path / 's.db'}\"\n"
+        "roles:\n  member: {}\n"
+        "default_role: member\n"
+        f"memory:\n  path: \"{tmp_path / 'memory.db'}\"\n  max_items: 7\n  max_chars: 900\n  auto_extract: false\n"
+        f"skills:\n  dir: \"{tmp_path / 'skills'}\"\n  max_index_chars: 800\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(str(target))
+
+    assert config.memory.path == tmp_path / "memory.db"
+    assert config.memory.max_items == 7
+    assert config.memory.max_chars == 900
+    assert config.memory.auto_extract is False
+    assert config.skills.dir == tmp_path / "skills"
+    assert config.skills.max_index_chars == 800

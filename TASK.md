@@ -20,6 +20,25 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   `chat_history`, dan ringkasan, sehingga tidak menebak nama dari isi pesan.
 - [x] Nama pengirim di-resolve dari kontak WhatsApp (`whatsmeow_contacts` + `lid_map`) dan
   `HistorySync.inlineContacts`; fallback push name lalu ID, termasuk untuk pesan lama.
+- [x] Memori jangka panjang bertingkat: indeks kecil di system prompt, fakta/preferensi di
+  `memory.db` (global + per chat), arsip mentah tetap di `history.db`; satu tool `memory` dengan
+  `scope=chat|global` dan action add/search/list/forget, dipakai owner + member. `memory.auto_extract`
+  membuat model mengekstrak fakta/preferensi/prosedur (`kind=rule`) sendiri di latar setelah tiap
+  turn. Hanya info eksplisit dan tahan lama; rahasia/tebakan/status sesi tidak boleh disimpan.
+- [x] Skill lokal `SKILL.md` dengan frontmatter `name`/`description`: indeks nama+deskripsi di
+  prompt, isi penuh dimuat lewat tool `skill` (progressive disclosure); AI memutuskan list/view/read,
+  save/overwrite, dan archive (dipindah ke `.archive/`). File pendukung bisa dibaca. Diadaptasi dari
+  GenericAgent (L1/L2/L3/L4) dan Hermes (SKILL.md).
+- [x] Pengiriman file hasil kerja: tool `send` dan command `/kirim` (owner + member/panitia)
+  mengirim dokumen dari workspace ke chat aktif lewat Neonize, dengan batas ukuran dan pencatatan
+  ke jendela konteks.
+
+## Nanti
+
+- Integrasi penuh (fetch URL, parsing PDF/audio/OCR, calendar/email) — ditunda; sementara lewat
+  MCP atau `sandbox`.
+- State tugas persisten/crash recovery (job store, resume setelah restart) — opsional, ditunda
+  sampai ada kebutuhan tugas panjang.
 
 Di luar cakupan: transkripsi audio/video dan parsing PDF di dalam Sanka (lewat `sandbox`), Google
 Docs/Sheets, browser, gateway HTTP, bridge Node.

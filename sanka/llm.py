@@ -17,6 +17,42 @@ TURN_LIMIT_TEXT = "Batas langkah agent tercapai. Coba lagi atau persempit permin
 API_ERROR_TEXT = "Maaf, model sedang error. Coba lagi sebentar."
 USER_AGENT = "sanka-agent/0.1"
 IMAGE_LOST = "[Gambar gagal dilampirkan ke model; gunakan path di atas dengan sandbox.]"
+MEMORY_KINDS = frozenset({"fact", "preference", "rule"})
+REFLECT_PROMPT = """Kamu mesin ekstraksi memori untuk asisten WhatsApp kepanitiaan.
+Dari pesan pengguna dan jawaban asisten, ambil 0-3 fakta, preferensi, atau aturan/prosedur singkat yang EKSPLISIT dan TAHAN LAMA.
+Balas HANYA JSON array, tanpa teks lain:
+[{"scope":"chat"|"global","kind":"fact"|"preference"|"rule","text":"..."}]
+Aturan:
+- scope "global" hanya untuk info kepanitiaan yang relevan lintas grup; "chat" untuk info grup ini.
+- kind "rule" untuk cara/prosedur singkat yang eksplisit dan terbukti, bukan tebakan.
+- Jangan simpan rahasia, kredensial, tebakan, status sementara, atau isi yang tidak dinyatakan pengguna.
+- Jangan jadikan jawaban asisten sebagai fakta; hanya simpan yang dikonfirmasi/eksplisit dari pengguna.
+- Jika tidak ada yang layak, balas []."""
+
+
+def parse_memory_items(text: str) -> list[dict]:
+    """Parse JSON array hasil refleksi; item invalid dibuang, maksimal 3."""
+    raw = str(text or "").strip()
+    start, end = raw.find("["), raw.rfind("]")
+    if start < 0 or end < start:
+        return []
+    try:
+        data = json.loads(raw[start : end + 1])
+    except json.JSONDecodeError:
+        return []
+    items: list[dict] = []
+    for item in data if isinstance(data, list) else []:
+        if not isinstance(item, dict):
+            continue
+        scope = str(item.get("scope") or "").strip().lower()
+        kind = str(item.get("kind") or "").strip().lower()
+        body = " ".join(str(item.get("text") or "").split())
+        if scope not in {"chat", "global"} or kind not in MEMORY_KINDS or not body:
+            continue
+        items.append({"scope": scope, "kind": kind, "text": body})
+        if len(items) >= 3:
+            break
+    return items
 
 
 def _has_images(content: str | list[dict]) -> bool:
@@ -114,3 +150,26 @@ class LLM:
                     result = await execute(by_name, name, args if isinstance(args, dict) else {}, ctx)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
         return TURN_LIMIT_TEXT
+
+    async def reflect(self, user_text: str, answer: str) -> list[dict]:
+        """Ekstrak memori tahan lama dari satu pertukaran; kegagalan tidak mengganggu bot."""
+        text = str(user_text or "").strip()
+        if not text:
+            return []
+        messages = [
+            {"role": "system", "content": REFLECT_PROMPT},
+            {
+                "role": "user",
+                "content": f"Pesan pengguna:\n{text}\n\nJawaban asisten:\n{str(answer or '').strip()}",
+            },
+        ]
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.config.llm.model,
+                messages=messages,
+                extra_headers={"x-opencode-session": f"{USER_AGENT}-reflect"},
+            )
+        except (APIError, TimeoutError, OSError) as exc:  # refleksi bersifat best-effort
+            log.warning("refleksi memori gagal: %s", exc)
+            return []
+        return parse_memory_items(response.choices[0].message.content or "")

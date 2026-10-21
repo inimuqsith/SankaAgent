@@ -14,11 +14,20 @@ from .registry import RegistryError
 
 try:
     from .commands import REGISTRY as COMMANDS
-    from .config import Config, RoleConfig, drop_session, load_config, load_env, secure_db
+    from .config import (
+        Config,
+        RoleConfig,
+        drop_session,
+        load_config,
+        load_env,
+        secure_db,
+    )
     from .history import HistoryStore, history_props
     from .llm import API_ERROR_TEXT, LLM
     from .mcp import Hub
+    from .memory import MemoryStore
     from .permissions import commands_for, tool_patterns, tools_for
+    from .skills import SkillStore
     from .tools import REGISTRY, ToolContext, execute
     from .wa import App, Sessions, bot_digits, handle_message
 except RegistryError as exc:  # plugin invalid menggagalkan start dengan satu pesan
@@ -46,6 +55,8 @@ def _report(label: str, outcome: str, detail: str = "") -> bool:
 async def selftest(config: Config) -> int:
     hub = Hub(config.mcp)
     await hub.start()
+    memory = MemoryStore(config.memory.path, config.memory.max_items, config.memory.max_chars)
+    skills = SkillStore(config.skills.dir, config.skills.max_index_chars)
     try:
         role = _role(config)
         for name, item in config.roles.items():
@@ -54,7 +65,7 @@ async def selftest(config: Config) -> int:
             commands = [handler.name for handler in commands_for(item)]
             print(f"role {name}: command={', '.join(commands) or '-'} | tool={', '.join(tools) or '-'}", flush=True)
 
-        ctx = ToolContext(config, role, tool_patterns(role))
+        ctx = ToolContext(config, role, tool_patterns(role), memory=memory, skills=skills)
         specs = {handler.name: handler for handler in REGISTRY.by_name.values() if not handler.hidden}
         results: list[bool] = []
 
@@ -62,6 +73,16 @@ async def selftest(config: Config) -> int:
         read = await execute(specs, "read", {"path": "selftest.txt"}, ctx)
         passed = wrote.startswith("ok:") and "sanka-selftest" in read
         results.append(_report("write/read", "PASS" if passed else "FAIL", "" if passed else f"{wrote} | {read[:80]}"))
+
+        item_id, _ = memory.add("global", "note", "sanka-selftest-memory", source="selftest")
+        found = memory.search(["global"], "sanka-selftest-memory")
+        removed = memory.forget(["global"], item_id=item_id)
+        passed = bool(found) and removed == 1
+        results.append(_report("memory", "PASS" if passed else "FAIL", "" if passed else "entri tidak ditemukan"))
+
+        listed = await execute(specs, "skill", {"action": "list"}, ctx)
+        passed = not listed.startswith("error:")
+        results.append(_report("skill", "PASS" if passed else "FAIL", "" if passed else listed[:120]))
 
         shell = await execute(specs, "shell", {"command": "echo shell-ok"}, ctx)
         passed = "shell-ok" in shell
@@ -92,6 +113,7 @@ async def selftest(config: Config) -> int:
             found = [spec.name for spec in hub.specs(role) if spec.name.startswith(f"mcp__{name}__")]
             print(f"mcp {name}: {', '.join(found) or '(tidak ada tool)'}", flush=True)
     finally:
+        memory.close()
         await hub.stop()
 
     if all(results):
@@ -110,13 +132,24 @@ async def run_bot(config: Config) -> None:
         if "*" in (role.tools or ()) or "*" in (role.commands or ()):
             log.info("role %s memakai wildcard; handler baru otomatis diizinkan", role.name)
     store: HistoryStore | None = None
+    memory: MemoryStore | None = None
+    skills: SkillStore | None = None
+    app: App | None = None
     try:
         try:
             path = config.whatsapp.history_db or config.whatsapp.session_db.parent / "history.db"
             store = HistoryStore(path, config.workspace, config.whatsapp.session_db)
         except Exception:  # arsip gagal dibuka tidak boleh mematikan bot
             log.exception("gagal membuka arsip riwayat; konteks hanya di RAM")
-        app = App(config, LLM(config), hub, Sessions(store=store))
+        try:
+            memory = MemoryStore(config.memory.path, config.memory.max_items, config.memory.max_chars)
+        except Exception:
+            log.exception("gagal membuka memori jangka panjang; memori nonaktif")
+        try:
+            skills = SkillStore(config.skills.dir, config.skills.max_index_chars)
+        except Exception:
+            log.exception("gagal membuka direktori skill; skill nonaktif")
+        app = App(config, LLM(config), hub, Sessions(store=store), memory=memory, skills=skills)
         client = NewAClient(
             str(config.whatsapp.session_db),
             props=history_props(store.needs_full_sync() if store is not None else True),
@@ -184,8 +217,12 @@ async def run_bot(config: Config) -> None:
         secure_db(config.whatsapp.session_db)
         await client.idle()
     finally:
+        if app is not None:
+            await app.close()
         if store is not None:
             store.close()
+        if memory is not None:
+            memory.close()
         await hub.stop()
 
 

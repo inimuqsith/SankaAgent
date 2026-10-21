@@ -232,3 +232,35 @@
   “Muqsith Utama”, grup ALD tetap 110 pesan.
 - Verifikasi: `pytest -q` 39 lulus; tes inline contact + refresh kontak lama; bot live sudah
   restart dengan resolver kontak.
+
+## 2026-10-22 (memori, skill, kirim file)
+
+- `sanka/memory.py` (baru): SQLite `memory.db` (0600) untuk fakta/preferensi tahan lama.
+  Satu tabel dengan `scope` `chat`/`global`; dedupe `(scope, kind, text)`, pencarian LIKE, hapus
+  per id/query, dan blok L1 terbatas (`max_items`, `max_chars`) untuk system prompt. Role dengan
+  tool `memory` menerima memori chat + global.
+- Tool `memory` (owner + member) dengan `scope=chat|global` untuk `add/search/list/forget`. Command
+  `/memori [global]` untuk tambah/cari/daftar/hapus. AI memutuskan kapan menyimpan/melupakan; prompt
+  menegaskan hanya fakta eksplisit/tahan lama yang boleh disimpan.
+- `LLM.reflect` + `App.reflect`: setelah turn (kecuali command), model mengekstrak 0-3 fakta/
+  preferensi/prosedur tahan lama secara otomatis (`memory.auto_extract`, default aktif), lalu
+  menyimpannya dengan scope chat/global. Berjalan sebagai task latar agar tidak menahan balasan;
+  filter regex untuk kredensial/rahasia dan dedupe SQLite. Prompt sistem juga menyuruh model
+  memutuskan sendiri kapan memuat/menyimpan skill dan memori, bukan menunggu command user.
+- `sanka/skills.py` (baru): memindai `<skills.dir>/**/SKILL.md`, frontmatter `name`/`description`,
+  indeks nama+deskripsi yang dibatasi (`max_index_chars`) untuk progressive disclosure; tool `skill`
+  menangani `list/view/read/save/archive` untuk owner + member. Archive memindahkan folder ke
+  `.archive/`, bukan menghapus; file pendukung dibatasi ke folder skill; skill invalid/duplikat
+  dilewati. Command `/skill` untuk daftar/muat. Ini adaptasi L1/L2/L3/L4 GenericAgent + format
+  SKILL.md Hermes.
+- `sanka/tools/send.py` + `sanka/commands/kirim.py` + `App.send_file`: kirim dokumen dari workspace
+  ke chat aktif (maks 100 MB), sukses dicatat sebagai `(file terkirim: ...)` di jendela konteks.
+  `resolve_path()` diekstrak dari tool context agar command memakai batas workspace yang sama.
+  `send`/`kirim` tersedia untuk owner dan member.
+- `sanka/wa.py`: system prompt menerima blok memori + indeks skill; `ToolContext` membawa store
+  memori/skill dan callback `send_file`. Memori (chat/global), lifecycle skill, dan kirim file
+  tersedia untuk owner + member; AI yang memutuskan.
+- `config.py` / `config.example.yaml`: bagian `memory` dan `skills`. `TASK.md` mencatat integrasi
+  penuh (URL/PDF/audio/calendar/email) dan state tugas/crash recovery sebagai pekerjaan nanti.
+- Verifikasi: `pytest -q` 56 lulus; `python -m sanka selftest` SELFTEST OK (termasuk memory dan
+  skill); smoke store/tool/command/file dengan fake client lulus.

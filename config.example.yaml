@@ -25,8 +25,11 @@ roles:
     tools: ["*"]
     commands: ["*"]
   member:
-    tools: ["read", "web_search", "chat_history", "mcp__*"]
-    commands: ["help", "ping", "reset"]
+    tools: ["read", "web_search", "chat_history", "memory", "skill", "send", "mcp__*"]
+    commands: ["help", "ping", "reset", "memori", "skill", "kirim"]
+    # user/panitia: memori chat + global (scope pada tool memory), baca skill, kirim file.
+    # Hapus memori dan simpan skill tetap owner-only. Batasi `users:` bila bot
+    # menerima DM publik.
 default_role: member
 
 sandbox:
@@ -37,6 +40,18 @@ sandbox:
 web_search:
   base_url: ""          # instance SearXNG, mis. "http://127.0.0.1:8080"; kosong = hanya ddgs
   timeout_seconds: 10
+
+memory:
+  # fakta/preferensi lintas sesi; DB dibuat 0600, di luar workspace
+  path: "~/.sanka/memory.db"
+  max_items: 20          # per scope (global/chat) yang diinjeksi
+  max_chars: 3000        # batas total blok memori di system prompt
+  auto_extract: true     # AI mengekstrak memori tahan lama setelah tiap turn
+
+skills:
+  # prosedur lokal: <dir>/<nama>/SKILL.md (frontmatter: name, description)
+  dir: "~/.sanka/skills"
+  max_index_chars: 3000  # hanya nama + deskripsi yang masuk prompt
 
 mcp:
   servers: {}

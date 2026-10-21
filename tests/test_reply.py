@@ -166,9 +166,91 @@ class FakeLLM:
         return "siap"
 
 
+class CaptureLLM:
+    def __init__(self) -> None:
+        self.system = ""
+        self.ctx = None
+
+    async def run(self, system, user_content, specs, ctx, session="") -> str:
+        self.system = system
+        self.ctx = ctx
+        return "siap"
+
+
 class FakeHub:
     def specs(self, role) -> list:
         return []
+
+
+def test_llm_gets_memory_skill_index_and_tool_context(tmp_path) -> None:
+    from sanka.config import Config, LLMConfig, SandboxConfig, WhatsAppConfig
+    from sanka.memory import MemoryStore
+    from sanka.skills import SkillStore
+
+    config = Config(
+        persona="p",
+        llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
+        workspace=tmp_path,
+        whatsapp=WhatsAppConfig(session_db=tmp_path / "wa.db"),
+        roles={"owner": RoleConfig("owner", tools=("*",), commands=("*",))},
+        default_role="owner",
+        sandbox=SandboxConfig(),
+        mcp={},
+    )
+    memory = MemoryStore(tmp_path / "memory.db")
+    memory.add("global", "preference", "suka kopi")
+    memory.add("628999999999@s.whatsapp.net", "fact", "rapat jam 3")
+    skills = SkillStore(tmp_path / "skills")
+    skills.save("deploy", "Deploy aman.", "# Deploy\n")
+    llm = CaptureLLM()
+    app = App(config, llm, FakeHub(), Sessions(), memory=memory, skills=skills)
+    app.bot_digits = {"628567770837"}
+
+    client, _, _ = transport()
+    asyncio.run(handle_message(client, dm_event("halo"), app))
+
+    assert "suka kopi" in llm.system
+    assert "rapat jam 3" in llm.system
+    assert "deploy: Deploy aman." in llm.system
+    assert llm.ctx.memory is memory
+    assert llm.ctx.skills is skills
+    memory.close()
+
+
+def test_member_gets_shared_global_and_chat_memory(tmp_path) -> None:
+    from sanka.config import Config, LLMConfig, SandboxConfig, WhatsAppConfig
+    from sanka.memory import MemoryStore
+    from sanka.skills import SkillStore
+
+    config = Config(
+        persona="p",
+        llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
+        workspace=tmp_path,
+        whatsapp=WhatsAppConfig(session_db=tmp_path / "wa.db"),
+        roles={
+            "owner": RoleConfig("owner", tools=("*",), commands=("*",)),
+            "member": RoleConfig("member", tools=("memory", "skill", "send")),
+        },
+        default_role="member",
+        sandbox=SandboxConfig(),
+        mcp={},
+    )
+    memory = MemoryStore(tmp_path / "memory.db")
+    memory.add("global", "preference", "info global panitia")
+    memory.add("628999999999@s.whatsapp.net", "fact", "info chat")
+    skills = SkillStore(tmp_path / "skills")
+    skills.save("deploy", "Deploy aman.", "# Deploy\n")
+    llm = CaptureLLM()
+    app = App(config, llm, FakeHub(), Sessions(), memory=memory, skills=skills)
+    app.bot_digits = {"628567770837"}
+
+    client, _, _ = transport()
+    asyncio.run(handle_message(client, dm_event("halo"), app))
+
+    assert "info chat" in llm.system
+    assert "info global panitia" in llm.system
+    assert "deploy: Deploy aman." in llm.system
+    memory.close()
 
 
 def app_with(llm: FakeLLM) -> App:

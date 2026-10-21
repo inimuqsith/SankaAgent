@@ -6,6 +6,7 @@ Semua eksekusi lewat `execute`: satu titik untuk permission, error, dan pemotong
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from ..config import Config, RoleConfig
@@ -31,12 +32,18 @@ class ToolContext:
         allowed: tuple[str, ...],
         chat_id: str = "",
         history=None,
+        memory=None,
+        skills=None,
+        send_file: Callable[[Path, str], Awaitable[str]] | None = None,
     ):
         self.config = config
         self.role = role
         self.allowed = allowed
         self.chat_id = chat_id
         self.history = history
+        self.memory = memory
+        self.skills = skills
+        self.send_file = send_file
 
 
 def _int(args: dict, key: str, default: int) -> int:
@@ -46,14 +53,18 @@ def _int(args: dict, key: str, default: int) -> int:
         return default
 
 
-def _resolve(ctx: ToolContext, raw: str) -> Path:
-    """Resolve path tool terhadap workspace; tolak apa pun yang keluar dari workspace."""
-    base = ctx.config.workspace.resolve()
+def resolve_path(config: Config, raw: str) -> Path:
+    """Resolve path terhadap workspace; tolak apa pun yang keluar dari workspace."""
+    base = config.workspace.resolve()
     path = Path(str(raw)).expanduser()
     path = (path if path.is_absolute() else base / path).resolve()
     if not path.is_relative_to(base):
         raise PermissionError(f"path di luar workspace: {raw}")
     return path
+
+
+def _resolve(ctx: ToolContext, raw: str) -> Path:
+    return resolve_path(ctx.config, raw)
 
 
 def truncate(text: str) -> str:

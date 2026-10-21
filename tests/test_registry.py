@@ -30,8 +30,27 @@ def clear_modules(prefix: str) -> None:
 
 
 def test_builtin_handlers_discovered() -> None:
-    assert set(COMMANDS.names()) == {"backfill", "help", "ping", "reset"}
-    assert set(TOOLS.names()) == {"chat_history", "mcp", "read", "sandbox", "shell", "web_search", "write"}
+    assert set(COMMANDS.names()) == {
+        "backfill",
+        "help",
+        "kirim",
+        "memori",
+        "ping",
+        "reset",
+        "skill",
+    }
+    assert set(TOOLS.names()) == {
+        "chat_history",
+        "mcp",
+        "memory",
+        "read",
+        "sandbox",
+        "send",
+        "shell",
+        "skill",
+        "web_search",
+        "write",
+    }
     assert {handler.family for handler in TOOLS.by_name.values()} == FAMILIES
 
 
@@ -93,5 +112,28 @@ def test_explicit_empty_permissions_deny_all() -> None:
     assert commands_for(denied) == []
 
     default = RoleConfig("member")
-    assert set(tool_patterns(default)) == {"chat_history", "read", "web_search", "mcp__*"}
-    assert {handler.name for handler in tools_for(default)} == {"chat_history", "read", "web_search"}
+    assert set(tool_patterns(default)) == {
+        "chat_history",
+        "memory",
+        "read",
+        "send",
+        "skill",
+        "web_search",
+        "mcp__*",
+    }
+    assert {handler.name for handler in tools_for(default)} == {
+        "chat_history",
+        "memory",
+        "read",
+        "send",
+        "skill",
+        "web_search",
+    }
+    assert set(COMMANDS.patterns("member", default.commands)) == {
+        "help",
+        "kirim",
+        "memori",
+        "ping",
+        "reset",
+        "skill",
+    }

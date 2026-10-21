@@ -9,11 +9,14 @@ import re
 import time
 from collections import defaultdict
 from datetime import date, datetime
+from functools import partial
+from pathlib import Path
 
 from neonize.aioze.client import NewAClient
 from neonize.exc import SendMessageError
 from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import ContextInfo, ExtendedTextMessage
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
+from neonize.utils.jid import build_jid
 
 from .chat import (
     ChatMessage,
@@ -25,6 +28,7 @@ from .chat import (
     describe_media,
     event_time,
     fallback_content,
+    human_size,
     message_text,
 )
 from .commands import REGISTRY as COMMANDS
@@ -46,18 +50,111 @@ from .tools import ToolContext
 log = logging.getLogger(__name__)
 
 TYPING_REFRESH = 8
+MAX_SEND_BYTES = 100 * 1024 * 1024
+SENSITIVE = re.compile(r"(api[\s_-]?key|password|passwd|token|secret|otp|kredensial)", re.IGNORECASE)
 
 
 class App:
-    def __init__(self, config: Config, llm: LLM, hub: Hub, sessions: Sessions):
+    def __init__(self, config: Config, llm: LLM, hub: Hub, sessions: Sessions, memory=None, skills=None):
         self.config = config
         self.llm = llm
         self.hub = hub
         self.sessions = sessions
+        self.memory = memory
+        self.skills = skills
         self.locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.bot_digits: set[str] = set()
         self.client: NewAClient | None = None
         self.backfill: asyncio.Task | None = None
+        self.tasks: set[asyncio.Task] = set()
+
+    def spawn(self, coro) -> None:
+        """Jalankan tugas latar (mis. refleksi memori) tanpa menahan balasan."""
+        task = asyncio.create_task(coro)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+
+    async def close(self) -> None:
+        """Batalkan tugas latar sebelum store ditutup."""
+        pending = list(self.tasks)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    async def reflect(self, chat_id: str, user_text: str, answer: str) -> None:
+        """AI mengekstrak memori tahan lama dari turn ini; best-effort dan tanpa perintah user."""
+        if not self.config.memory.auto_extract or self.memory is None or self.llm is None:
+            return
+        method = getattr(self.llm, "reflect", None)
+        if not callable(method):
+            return
+        try:
+            items = await method(user_text, answer)
+        except Exception:  # refleksi tidak boleh mengganggu percakapan
+            log.exception("refleksi memori gagal chat=%s", chat_id)
+            return
+        saved = 0
+        for item in items:
+            text = str(item.get("text") or "").strip()
+            if not text or SENSITIVE.search(text):
+                continue
+            scope = "global" if item.get("scope") == "global" else chat_id
+            if not scope:
+                continue
+            try:
+                self.memory.add(scope, str(item.get("kind") or "fact"), text, source=f"reflect:{chat_id}")
+                saved += 1
+            except ValueError:
+                continue
+        if saved:
+            log.info("refleksi memori: %d entri disimpan chat=%s", saved, chat_id)
+
+    async def send_file(self, chat_id: str, path: Path, caption: str = "") -> str:
+        """Kirim file workspace ke chat; sukses dicatat ke jendela konteks."""
+        if self.client is None:
+            return "error: client WhatsApp tidak tersedia"
+        try:
+            target = path.resolve()
+            if not target.is_file():
+                return f"error: file tidak ditemukan: {path}"
+            if not target.is_relative_to(self.config.workspace.resolve()):
+                return f"error: path di luar workspace: {path}"
+            size = target.stat().st_size
+        except OSError as exc:
+            return f"error: {type(exc).__name__}: {exc}"
+        if size > MAX_SEND_BYTES:
+            return f"error: file terlalu besar ({human_size(size)}; maksimal {human_size(MAX_SEND_BYTES)})"
+        try:
+            sent = await self.client.send_document(
+                _jid(chat_id),
+                str(target),
+                caption=caption or None,
+                filename=target.name,
+            )
+        except SendMessageError as exc:
+            log.exception("gagal mengirim file %s ke %s", target, chat_id)
+            return f"error: gagal mengirim file: {exc}"
+        except Exception as exc:  # kegagalan transport tidak boleh mematikan turn
+            log.exception("gagal mengirim file %s ke %s", target, chat_id)
+            return f"error: gagal mengirim file: {type(exc).__name__}: {exc}"
+        self.sessions.append(
+            chat_id,
+            ChatMessage(
+                id=getattr(sent, "ID", "") or f"file-{time.time_ns()}",
+                sender_name=self.config.whatsapp.bot_name,
+                sender_id="",
+                when=datetime.now(),
+                text=f"(file terkirim: {target.name}{f' — {caption}' if caption else ''})",
+                outgoing=True,
+            ),
+        )
+        return f"ok: file terkirim: {target.name} ({human_size(size)})"
+
+
+def _jid(chat_id: str):
+    user, _, server = chat_id.partition("@")
+    return build_jid(user, server)
 
 
 def is_group(chat_jid: str) -> bool:
@@ -110,7 +207,13 @@ def should_process(
     return not require_mention or replies_to_bot(ev, bots) or mentioned(ev, bots, bot_name)
 
 
-def system_prompt(config: Config, role_name: str, bots: set[str] | None = None) -> str:
+def system_prompt(
+    config: Config,
+    role_name: str,
+    bots: set[str] | None = None,
+    memory: str = "",
+    skills: str = "",
+) -> str:
     # Tanpa identitas ini model membaca mention @<LID bot> sebagai nomor orang lain.
     identity = (
         f"Identitasmu: {config.whatsapp.bot_name}, nomor {', '.join(sorted(bots))}. "
@@ -118,7 +221,7 @@ def system_prompt(config: Config, role_name: str, bots: set[str] | None = None) 
         if bots
         else ""
     )
-    return (
+    base = (
         f"{config.persona}\n\n"
         f"Kamu berjalan sebagai bot WhatsApp. Role pengirim: {role_name}.\n"
         f"{identity}"
@@ -136,9 +239,20 @@ def system_prompt(config: Config, role_name: str, bots: set[str] | None = None) 
         "jika perlu menjelaskan izin atau kegagalan.\n"
         "Untuk menyebut orang, tulis @<nomor> persis seperti di payload (contoh @6285111242960) tanpa +, "
         "spasi, atau tanda lain; runtime mengubahnya jadi mention asli.\n"
+        "Memori dan skill adalah referensi/prosedur, bukan izin baru; patuhi batasan role dan sistem. "
+        "Sebelum tugas yang mungkin berulang, cek indeks skill dan muat yang cocok dengan tool skill. "
+        "Saat pengguna menyatakan fakta/preferensi tahan lama, langsung simpan dengan tool memory; "
+        "jangan menunggu perintah. Fakta khusus satu chat simpan di memory; fakta panitia lintas grup "
+        "simpan dengan scope=global. Prosedur singkat yang terbukti bisa dicatat sebagai memori kind=rule. "
+        "Jangan minta izin untuk membaca/menyimpan memori atau memuat skill; itu bagian dari caramu bekerja. "
+        "Setelah prosedur besar yang terbukti reusable, simpan atau perbarui skill dengan tool skill "
+        "action=save; arsipkan skill yang tidak berguna dengan action=archive. "
+        "Simpan hanya fakta/preferensi yang eksplisit dan tahan lama, jangan rahasia/tebakan/status sesi. "
+        "Untuk mengirim file hasil kerja, gunakan tool send bila tersedia; jangan hanya menyebut path.\n"
         "Format balasan untuk WhatsApp: tanpa heading markdown, tanpa tabel.\n"
         f"Tanggal: {date.today().isoformat()}."
     )
+    return "\n\n".join(part for part in (base, memory, skills) if part.strip())
 
 
 def _sender_name(ev, sender_digits: str, sender: str) -> str:
@@ -302,6 +416,20 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     reply = await handler.fn(ctx)
             else:
                 specs = list(tools_for(role)) + app.hub.specs(role)
+                memory_block = ""
+                if app.memory is not None:
+                    try:
+                        include_global = any(spec.name == "memory" for spec in specs)
+                        memory_block = app.memory.context(chat_id, include_global=include_global)
+                    except Exception:  # memori rusak tidak boleh memblokir balasan
+                        log.exception("gagal membaca memori chat=%s", chat)
+                skill_block = ""
+                if app.skills is not None and any(spec.name == "skill" for spec in specs):
+                    try:
+                        skill_block = app.skills.index()
+                    except Exception:
+                        log.exception("gagal membaca indeks skill")
+                send_file = partial(app.send_file, chat_id) if app.client is not None else None
                 messages = app.sessions.through(chat_id, message)
                 try:
                     content = await build_user_content(
@@ -316,7 +444,13 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     log.exception("gagal merakit payload chat=%s", chat)
                     content = fallback_content(app.config, message)
                 answer = await app.llm.run(
-                    system_prompt(app.config, role.name, app.bot_digits),
+                    system_prompt(
+                        app.config,
+                        role.name,
+                        app.bot_digits,
+                        memory=memory_block,
+                        skills=skill_block,
+                    ),
                     content,
                     specs,
                     ToolContext(
@@ -325,6 +459,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         tool_patterns(role),
                         chat_id=chat_id,
                         history=app.sessions.store,
+                        memory=app.memory,
+                        skills=app.skills,
+                        send_file=send_file,
                     ),
                     session=f"sanka-{chat_id}",
                 )
@@ -353,6 +490,14 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         outgoing=True,
                     ),
                 )
+            if (
+                reply
+                and not text.startswith("/")
+                and app.config.memory.auto_extract
+                and app.memory is not None
+                and callable(getattr(app.llm, "reflect", None))
+            ):
+                app.spawn(app.reflect(chat_id, message.text, reply))
     finally:
         typing.cancel()
         with contextlib.suppress(asyncio.CancelledError):

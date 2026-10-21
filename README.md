@@ -34,17 +34,24 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sand
 | `default_role` | role untuk nomor tak dikenal |
 | `sandbox` | `runtime` (podman), `image`, `timeout_seconds` |
 | `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
+| `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
+| `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
 | `mcp.servers` | `command`, `args`, `env` per server stdio |
 
 `tools:` dan `commands:` yang tidak ditulis memakai pola default tiap handler (lihat di bawah);
 kalau ditulis, isi YAML menang. `tools: []` atau `commands: []` berarti role itu tidak boleh apa pun.
+Role `member` di contoh dipakai untuk panitia/user: memori chat + global, memakai/menyimpan skill,
+dan mengirim file. AI yang memutuskan kapan memori disimpan/dilupakan dan kapan skill dipakai/
+diperbarui/diarsipkan. Kalau bot juga menerima DM publik, batasi `roles.member.users` atau buat
+role terpisah untuk tamu.
 
-Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `chat_history`,
-`mcp__<server>__<tool>`.
+Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `chat_history`, `memory`,
+`skill`, `send`, `mcp__<server>__<tool>`.
 `web_search` memakai SearXNG (`web_search.base_url`, butuh `format: json` di `settings.yml`) dan
 jatuh ke backend `ddgs` (wikipedia/yahoo/startpage/brave) kalau instance itu mati atau kosong.
-Command: `/ping`, `/help`, `/reset`, `/backfill` (owner, DM; scan QR sekali), plus alias `/p`,
-`/h`, `/r`. `/help` membaca metadata registry.
+Command: `/ping`, `/help`, `/reset`, plus `/backfill` (owner, DM; scan QR sekali), `/memori`,
+`/skill`, `/kirim` (owner + member), dan alias `/p`, `/h`, `/r`, `/ingat`, `/sop`, `/file`.
+`/help` membaca metadata registry.
 
 Kalau WhatsApp mengalamatkan pengirim lewat LID (`...@lid`), cocokkan role dengan digit LID itu,
 bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
@@ -99,6 +106,58 @@ bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
   `@+62 ...`/`@62 ...` dikanonikkan jadi `@62...`, dan alamat yang tidak dikenal cuma jadi teks.
   Karakter isolasi bidi (`U+2068`/`U+2069`) pembungkus mention WhatsApp dibuang dari teks masuk
   maupun balasan.
+
+## Memori, skill, dan file
+
+Sanka memakai empat lapis yang diadaptasi dari GenericAgent/Hermes:
+
+| Lapis | Isi | Tempat |
+| --- | --- | --- |
+| L1 | indeks kecil yang selalu masuk prompt | blok memori + indeks skill (dibatasi `max_chars`) |
+| L2 | fakta/preferensi tahan lama | `memory.path` (SQLite, `0600`) |
+| L3 | prosedur/SOP | `skills.dir/<nama>/SKILL.md` |
+| L4 | percakapan mentah | `whatsapp.history_db` |
+
+**Memori.** Satu tool `memory` menangani `scope=chat` (default) dan `scope=global` (lintas grup),
+dengan action `add/search/list/forget`. Command `/memori [global]` untuk tambah/cari/daftar/hapus.
+Memori global dipakai bersama panitia lintas grup, sedangkan memori chat hanya untuk grup itu. AI
+yang memutuskan kapan menyimpan atau melupakan; tidak perlu command user. Hanya informasi eksplisit
+dan tahan lama yang boleh disimpan—bukan rahasia, tebakan, atau status sesi. Blok memori diinjeksi
+ke system prompt dengan batas `memory.max_items` per scope dan `memory.max_chars`. Contoh:
+`/memori tambah suka kopi tanpa gula`, `/memori global tambah jadwal rapat panitia`,
+`/memori cari kopi`.
+
+Selain tool, ada refleksi otomatis (`memory.auto_extract: true`): setelah tiap turn, model
+mengekstrak 0-3 fakta/preferensi/prosedur singkat (`kind=rule`) yang tahan lama dan menyimpannya
+sendiri—tanpa command user. Refleksi berjalan di latar, tidak menahan balasan, dan menyaring
+rahasia/kredensial. Ini yang membuat memori terisi karena AI menilai informasinya penting, bukan
+karena user menyuruh.
+
+**Skill.** Setiap skill adalah folder berisi `SKILL.md` dengan frontmatter YAML:
+
+```markdown
+---
+name: deploy-aman
+description: Deploy service dengan cek test dan rollback.
+---
+
+# Deploy aman
+
+## Kapan dipakai
+...
+```
+
+System prompt hanya memuat `name` + `description` (progressive disclosure). Model memanggil tool
+`skill` `action=view` untuk memuat isi penuh, atau `action=read` untuk file pendukung di folder
+skill. AI juga yang memutuskan kapan menyimpan/memperbarui (`action=save`) dan memensiunkan
+(`action=archive`, dipindah ke `.archive/`, reversible). Indeks dibatasi `skills.max_index_chars`;
+skill invalid/duplikat dilewati dengan log. Command `/skill` menampilkan indeks, `/skill <nama>`
+memuat isinya—tapi keputusan memakai/mengubah skill ada pada model, bukan command user.
+
+**Kirim file.** Tool `send` dan command `/kirim <path> [caption]` mengirim file di dalam workspace
+sebagai dokumen WhatsApp ke chat aktif (maksimal 100 MB). File yang terkirim dicatat di jendela
+konteks sebagai `(file terkirim: ...)`, jadi percakapan berikutnya tahu hasil kerja sudah diantar.
+Owner dan member bisa memakainya; role yang tidak diberi `send`/`command kirim` tidak bisa.
 
 ## Menambah command atau tool
 
