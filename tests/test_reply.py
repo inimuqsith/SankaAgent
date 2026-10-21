@@ -177,6 +177,22 @@ class CaptureLLM:
         return "siap"
 
 
+class ReflectLLM(CaptureLLM):
+    def __init__(self) -> None:
+        super().__init__()
+        self.reflected = 0
+        self.contexts: list[str] = []
+        self.memories: list[str] = []
+
+    async def reflect(
+        self, user_text: str, answer: str, context: str = "", memory: str = ""
+    ) -> list[dict]:
+        self.reflected += 1
+        self.contexts.append(context)
+        self.memories.append(memory)
+        return []
+
+
 class FakeHub:
     def specs(self, role) -> list:
         return []
@@ -257,6 +273,71 @@ def app_with(llm: FakeLLM) -> App:
     app = App(make_config(), llm, FakeHub(), Sessions())
     app.bot_digits = {"628567770837"}
     return app
+
+
+def test_role_without_memory_tool_does_not_reflect(tmp_path) -> None:
+    from sanka.config import Config, LLMConfig, SandboxConfig, WhatsAppConfig
+    from sanka.memory import MemoryStore
+
+    config = Config(
+        persona="p",
+        llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
+        workspace=tmp_path,
+        whatsapp=WhatsAppConfig(session_db=tmp_path / "wa.db"),
+        roles={"guest": RoleConfig("guest", tools=("read",))},
+        default_role="guest",
+        sandbox=SandboxConfig(),
+        mcp={},
+    )
+    memory = MemoryStore(tmp_path / "memory.db")
+    llm = ReflectLLM()
+    app = App(config, llm, FakeHub(), Sessions(), memory=memory)
+    app.bot_digits = {"628567770837"}
+
+    client, _, _ = transport()
+    asyncio.run(handle_message(client, dm_event("jadwal rapat panitia besok"), app))
+
+    assert app.tasks == set()
+    assert llm.reflected == 0
+    memory.close()
+
+
+def test_reflection_gets_recent_transcript(tmp_path) -> None:
+    from sanka.config import Config, LLMConfig, SandboxConfig, WhatsAppConfig
+    from sanka.memory import MemoryStore
+
+    config = Config(
+        persona="p",
+        llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
+        workspace=tmp_path,
+        whatsapp=WhatsAppConfig(session_db=tmp_path / "wa.db", bot_name="sanka"),
+        roles={"owner": RoleConfig("owner", tools=("*",), commands=("*",))},
+        default_role="owner",
+        sandbox=SandboxConfig(),
+        mcp={},
+    )
+    memory = MemoryStore(tmp_path / "memory.db")
+    memory.add("global", "fact", "panitia punya grup logistik")
+    llm = ReflectLLM()
+    app = App(config, llm, FakeHub(), Sessions(), memory=memory)
+    app.bot_digits = {"628567770837"}
+    client, _, _ = transport()
+
+    async def flow() -> None:
+        await handle_message(client, dm_event("catatan rapat jam 3"), app)
+        await asyncio.gather(*app.tasks)
+        second = dm_event("jadwal rapat panitia besok")
+        second.Info.ID = "3EB0DM2"
+        await handle_message(client, second, app)
+        await asyncio.gather(*app.tasks)
+
+    asyncio.run(flow())
+
+    assert llm.reflected == 2
+    assert llm.contexts[0] == ""
+    assert "catatan rapat jam 3" in llm.contexts[1]
+    assert "grup logistik" in llm.memories[1]
+    memory.close()
 
 
 def test_group_history_keeps_unaddressed_messages() -> None:

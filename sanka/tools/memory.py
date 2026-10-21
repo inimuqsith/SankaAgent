@@ -36,12 +36,20 @@ async def _memory(args: dict, ctx: ToolContext) -> str:
         if not text:
             return "error: text kosong"
         kind = str(args.get("kind") or "note")
+        raw = args.get("supersedes")
         try:
-            item_id, created = ctx.memory.add(scopes[0], kind, text, source="tool")
+            supersedes = int(raw) if raw not in (None, "") else None
+        except (TypeError, ValueError):
+            return "error: supersedes harus ID memori"
+        try:
+            item_id, created = ctx.memory.add(
+                scopes[0], kind, text, source="tool", supersedes=supersedes
+            )
         except ValueError as exc:
             return f"error: {exc}"
         verb = "disimpan" if created else "diperbarui"
-        return f"ok: memori #{item_id} {verb} ({scopes[0]}/{kind})."
+        note = f"; #{supersedes} digantikan" if supersedes is not None else ""
+        return f"ok: memori #{item_id} {verb} ({scopes[0]}/{kind}){note}."
 
     if action in {"search", "list"}:
         query = str(args.get("query") or "").strip()
@@ -71,7 +79,9 @@ TOOL = Handler(
     family="write",
     description=(
         "Memori jangka panjang: add/search/list/forget untuk chat ini (scope=chat) atau lintas "
-        "grup (scope=global). AI memutuskan sendiri apa yang layak disimpan/dilupakan."
+        "grup (scope=global). AI memutuskan sendiri apa yang layak disimpan/dilupakan. Saat fakta "
+        "baru menggantikan entri lama, isi supersedes dengan ID dari blok memori (scope dan kind "
+        "harus sama); entri lama ditandai digantikan, bukan dihapus."
     ),
     fn=_memory,
     aliases=("memori",),
@@ -84,6 +94,10 @@ TOOL = Handler(
             "kind": {"type": "string", "description": "fact, preference, rule, atau note."},
             "query": {"type": "string", "description": "Kata kunci search/forget."},
             "id": {"type": "integer", "description": "ID memori untuk forget."},
+            "supersedes": {
+                "type": "integer",
+                "description": "ID memori aktif yang digantikan teks baru (scope dan kind sama).",
+            },
             "limit": {"type": "integer", "description": "Jumlah hasil 1-20 (default 10)."},
         },
         "additionalProperties": False,

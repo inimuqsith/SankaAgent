@@ -51,7 +51,29 @@ log = logging.getLogger(__name__)
 
 TYPING_REFRESH = 8
 MAX_SEND_BYTES = 100 * 1024 * 1024
+REFLECT_MIN_CHARS = 8
+REFLECT_MESSAGES = 8
+REFLECT_CONTEXT_CHARS = 3000
 SENSITIVE = re.compile(r"(api[\s_-]?key|password|passwd|token|secret|otp|kredensial)", re.IGNORECASE)
+
+
+def _reflect_context(sessions: Sessions, chat_id: str, current: ChatMessage) -> str:
+    """Transkrip ringkas sebelum pesan terakhir; memberi refleksi bukti dari turn sebelumnya."""
+    entries = [entry for entry in sessions.get(chat_id) if not (current.id and entry.id == current.id)]
+    lines: list[str] = []
+    total = 0
+    for entry in entries[-REFLECT_MESSAGES:]:
+        body = " ".join((entry.text or "").split())
+        if not body and entry.media is not None:
+            body = f"(lampiran {entry.media.kind})"
+        if not body:
+            continue
+        line = f"{entry.sender_name or entry.sender_id or '-'}: {body[:300]}"
+        if total + len(line) + 1 > REFLECT_CONTEXT_CHARS:
+            break
+        lines.append(line)
+        total += len(line) + 1
+    return "\n".join(lines)
 
 
 class App:
@@ -82,15 +104,19 @@ class App:
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
 
-    async def reflect(self, chat_id: str, user_text: str, answer: str) -> None:
+    async def reflect(
+        self, chat_id: str, user_text: str, answer: str, context: str = "", memory: str = ""
+    ) -> None:
         """AI mengekstrak memori tahan lama dari turn ini; best-effort dan tanpa perintah user."""
         if not self.config.memory.auto_extract or self.memory is None or self.llm is None:
+            return
+        if len(str(user_text or "").strip()) < REFLECT_MIN_CHARS:  # "ok"/"halo" tidak layak biaya LLM
             return
         method = getattr(self.llm, "reflect", None)
         if not callable(method):
             return
         try:
-            items = await method(user_text, answer)
+            items = await method(user_text, answer, context=context, memory=memory)
         except Exception:  # refleksi tidak boleh mengganggu percakapan
             log.exception("refleksi memori gagal chat=%s", chat_id)
             return
@@ -102,11 +128,16 @@ class App:
             scope = "global" if item.get("scope") == "global" else chat_id
             if not scope:
                 continue
+            kind = str(item.get("kind") or "fact")
+            source = f"reflect:{chat_id}"
             try:
-                self.memory.add(scope, str(item.get("kind") or "fact"), text, source=f"reflect:{chat_id}")
-                saved += 1
+                self.memory.add(scope, kind, text, source=source, supersedes=item.get("supersedes"))
             except ValueError:
-                continue
+                try:  # supersede ditolak tidak boleh membuang faktanya
+                    self.memory.add(scope, kind, text, source=source)
+                except ValueError:
+                    continue
+            saved += 1
         if saved:
             log.info("refleksi memori: %d entri disimpan chat=%s", saved, chat_id)
 
@@ -243,7 +274,9 @@ def system_prompt(
         "Sebelum tugas yang mungkin berulang, cek indeks skill dan muat yang cocok dengan tool skill. "
         "Saat pengguna menyatakan fakta/preferensi tahan lama, langsung simpan dengan tool memory; "
         "jangan menunggu perintah. Fakta khusus satu chat simpan di memory; fakta panitia lintas grup "
-        "simpan dengan scope=global. Prosedur singkat yang terbukti bisa dicatat sebagai memori kind=rule. "
+        "simpan dengan scope=global. Kalau fakta baru menggantikan entri lama di blok memori, isi "
+        "supersedes=<id> (scope dan kind sama); kalau ragu, biarkan kosong. Prosedur singkat yang "
+        "terbukti bisa dicatat sebagai memori kind=rule. "
         "Jangan minta izin untuk membaca/menyimpan memori atau memuat skill; itu bagian dari caramu bekerja. "
         "Setelah prosedur besar yang terbukti reusable, simpan atau perbarui skill dengan tool skill "
         "action=save; arsipkan skill yang tidak berguna dengan action=archive. "
@@ -396,6 +429,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
 
         async with app.locks[chat_id]:
             reply: str | None = None
+            can_memory = False
             if text.startswith("/"):
                 head, _, rest = text[1:].partition(" ")
                 name = head.lower()
@@ -416,11 +450,13 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     reply = await handler.fn(ctx)
             else:
                 specs = list(tools_for(role)) + app.hub.specs(role)
+                can_memory = any(spec.name == "memory" for spec in specs)
                 memory_block = ""
                 if app.memory is not None:
                     try:
-                        include_global = any(spec.name == "memory" for spec in specs)
-                        memory_block = app.memory.context(chat_id, include_global=include_global)
+                        memory_block = app.memory.context(
+                            chat_id, include_global=can_memory, query=message.text
+                        )
                     except Exception:  # memori rusak tidak boleh memblokir balasan
                         log.exception("gagal membaca memori chat=%s", chat)
                 skill_block = ""
@@ -467,6 +503,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 )
                 reply = answer
 
+            reflect_context = _reflect_context(app.sessions, chat_id, message)
             for chunk in format_reply(reply) or ["(kosong)"]:
                 chunk, mentions = _resolve_mentions(clean(chunk), app, chat_id)
                 payload = (
@@ -493,11 +530,18 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             if (
                 reply
                 and not text.startswith("/")
-                and app.config.memory.auto_extract
-                and app.memory is not None
+                and can_memory
                 and callable(getattr(app.llm, "reflect", None))
             ):
-                app.spawn(app.reflect(chat_id, message.text, reply))
+                app.spawn(
+                    app.reflect(
+                        chat_id,
+                        message.text,
+                        reply,
+                        context=reflect_context,
+                        memory=memory_block,
+                    )
+                )
     finally:
         typing.cancel()
         with contextlib.suppress(asyncio.CancelledError):

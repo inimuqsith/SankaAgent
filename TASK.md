@@ -29,6 +29,14 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   prompt, isi penuh dimuat lewat tool `skill` (progressive disclosure); AI memutuskan list/view/read,
   save/overwrite, dan archive (dipindah ke `.archive/`). File pendukung bisa dibaca. Diadaptasi dari
   GenericAgent (L1/L2/L3/L4) dan Hermes (SKILL.md).
+- [x] Loop umpan balik: refleksi hanya untuk role dengan tool `memory` dan pesan ≥8 karakter, dengan
+  transkrip 8 pesan sebelumnya; blok memori mendahulukan entri yang cocok dengan pesan terakhir lalu
+  yang terbaru, plus tanggal update; indeks skill menampilkan jumlah dan tanggal pemakaian dari
+  `.usage.json` agar `archive` berbasis bukti.
+- [x] Supersede memori: `memory add` menerima `supersedes=<id>` (harus aktif, satu scope, satu kind);
+  baris lama ditandai `superseded_by` dan disembunyikan dari prompt/pencarian tanpa dihapus. Refleksi
+  menerima blok memori aktif dan memakai jalur yang sama; supersede invalid jatuh ke add biasa. DB
+  lama dimigrasi otomatis saat start.
 - [x] Pengiriman file hasil kerja: tool `send` dan command `/kirim` (owner + member/panitia)
   mengirim dokumen dari workspace ke chat aktif lewat Neonize, dengan batas ukuran dan pencatatan
   ke jendela konteks.

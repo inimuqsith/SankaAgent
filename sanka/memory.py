@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 KINDS = frozenset({"fact", "preference", "rule", "note"})
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS memory (
     source TEXT NOT NULL DEFAULT '',
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
+    superseded_by INTEGER,
     UNIQUE(scope, kind, text)
 );
 CREATE INDEX IF NOT EXISTS memory_scope ON memory(scope, updated_at DESC);
@@ -35,6 +37,13 @@ CREATE INDEX IF NOT EXISTS memory_scope ON memory(scope, updated_at DESC);
 def _clip(text: str, limit: int) -> str:
     flat = " ".join(str(text or "").split())
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
+
+
+def _date(value: float) -> str:
+    try:
+        return datetime.fromtimestamp(float(value)).strftime("%Y-%m-%d")
+    except (OSError, OverflowError, ValueError):
+        return "?"
 
 
 class MemoryStore:
@@ -57,11 +66,24 @@ class MemoryStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA secure_delete=ON")
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
         try:
             self.path.chmod(0o600)
         except OSError:
             pass
+
+    def _migrate(self) -> None:
+        """DB lama belum punya kolom supersede; tambahkan tanpa menyentuh baris."""
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(memory)")}
+        if "superseded_by" in columns:
+            return
+        try:
+            self._conn.execute("ALTER TABLE memory ADD COLUMN superseded_by INTEGER")
+        except sqlite3.OperationalError:  # proses lain menambah kolom lebih dulu
+            columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(memory)")}
+            if "superseded_by" not in columns:
+                raise
 
     def _require(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -74,38 +96,77 @@ class MemoryStore:
                 self._conn.close()
                 self._conn = None
 
-    def add(self, scope: str, kind: str, text: str, source: str = "") -> tuple[int, bool]:
+    def add(
+        self,
+        scope: str,
+        kind: str,
+        text: str,
+        source: str = "",
+        *,
+        supersedes: int | None = None,
+    ) -> tuple[int, bool]:
+        """Simpan memori; `supersedes` menandai satu entri lama sebagai digantikan.
+
+        Entri lama tidak dihapus (`superseded_by` terisi), jadi keputusan salah masih bisa
+        dipulihkan. Id wajib aktif, satu scope, dan satu kind dengan teks baru.
+        """
         kind = kind.strip().lower()
         if kind not in KINDS:
             raise ValueError(f"kind tidak valid: {kind}")
         body = _clip(text, MAX_TEXT)
         if not body:
             raise ValueError("teks memori kosong")
+        old_id = None
+        if supersedes not in (None, ""):
+            try:
+                old_id = int(supersedes)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"supersedes bukan id: {supersedes}") from exc
         now = time.time()
         with self._lock:
-            existing = self._require().execute(
+            conn = self._require()
+            old = None
+            if old_id is not None:
+                old = conn.execute(
+                    "SELECT id, kind FROM memory WHERE id=? AND scope=? AND superseded_by IS NULL",
+                    (old_id, scope),
+                ).fetchone()
+                if old is None:
+                    raise ValueError(f"supersedes tidak valid: #{old_id} bukan memori aktif di scope ini")
+                if old["kind"] != kind:
+                    raise ValueError(f"supersedes beda kind: #{old_id} ({old['kind']}) vs {kind}")
+            existing = conn.execute(
                 "SELECT id FROM memory WHERE scope=? AND kind=? AND text=?",
                 (scope, kind, body),
             ).fetchone()
-            self._require().execute(
+            if old_id is not None and existing is not None and int(existing["id"]) == old_id:
+                raise ValueError("memori tidak bisa menggantikan dirinya sendiri")
+            conn.execute(
                 "INSERT INTO memory(scope, kind, text, source, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(scope, kind, text) DO UPDATE SET "
-                "source=excluded.source, updated_at=excluded.updated_at",
+                "source=excluded.source, updated_at=excluded.updated_at, superseded_by=NULL",
                 (scope, kind, body, _clip(source, MAX_SOURCE), now, now),
             )
-            row = self._require().execute(
+            row = conn.execute(
                 "SELECT id FROM memory WHERE scope=? AND kind=? AND text=?",
                 (scope, kind, body),
             ).fetchone()
-            self._require().commit()
-            return int(row["id"]), existing is None
+            item_id = int(row["id"])
+            if old_id is not None:
+                conn.execute(
+                    "UPDATE memory SET superseded_by=?, updated_at=? "
+                    "WHERE id=? AND scope=? AND superseded_by IS NULL",
+                    (item_id, now, old_id, scope),
+                )
+            conn.commit()
+            return item_id, existing is None
 
     def _select(self, scopes: list[str], query: str, limit: int) -> list[sqlite3.Row]:
         if not scopes:
             return []
         limit = max(1, min(int(limit or self.max_items), self.max_items))
-        clauses = [f"scope IN ({','.join('?' for _ in scopes)})"]
+        clauses = [f"scope IN ({','.join('?' for _ in scopes)})", "superseded_by IS NULL"]
         args: list = [*scopes]
         terms = [term for term in str(query or "").split() if term][:5]
         for term in terms:
@@ -145,11 +206,14 @@ class MemoryStore:
             self._require().commit()
             return int(cursor.rowcount)
 
-    def context(self, chat_id: str, *, include_global: bool = True) -> str:
-        """Blok L1 untuk system prompt; kosong bila tidak ada memori."""
+    def context(self, chat_id: str, *, include_global: bool = True, query: str = "") -> str:
+        """Blok L1 untuk system prompt; kosong bila tidak ada memori.
+
+        Entri yang cocok dengan pesan terakhir didahulukan, sisanya diisi yang terbaru.
+        """
         with self._lock:
-            global_rows = self._select(["global"], "", self.max_items) if include_global else []
-            chat_rows = self._select([chat_id], "", self.max_items) if chat_id else []
+            global_rows = self._ranked(["global"], query) if include_global else []
+            chat_rows = self._ranked([chat_id], query) if chat_id else []
         if not global_rows and not chat_rows:
             return ""
 
@@ -158,11 +222,26 @@ class MemoryStore:
         ]
         if global_rows:
             lines.append("Global:")
-            lines.extend(f"- #{row['id']} [{row['kind']}] {_clip(row['text'], MAX_ITEM_CHARS)}" for row in global_rows)
+            lines.extend(
+                f"- #{row['id']} [{row['kind']}] {_date(row['updated_at'])}: {_clip(row['text'], MAX_ITEM_CHARS)}"
+                for row in global_rows
+            )
         if chat_rows:
             lines.append("Chat ini:")
-            lines.extend(f"- #{row['id']} [{row['kind']}] {_clip(row['text'], MAX_ITEM_CHARS)}" for row in chat_rows)
+            lines.extend(
+                f"- #{row['id']} [{row['kind']}] {_date(row['updated_at'])}: {_clip(row['text'], MAX_ITEM_CHARS)}"
+                for row in chat_rows
+            )
         text = "\n".join(lines)
         if len(text) > self.max_chars:
             text = text[: self.max_chars - 1].rstrip() + "…"
         return text
+
+    def _ranked(self, scopes: list[str], query: str) -> list[sqlite3.Row]:
+        """Cocok query dulu, lengkapi dengan yang terbaru tanpa duplikat."""
+        recent = self._select(scopes, "", self.max_items)
+        if not str(query or "").strip():
+            return recent
+        matched = self._select(scopes, query, self.max_items)
+        seen = {row["id"] for row in matched}
+        return [*matched, *(row for row in recent if row["id"] not in seen)][: self.max_items]

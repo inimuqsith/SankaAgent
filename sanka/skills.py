@@ -7,11 +7,15 @@ mengikuti L1 GenericAgent.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 import shutil
+import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -23,6 +27,7 @@ SKIP = frozenset({"__pycache__", "node_modules", ".git", ".venv", "venv", "site-
 SUPPORT = frozenset({"references", "templates", "assets", "scripts"})
 MAX_CONTENT = 18_000
 MAX_DESCRIPTION = 200
+USAGE = ".usage.json"
 
 
 def _clip(text: str, limit: int) -> str:
@@ -69,6 +74,7 @@ class SkillStore:
             pass
         self._skills: dict[str, Skill] = {}
         self._sig: tuple = ()
+        self._lock = threading.Lock()
         self._refresh()
 
     def _signature(self) -> tuple:
@@ -140,10 +146,11 @@ class SkillStore:
         self._refresh()
         if not self._skills:
             return ""
+        usage = self._usage()
         lines = []
         total = 0
         for skill in (self._skills[name] for name in sorted(self._skills)):
-            line = f"- {skill.name}: {_clip(skill.description, 120)}"
+            line = f"- {skill.name}: {_clip(skill.description, 120)}{self._usage_note(usage.get(skill.name))}"
             if total + len(line) + 1 > self.max_index_chars:
                 lines.append("- ...")
                 break
@@ -151,11 +158,52 @@ class SkillStore:
             total += len(line) + 1
         return "Skill lokal (prosedur; muat penuh dengan tool skill action=view):\n" + "\n".join(lines)
 
+    def _usage_path(self) -> Path:
+        return self.root / USAGE
+
+    def _usage(self) -> dict[str, dict]:
+        try:
+            data = json.loads(self._usage_path().read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _usage_note(item) -> str:
+        if not isinstance(item, dict) or not int(item.get("uses") or 0):
+            return ""
+        try:
+            when = datetime.fromtimestamp(float(item.get("last") or 0)).strftime("%Y-%m-%d")
+        except (OSError, OverflowError, ValueError):
+            when = "?"
+        return f" (dipakai {int(item['uses'])}×, terakhir {when})"
+
+    def _record_use(self, name: str) -> None:
+        """Catat pemakaian supaya keputusan archive punya bukti, bukan tebakan."""
+        with self._lock:
+            usage = self._usage()
+            item = usage.get(name)
+            item = dict(item) if isinstance(item, dict) else {}
+            item["uses"] = int(item.get("uses") or 0) + 1
+            item["last"] = time.time()
+            usage[name] = item
+            path = self._usage_path()
+            target = path.with_suffix(".tmp")
+            try:
+                target.write_text(
+                    json.dumps(usage, ensure_ascii=False, separators=(",", ":")),
+                    encoding="utf-8",
+                )
+                os.replace(target, path)
+            except OSError as exc:
+                log.warning("gagal menulis pemakaian skill: %s", exc)
+
     def view(self, name: str) -> str:
         skill = self.get(name)
         if skill is None:
             available = ", ".join(self.names()) or "(kosong)"
             raise KeyError(f"skill tidak ditemukan: {name}; tersedia: {available}")
+        self._record_use(skill.name)
         return f'Skill "{skill.name}": {skill.description}\nPath: {skill.path}\n\n{skill.body}'
 
     def read(self, name: str, file: str) -> str:

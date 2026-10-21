@@ -264,3 +264,37 @@
   penuh (URL/PDF/audio/calendar/email) dan state tugas/crash recovery sebagai pekerjaan nanti.
 - Verifikasi: `pytest -q` 56 lulus; `python -m sanka selftest` SELFTEST OK (termasuk memory dan
   skill); smoke store/tool/command/file dengan fake client lulus.
+
+## 2026-10-22 (umpan balik memori & skill)
+
+- `sanka/wa.py`: refleksi kini bergerbang—hanya role yang punya tool `memory`, pesan pengguna ≥8
+  karakter, dan bukan command. Transkrip 8 pesan sebelumnya (dipotong 3000 karakter) ikut dikirim ke
+  `LLM.reflect`, jadi fakta dari percakapan berjalan tertangkap. Konteks diambil sebelum balasan
+  dikirim supaya jawaban bot tidak terhitung dua kali.
+- `sanka/memory.py`: `context()` menerima `query`; entri yang cocok dengan pesan terakhir didahulukan,
+  sisanya diisi yang terbaru, dan tiap baris memuat tanggal `updated_at`. Batas `max_items`/`max_chars`
+  tidak berubah.
+- `sanka/skills.py`: sidecar `.usage.json` (tulis atomik) mencatat `uses` + `last` tiap `view`; indeks
+  menampilkan `(dipakai N×, terakhir YYYY-MM-DD)` sehingga `archive` punya bukti. Format `SKILL.md`
+  tidak berubah.
+- `sanka/llm.py`: prompt refleksi menegaskan `kind=rule` hanya untuk aturan singkat; prosedur bertahap
+  adalah bahan skill, bukan memori.
+- Uji baru: gate role, transkrip yang dikirim, skip pesan pendek, ranking query + tanggal, telemetri
+  `.usage.json`. Verifikasi: `pytest -q` 59 lulus; `python -m sanka selftest` SELFTEST OK.
+
+## 2026-10-22 (supersede memori)
+
+- `sanka/memory.py`: kolom `superseded_by` + migrasi otomatis untuk DB lama (termasuk fallback bila
+  proses lain menambah kolom lebih dulu). `add(..., supersedes=<id>)` memvalidasi id aktif, satu
+  scope, satu kind, dan bukan dirinya sendiri; baris lama ditandai, tidak dihapus. Menambah ulang
+  teks yang pernah digantikan mengaktifkannya kembali (`superseded_by=NULL`). `_select` hanya
+  mengembalikan entri aktif, jadi prompt/pencarian otomatis bersih.
+- `sanka/tools/memory.py`: parameter `supersedes` + pesan `#lama digantikan`; deskripsi tool
+  menjelaskan kontraknya.
+- `sanka/llm.py` + `sanka/wa.py`: refleksi menerima blok memori aktif ber-ID dan boleh mengisi
+  `supersedes`; id divalidasi store. Jika supersede ditolak, fakta baru tetap disimpan tanpa
+  supersede. Prompt sistem menyuruh model mengisi `supersedes` hanya saat mengganti entri lama.
+- Uji: supersede menyembunyikan baris lama tapi menyisakan row, tolak beda scope/kind/id mati/self,
+  migrasi DB lama, tool, parse id (`"7"` diterima, `true` ditolak), refleksi + fallback. Verifikasi:
+  `pytest -q` 61 lulus; `python -m sanka selftest` SELFTEST OK; DB asli `~/.sanka/memory.db` sudah
+  punya kolom `superseded_by`.

@@ -123,15 +123,22 @@ dengan action `add/search/list/forget`. Command `/memori [global]` untuk tambah/
 Memori global dipakai bersama panitia lintas grup, sedangkan memori chat hanya untuk grup itu. AI
 yang memutuskan kapan menyimpan atau melupakan; tidak perlu command user. Hanya informasi eksplisit
 dan tahan lama yang boleh disimpan—bukan rahasia, tebakan, atau status sesi. Blok memori diinjeksi
-ke system prompt dengan batas `memory.max_items` per scope dan `memory.max_chars`. Contoh:
-`/memori tambah suka kopi tanpa gula`, `/memori global tambah jadwal rapat panitia`,
+ke system prompt dengan batas `memory.max_items` per scope dan `memory.max_chars`; setiap baris
+memuat tanggal update, entri yang cocok dengan pesan terakhir didahulukan, sisanya diisi yang
+terbaru. Kalau fakta baru menggantikan fakta lama, AI mengisi `supersedes=<id>` saat `add`; baris
+lama ditandai `superseded_by` (tidak dihapus, masih bisa dipulihkan—menambah ulang teksnya
+mengaktifkannya kembali) dan hilang dari prompt/pencarian.
+Validasi: id harus aktif, satu scope, dan satu kind; supersede yang ditolak tidak membuang fakta
+baru. Contoh: `/memori tambah suka kopi tanpa gula`, `/memori global tambah jadwal rapat panitia`,
 `/memori cari kopi`.
 
-Selain tool, ada refleksi otomatis (`memory.auto_extract: true`): setelah tiap turn, model
-mengekstrak 0-3 fakta/preferensi/prosedur singkat (`kind=rule`) yang tahan lama dan menyimpannya
-sendiri—tanpa command user. Refleksi berjalan di latar, tidak menahan balasan, dan menyaring
-rahasia/kredensial. Ini yang membuat memori terisi karena AI menilai informasinya penting, bukan
-karena user menyuruh.
+Selain tool, ada refleksi otomatis (`memory.auto_extract: true`): model mengekstrak 0-3
+fakta/preferensi/aturan singkat (`kind=rule`) yang tahan lama dan menyimpannya sendiri—tanpa command
+user. Refleksi hanya berjalan bila role punya tool `memory`, pesan pengguna minimal 8 karakter, dan
+bukan command; model menerima transkrip 8 pesan sebelumnya, blok memori aktif (untuk `supersedes`),
+plus pesan/jawaban terakhir, jadi fakta yang muncul dari percakapan berjalan ikut tertangkap.
+Refleksi berjalan di latar, tidak menahan balasan, dan menyaring rahasia/kredensial. Ini yang membuat
+memori terisi karena AI menilai informasinya penting, bukan karena user menyuruh.
 
 **Skill.** Setiap skill adalah folder berisi `SKILL.md` dengan frontmatter YAML:
 
@@ -151,8 +158,10 @@ System prompt hanya memuat `name` + `description` (progressive disclosure). Mode
 `skill` `action=view` untuk memuat isi penuh, atau `action=read` untuk file pendukung di folder
 skill. AI juga yang memutuskan kapan menyimpan/memperbarui (`action=save`) dan memensiunkan
 (`action=archive`, dipindah ke `.archive/`, reversible). Indeks dibatasi `skills.max_index_chars`;
-skill invalid/duplikat dilewati dengan log. Command `/skill` menampilkan indeks, `/skill <nama>`
-memuat isinya—tapi keputusan memakai/mengubah skill ada pada model, bukan command user.
+setiap skill yang pernah dimuat menampilkan jumlah pemakaian dan tanggal terakhir (`<dir>/.usage.json`,
+dicatat oleh `action=view`), sehingga keputusan archive punya bukti. Skill invalid/duplikat dilewati
+dengan log. Command `/skill` menampilkan indeks, `/skill <nama>` memuat isinya—tapi keputusan
+memakai/mengubah skill ada pada model, bukan command user.
 
 **Kirim file.** Tool `send` dan command `/kirim <path> [caption]` mengirim file di dalam workspace
 sebagai dokumen WhatsApp ke chat aktif (maksimal 100 MB). File yang terkirim dicatat di jendela

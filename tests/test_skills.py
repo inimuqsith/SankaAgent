@@ -64,7 +64,10 @@ def test_index_view_read_and_refresh(tmp_path: Path) -> None:
 
     store = SkillStore(root)
     assert "deploy-aman: Deploy service" in store.index()
+    assert "dipakai" not in store.index()
     assert "# Deploy aman" in store.view("deploy-aman")
+    assert "dipakai 1×" in store.index()
+    assert (root / ".usage.json").is_file()
     assert "cek dulu" in store.read("deploy-aman", "references/checklist.md")
     with pytest.raises(PermissionError):
         store.read("deploy-aman", "../secret.txt")
