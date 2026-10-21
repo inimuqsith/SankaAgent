@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from neonize.proto.Neonize_pb2 import Message
 from neonize.utils import extract_text
 
@@ -141,6 +142,60 @@ def test_format_reply() -> None:
     assert len(chunks) == 2
     assert all(len(chunk) <= 3500 for chunk in chunks)
     assert format_reply("   ") == []
+
+
+def test_load_config_resolves_paths_from_config_dir(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    target = tmp_path / "config.yaml"
+    target.write_text(
+        """
+persona: p
+llm:
+  base_url: "http://x"
+  model: m
+  api_key_env: SANKA_TEST_KEY
+workspace: ".sanka/workspace"
+whatsapp:
+  session_db: ".sanka/whatsapp.db"
+  history_db: ".sanka/history.db"
+roles:
+  owner:
+    tools: ["*"]
+default_role: owner
+""",
+        encoding="utf-8",
+    )
+
+    loaded = load_config(str(target))
+
+    assert loaded.workspace == tmp_path / ".sanka/workspace"
+    assert loaded.whatsapp.session_db == tmp_path / ".sanka/whatsapp.db"
+    assert loaded.whatsapp.history_db == tmp_path / ".sanka/history.db"
+    assert loaded.memory.path == tmp_path / ".sanka/memory.db"
+    assert loaded.skills.dir == tmp_path / ".sanka/skills"
+
+
+def test_load_config_rejects_legacy_home_data(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    target = tmp_path / "config.yaml"
+    target.write_text(
+        """
+persona: p
+llm:
+  base_url: "http://x"
+  model: m
+  api_key_env: SANKA_TEST_KEY
+workspace: "~/.sanka/workspace"
+roles:
+  owner:
+    tools: ["*"]
+default_role: owner
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit):
+        load_config(str(target))
 
 
 def test_system_prompt_lists_bot_numbers() -> None:

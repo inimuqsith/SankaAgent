@@ -8,11 +8,12 @@ llm:
   max_turns: 20
   timeout_seconds: 120
 
-workspace: "~/.sanka/workspace"
+# Path relatif di-resolve dari folder config.yaml, jadi data tetap di dalam project.
+workspace: ".sanka/workspace"
 
 whatsapp:
-  session_db: "~/.sanka/whatsapp.db"
-  history_db: "~/.sanka/history.db"
+  session_db: ".sanka/whatsapp.db"
+  history_db: ".sanka/history.db"
   require_mention: true
   bot_name: sanka
 
@@ -43,14 +44,14 @@ web_search:
 
 memory:
   # fakta/preferensi lintas sesi; DB dibuat 0600, di luar workspace
-  path: "~/.sanka/memory.db"
+  path: ".sanka/memory.db"
   max_items: 20          # per scope (global/chat) yang diinjeksi
   max_chars: 3000        # batas total blok memori di system prompt
   auto_extract: true     # AI mengekstrak memori tahan lama setelah tiap turn
 
 skills:
   # prosedur lokal: <dir>/<nama>/SKILL.md (frontmatter: name, description)
-  dir: "~/.sanka/skills"
+  dir: ".sanka/skills"
   max_index_chars: 3000  # hanya nama + deskripsi yang masuk prompt
 
 mcp:

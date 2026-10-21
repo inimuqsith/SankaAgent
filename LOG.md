@@ -356,3 +356,38 @@
 - Verifikasi: `pytest -q` 68 lulus; `python -m sanka selftest` SELFTEST OK. DB asli sudah punya
   tabel `actions`. Bot live di-restart 03:22:41 (PID 108021) dan tersambung ke WhatsApp; daftar tool
   memuat `send_to`. Kirim lintas chat live tidak dipaksakan agar tidak mengirim ke grup nyata.
+
+## 2026-10-22 (data runtime project-local)
+
+- `sanka/config.py`: `_expand(value, base)` me-resolve path relatif dari folder `config.yaml`, bukan
+  CWD; `~`/absolut tetap apa adanya. Default `memory.path` dan `skills.dir` menjadi `.sanka/...`,
+  begitu juga fallback `load_config` untuk workspace, session DB, history DB, memori, dan skill.
+- `config.example.yaml` + `config.yaml` lokal: semua path data pindah ke `.sanka/...` dengan catatan
+  resolve; `.gitignore` menambahkan `.sanka/`. `README.md` menjelaskan data runtime di dalam project.
+- Migrasi: bot dihentikan graceful, isi `~/.sanka` (whatsapp.db, history.db, memory.db, skills,
+  workspace, sanka.log) dipindah ke `.sanka/`, lalu `~/.sanka` dihapus. Jumlah baris dipertahankan:
+  386 pesan arsip dan 3 memori.
+- Verifikasi: `pytest -q` 69 lulus (termasuk test resolve path relatif); `python -m sanka selftest`
+  SELFTEST OK. Semua path hasil `load_config` berada di bawah root project. Bot live di-restart
+  03:29:20 (PID 109867) dan tersambung ke WhatsApp.
+
+## 2026-10-22 (audit pasca-migrasi)
+
+- `sanka/config.py`: `_reject_legacy` menolak `workspace`, `whatsapp.session_db`, `history_db`,
+  `memory.path`, dan `skills.dir` yang masih berada di bawah `~/.sanka`, dengan pesan agar pindah
+  ke `.sanka/` relatif folder config. Test `load_config` lama memastikan start gagal, bukan
+  diam-diam membuat ulang direktori lama.
+- `sanka/tools/__init__.py`: `resolve_path` menolak path di bawah `~/.sanka` dengan pesan bahwa data
+  sudah pindah ke `.sanka/` project; test path confinement memastikan pesan itu muncul, jadi arsip
+  lama tidak memancing pembacaan ke direktori yang sudah dihapus.
+- Audit runtime: `~/.sanka` tidak ada, tidak ada proses/fd yang membuka path lama, dan bot PID
+  111844 hanya membuka `.sanka/{whatsapp,history,memory}.db*` + `.sanka/sanka.log`. Jendela 20 pesan
+  aktif tidak memuat path lama.
+- Skill `sanka-service-lifecycle` diperbarui: data di `.sanka/` project, resep start detached,
+  verifikasi FD via `/proc/<pid>`, dan larangan membuat symlink kompatibilitas. Service harness lama
+  (`sanka`, `sanka-gateway`, `sanka-bridge`, `fake-bridge`) sudah dihapus.
+- Sisa teks `~/.sanka` hanya berupa guard/test/dokumentasi dan riwayat di `LOG.md`/`TASK.md`; arsip
+  percakapan lama di `workspace/whatsapp/*.txt` bisa memuat path lama sebagai isi pesan, bukan
+  konfigurasi atau pembacaan aktif.
+- Verifikasi: `pytest -q` 70 lulus; selftest OK; bot live di-restart 03:35:02 (PID 111844) dan
+  tersambung ke WhatsApp.

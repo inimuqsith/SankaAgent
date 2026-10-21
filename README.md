@@ -38,6 +38,12 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sand
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
 | `mcp.servers` | `command`, `args`, `env` per server stdio |
 
+Path relatif (`workspace`, `session_db`, `history_db`, `memory.path`, `skills.dir`) di-resolve dari
+folder `config.yaml`, bukan CWD. Default contoh memakai `.sanka/...`, jadi semua data runtime
+(DB, sesi, skill, workspace, log) tetap di dalam project dan di-ignore Git. Path `~` atau absolut
+tetap dipakai apa adanya, kecuali `~/.sanka`: config yang masih menunjuk ke sana ditolak saat start
+agar proses tidak diam-diam membaca atau membuat ulang direktori lama.
+
 `tools:` dan `commands:` yang tidak ditulis memakai pola default tiap handler (lihat di bawah);
 kalau ditulis, isi YAML menang. `tools: []` atau `commands: []` berarti role itu tidak boleh apa pun.
 Role `member` di contoh dipakai untuk panitia/user: memori chat + global, memakai/menyimpan skill,
@@ -62,8 +68,8 @@ bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
   restart tidak mengosongkan konteks. Pesan grup yang tidak di-mention tetap dicatat supaya payload
   berikutnya punya konteks. `/reset` hanya mengosongkan jendela aktif; arsip lama tetap ada.
 - Semua pesan yang pernah diterima (termasuk pesan yang dikirim dari ponsel sendiri) dan seluruh
-  event `HistorySync` disimpan ke `whatsapp.history_db` (default `~/.sanka/history.db`, di luar
-  workspace). File DB dibuat `0600`, direktorinya `0700`, dan tidak bisa dibaca tool file/sandbox.
+  event `HistorySync` disimpan ke `whatsapp.history_db` (default `.sanka/history.db`, relatif ke
+  folder config dan di luar workspace). File DB dibuat `0600`, direktorinya `0700`, dan tidak bisa dibaca tool file/sandbox.
   Deduplikasi memakai `(chat_id, message_id)`.
 - Nama chat disimpan di `chats.name` dari `HistorySync` (`Conversation.name`/`displayName`) dan
   `GroupInfoEvent`; DM memakai push name saat nama belum ada. Header payload, tool `chat_history`,
@@ -243,6 +249,7 @@ python -m sanka selftest      # cek tool + LLM tanpa WhatsApp
 python -m sanka backfill      # perangkat sementara: tarik history lama, lalu logout
 ```
 
-Session WhatsApp disimpan di `whatsapp.session_db`, jadi QR hanya muncul saat pairing pertama.
+Session WhatsApp disimpan di `whatsapp.session_db` (default `.sanka/whatsapp.db`), jadi QR hanya
+muncul saat pairing pertama.
 `history.db` menyimpan arsip pesan dan dimuat ulang setelah restart.
 `shell` dan `sandbox` memberi akses host/container penuh: beri hanya ke role yang dipercaya.

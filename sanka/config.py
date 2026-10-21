@@ -52,7 +52,7 @@ class WebSearchConfig:
 
 @dataclass(frozen=True)
 class MemoryConfig:
-    path: Path = Path("~/.sanka/memory.db")
+    path: Path = Path(".sanka/memory.db")
     max_items: int = 20
     max_chars: int = 3000
     auto_extract: bool = True
@@ -60,7 +60,7 @@ class MemoryConfig:
 
 @dataclass(frozen=True)
 class SkillsConfig:
-    dir: Path = Path("~/.sanka/skills")
+    dir: Path = Path(".sanka/skills")
     max_index_chars: int = 3000
 
 
@@ -108,8 +108,23 @@ def _fail(message: str) -> SystemExit:
     return SystemExit(message)
 
 
-def _expand(value: str) -> Path:
-    return Path(value).expanduser()
+LEGACY_DATA = Path("~/.sanka").expanduser()
+
+
+def _expand(value: str, base: Path | None = None) -> Path:
+    """Path relatif di-resolve dari folder config, bukan CWD; `~` tetap absolut."""
+    path = Path(value).expanduser()
+    return path if path.is_absolute() or base is None else base / path
+
+
+def _reject_legacy(path: Path, key: str) -> Path:
+    """Tolak path data lama agar proses tidak diam-diam membaca/membuat ~/.sanka lagi."""
+    if path == LEGACY_DATA or path.is_relative_to(LEGACY_DATA):
+        raise _fail(
+            f"config: {key} masih menunjuk {path}; data runtime sekarang di .sanka/ "
+            "relatif terhadap folder config"
+        )
+    return path
 
 
 def secure_db(path: Path) -> None:
@@ -207,14 +222,26 @@ def load_config(path: str | None = None) -> Config:
     memory_raw = raw.get("memory") if isinstance(raw.get("memory"), dict) else {}
     skills_raw = raw.get("skills") if isinstance(raw.get("skills"), dict) else {}
 
-    workspace = _expand(str(raw.get("workspace") or "~/.sanka/workspace"))
+    base = target.resolve().parent
+    workspace = _reject_legacy(
+        _expand(str(raw.get("workspace") or ".sanka/workspace"), base), "workspace"
+    )
     workspace.mkdir(parents=True, exist_ok=True)
-    session_db = _expand(str(wa_raw.get("session_db") or "~/.sanka/whatsapp.db"))
+    session_db = _reject_legacy(
+        _expand(str(wa_raw.get("session_db") or ".sanka/whatsapp.db"), base), "whatsapp.session_db"
+    )
     session_db.parent.mkdir(parents=True, exist_ok=True)
-    history_db = _expand(str(wa_raw.get("history_db") or session_db.parent / "history.db"))
+    history_db = _reject_legacy(
+        _expand(str(wa_raw.get("history_db") or session_db.parent / "history.db"), base),
+        "whatsapp.history_db",
+    )
     history_db.parent.mkdir(parents=True, exist_ok=True)
-    memory_db = _expand(str(memory_raw.get("path") or "~/.sanka/memory.db"))
-    skills_dir = _expand(str(skills_raw.get("dir") or "~/.sanka/skills"))
+    memory_db = _reject_legacy(
+        _expand(str(memory_raw.get("path") or ".sanka/memory.db"), base), "memory.path"
+    )
+    skills_dir = _reject_legacy(
+        _expand(str(skills_raw.get("dir") or ".sanka/skills"), base), "skills.dir"
+    )
     secure_db(session_db)
     secure_db(history_db)
 

@@ -1,5 +1,6 @@
 .env
 config.yaml
+.sanka/
 .venv/
 __pycache__/
 *.pyc

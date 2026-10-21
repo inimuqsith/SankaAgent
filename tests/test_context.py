@@ -154,6 +154,7 @@ def test_paths_confined_to_workspace(tmp_path: Path) -> None:
     assert "aman" in read(str(tmp_path / "notes.txt"))
     for outside in ("/etc/passwd", "../catatan.txt", "escape"):
         assert "di luar workspace" in read(outside)
+    assert "sudah dipindah" in read("~/.sanka/workspace/notes.txt")
     result = asyncio.run(execute(TOOLS.by_name, "write", {"path": "../escape.txt", "content": "x"}, owner))
     assert "di luar workspace" in result
     assert not (tmp_path.parent / "escape.txt").exists()

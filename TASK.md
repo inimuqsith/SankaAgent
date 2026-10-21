@@ -50,6 +50,10 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   diinjeksi ke prompt role yang punya `send_to`, jadi chat tujuan tahu konteks artefak tanpa
   menggabungkan transkrip; isi/permintaan berkredensial tidak disimpan. Model lima lapis memori
   (identitas, episodik, semantik, prosedural, autografis) didokumentasikan di `README.md`.
+- [x] Data runtime di dalam project: path relatif di `config.yaml` di-resolve dari folder config
+  (bukan CWD); default `.sanka/` berisi workspace, DB sesi/arsip/memori, skill, dan log, serta
+  di-ignore Git. Migrasi dari `~/.sanka` mempertahankan arsip dan memori; config yang masih
+  menunjuk path lama ditolak saat start.
 
 ## Nanti
 

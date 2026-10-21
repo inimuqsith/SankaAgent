@@ -9,7 +9,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from ..config import Config, RoleConfig
+from ..config import LEGACY_DATA, Config, RoleConfig
 from ..registry import Handler, Registry, allows, discover
 
 log = logging.getLogger(__name__)
@@ -62,6 +62,8 @@ def resolve_path(config: Config, raw: str) -> Path:
     base = config.workspace.resolve()
     path = Path(str(raw)).expanduser()
     path = (path if path.is_absolute() else base / path).resolve()
+    if path == LEGACY_DATA or path.is_relative_to(LEGACY_DATA):
+        raise PermissionError("path lama ~/.sanka sudah dipindah ke .sanka di project")
     if not path.is_relative_to(base):
         raise PermissionError(f"path di luar workspace: {raw}")
     return path
