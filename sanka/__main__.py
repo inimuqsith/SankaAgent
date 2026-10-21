@@ -8,13 +8,14 @@ import shutil
 import sys
 
 from neonize.aioze.client import NewAClient
-from neonize.aioze.events import ConnectedEv, MessageEv
+from neonize.aioze.events import ConnectedEv, GroupInfoEv, HistorySyncEv, MessageEv
 
 from .registry import RegistryError
 
 try:
     from .commands import REGISTRY as COMMANDS
-    from .config import Config, RoleConfig, load_config, load_env
+    from .config import Config, RoleConfig, drop_session, load_config, load_env, secure_db
+    from .history import HistoryStore, history_props
     from .llm import API_ERROR_TEXT, LLM
     from .mcp import Hub
     from .permissions import commands_for, tool_patterns, tools_for
@@ -108,9 +109,19 @@ async def run_bot(config: Config) -> None:
     for role in config.roles.values():
         if "*" in (role.tools or ()) or "*" in (role.commands or ()):
             log.info("role %s memakai wildcard; handler baru otomatis diizinkan", role.name)
+    store: HistoryStore | None = None
     try:
-        app = App(config, LLM(config), hub, Sessions())
-        client = NewAClient(str(config.whatsapp.session_db))
+        try:
+            path = config.whatsapp.history_db or config.whatsapp.session_db.parent / "history.db"
+            store = HistoryStore(path, config.workspace)
+        except Exception:  # arsip gagal dibuka tidak boleh mematikan bot
+            log.exception("gagal membuka arsip riwayat; konteks hanya di RAM")
+        app = App(config, LLM(config), hub, Sessions(store=store))
+        client = NewAClient(
+            str(config.whatsapp.session_db),
+            props=history_props(store.needs_full_sync() if store is not None else True),
+        )
+        app.client = client
 
         @client.event(MessageEv)
         async def on_message(accepted: NewAClient, ev) -> None:
@@ -121,17 +132,128 @@ async def run_bot(config: Config) -> None:
             except Exception:
                 log.exception("handler pesan gagal")
 
+        @client.event(HistorySyncEv)
+        async def on_history(accepted: NewAClient, ev) -> None:
+            if store is None or ev.Data is None:
+                return
+            try:
+                count, chats, done = await asyncio.to_thread(
+                    store.ingest_sync,
+                    ev.Data,
+                    app.config.whatsapp.bot_name,
+                )
+                for chat_id in chats:
+                    app.sessions.invalidate(chat_id)
+                log.info(
+                    "history sync: %d pesan, %d chat, sync=%s progress=%d%s",
+                    count,
+                    len(chats),
+                    ev.Data.syncType,
+                    ev.Data.progress,
+                    " (selesai)" if done else "",
+                )
+            except Exception:
+                log.exception("ingest history sync gagal")
+
+        @client.event(GroupInfoEv)
+        async def on_group_info(accepted: NewAClient, ev) -> None:
+            if store is None or not ev.JID.User:
+                return
+            name = getattr(ev.Name, "Name", "").strip()
+            if not name:
+                return
+            try:
+                store.set_chat_name(f"{ev.JID.User}@{ev.JID.Server}", name)
+            except Exception:
+                log.exception("gagal menyimpan nama grup %s", ev.JID.User)
+
         @client.event(ConnectedEv)
         async def on_connected(accepted: NewAClient, ev) -> None:
             if accepted.me is not None:
                 app.bot_digits = bot_digits(accepted.me)
+            secure_db(config.whatsapp.session_db)
             log.info("Sanka tersambung ke WhatsApp")
 
         log.info("Sanka siap. Scan QR bila ini pairing pertama.")
         await client.connect()
+        secure_db(config.whatsapp.session_db)
         await client.idle()
     finally:
+        if store is not None:
+            store.close()
         await hub.stop()
+
+
+BACKFILL_TIMEOUT = 900
+
+
+async def backfill(config: Config) -> int:
+    """Pair perangkat sementara untuk menarik history sync, lalu logout tanpa mengganggu bot utama."""
+    path = config.whatsapp.history_db or config.whatsapp.session_db.parent / "history.db"
+    store = HistoryStore(path, config.workspace)
+    session = config.whatsapp.session_db.parent / "backfill.db"
+    drop_session(session)
+    client = NewAClient(str(session), props=history_props(True))
+    done = asyncio.Event()
+    paired = False
+
+    @client.event(ConnectedEv)
+    async def on_connected(accepted: NewAClient, ev) -> None:
+        nonlocal paired
+        paired = True
+        secure_db(session)
+        log.info("backfill tersambung; menunggu history sync dari ponsel")
+
+    @client.event(HistorySyncEv)
+    async def on_history(accepted: NewAClient, ev) -> None:
+        if ev.Data is None:
+            return
+        try:
+            count, chats, finished = await asyncio.to_thread(
+                store.ingest_sync,
+                ev.Data,
+                config.whatsapp.bot_name,
+            )
+        except Exception:
+            log.exception("backfill gagal menyimpan history sync")
+            return
+        log.info(
+            "backfill: %d pesan, %d chat, sync=%s progress=%d%s",
+            count,
+            len(chats),
+            ev.Data.syncType,
+            ev.Data.progress,
+            " (selesai)" if finished else "",
+        )
+        if finished:
+            done.set()
+
+    try:
+        await client.connect()
+        secure_db(session)
+        try:
+            await asyncio.wait_for(done.wait(), BACKFILL_TIMEOUT)
+        except asyncio.TimeoutError:
+            log.warning("backfill timeout setelah %s detik; menghentikan perangkat sementara", BACKFILL_TIMEOUT)
+        if done.is_set():
+            await asyncio.sleep(2)  # beri waktu chunk terakhir selesai ditulis
+            log.info("backfill selesai; logout perangkat sementara")
+    finally:
+        logged_out = False
+        if paired:
+            try:
+                await client.logout()
+                logged_out = True
+            except Exception:
+                log.exception("gagal logout perangkat backfill; hapus manual di WhatsApp")
+        try:
+            await client.stop()
+        except Exception:
+            log.debug("stop client backfill gagal", exc_info=True)
+        store.close()
+        if logged_out:
+            drop_session(session)
+    return 0 if paired and done.is_set() else 1
 
 
 async def main(argv: list[str]) -> int:
@@ -140,6 +262,8 @@ async def main(argv: list[str]) -> int:
     config = load_config()
     if argv and argv[0] == "selftest":
         return await selftest(config)
+    if argv and argv[0] == "backfill":
+        return await backfill(config)
     await run_bot(config)
     return 0
 

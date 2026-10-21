@@ -162,3 +162,59 @@
   -> proto keluar `mentionedJID=['130799689031758@lid']`, `stanzaID` quote utuh, tanpa `U+2068`.
 - "Le Watasi" di balasan 00.07 adalah artefak model (tidak deterministik, bukan dari payload);
   mitigasi: payload dan balasan sekarang bebas karakter isolasi + token mention kanonik.
+
+## 2026-10-22 (read/write terkunci ke workspace)
+
+- `sanka/tools/__init__.py:_resolve()` sekarang me-resolve path (termasuk symlink) lalu menolak
+  apa pun di luar `workspace` dengan `PermissionError`: `/etc/passwd`, `../config.yaml`, dan
+  `~/.sanka/whatsapp.db` yang dikirim member lewat `read` berubah dari bocor jadi
+  `error: path di luar workspace: ...`. Sebelumnya path absolut/`~/...` dipakai apa adanya.
+- `execute()` menangkap `PermissionError` tanpa `log.exception` supaya penolakan path yang wajar
+  tidak membanjiri log dengan traceback; pesan tetap dipotong `MAX_ERROR`.
+- Deskripsi parameter `read`/`write` dan tabel `workspace` di README menyebut batas ini.
+- Test `tests/test_context.py:test_paths_confined_to_workspace`: path relatif dan absolut di dalam
+  workspace tetap terbaca; `/etc/passwd`, `../catatan.txt`, dan symlink `escape -> /etc/passwd`
+  ditolak; `write` juga tidak bisa keluar workspace.
+- Verifikasi: `pytest -q` 29 lulus; `python -m sanka selftest` SELFTEST OK (write/read, shell,
+  sandbox, web_search, LLM); smoke langsung dengan config asli: role member hanya punya
+  `read, web_search, sandbox, mcp__*`, tiga path luar ditolak, `selftest.txt` tetap terbaca.
+
+## 2026-10-22 (arsip pesan & backfill)
+
+- `sanka/history.py` (baru): SQLite `history_db` per akun, tabel `messages` + FTS5, kunci
+  `(chat_id, msg_id)`, WAL, `secure_delete`, file `0600` dan direktori `0700`. Semua pesan live
+  (termasuk `IsFromMe` dari ponsel sendiri) dan seluruh `HistorySync` disimpan; proto media/quote
+  ikut disimpan agar lampiran lama bisa diunduh ulang.
+- `Sessions` menjadi write-through: 20 pesan terakhir dimuat dari DB setelah restart, `/reset`
+  memakai cursor `reset_ts` sehingga hanya jendela aktif yang kosong, dan quote lama dicari lewat DB.
+- `HistorySyncEv` didaftarkan di `run_bot`; ingest per batch 500 baris di thread terpisah. DeviceProps
+  meminta 730 hari/5 GB, `requireFullSync` selama `full_sync_done` belum ada, dan field
+  `supportGroupHistory` (15) disisipkan manual karena proto Python Neonize 0.5.2 belum punya field
+  itu sementara binding Go-nya punya.
+- Tool `chat_history` (`family=read`) mencari teks/nama di arsip **hanya untuk chat aktif**, dengan
+  `query`, `before`, `after`, `limit`; prompt sistem memberi tahu model bahwa pesan lama ada di arsip.
+- Backfill untuk sesi yang sudah terlanjur pairing: `/backfill` (owner, DM) mengirim QR sebagai
+  gambar, memakai `backfill.db` terpisah, menulis ke `history.db`, lalu logout + hapus sesi. CLI
+  `python -m sanka backfill` menyediakan jalur terminal.
+- `config.py`: `whatsapp.history_db` (default `~/.sanka/history.db`) dan `secure_db()` untuk
+  `session_db`/`history_db`; session DB lama yang tadinya `0644` diamankan ke `0600`.
+- Verifikasi: `pytest -q` 35 lulus; `python -m sanka selftest` SELFTEST OK; restart live menulis
+  11 pesan uji ke `history.db` dan tool `chat_history` mengembalikan arsip chat tersebut; smoke
+  `python -m sanka backfill` menampilkan QR tanpa mengganggu sesi utama.
+- Batas nyata: WhatsApp hanya mengirim history saat perangkat di-link; sesi yang sudah ada tidak
+  bisa memutar ulang sync awal, dan Neonize 0.5.2 belum mengekspos request history on-demand
+  (`SendPeerMessage` tidak ada di binding), jadi backfill memerlukan scan QR sekali.
+
+## 2026-10-22 (nama chat)
+
+- `chats` sekarang punya kolom `name`; DB lama dimigrasi otomatis dengan `ALTER TABLE` saat
+  `HistoryStore` dibuka. `reset` mempertahankan nama, hanya menggeser `reset_ts`.
+- Nama diisi dari `Conversation.name`/`displayName` saat ingest `HistorySync`, dari
+  `GroupInfoEvent.Name` saat grup berubah, dan dari push name untuk DM yang belum punya nama.
+  Nama yang sudah ada tidak ditimpa oleh pesan DM biasa.
+- Header payload menjadi `Konteks WhatsApp "<nama>" (...)`, tool `chat_history` menampilkan
+  `Arsip "<nama>"`, sehingga model dan laporan tidak lagi menebak dari isi pesan.
+- Nama tiga chat yang sudah ada diisi dari koreksi owner: Tester Sanka & MapHb,
+  ALD XXVII JHEPRET CLUB FOTOGRAFI, dan DM Muqsith.
+- Verifikasi: `pytest -q` 37 lulus; migrasi DB lama diuji; tool langsung menampilkan
+  `Arsip "Tester Sanka & MapHb"`; bot live sudah restart dengan skema baru.

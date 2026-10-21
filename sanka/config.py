@@ -26,6 +26,7 @@ class WhatsAppConfig:
     session_db: Path
     require_mention: bool = True
     bot_name: str = "sanka"
+    history_db: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,28 @@ def _fail(message: str) -> SystemExit:
 
 def _expand(value: str) -> Path:
     return Path(value).expanduser()
+
+
+def secure_db(path: Path) -> None:
+    """DB sesi berisi kredensial; jangan biarkan world-readable."""
+    try:
+        path.parent.chmod(0o700)
+    except OSError:
+        pass
+    if path.exists():
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+
+
+def drop_session(path: Path) -> None:
+    """Hapus DB sesi sementara beserta WAL/SHM-nya."""
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            Path(f"{path}{suffix}").unlink(missing_ok=True)
+        except OSError:
+            log.warning("gagal menghapus sesi %s", path, exc_info=True)
 
 
 def _str_tuple(value: object) -> tuple[str, ...]:
@@ -170,6 +193,10 @@ def load_config(path: str | None = None) -> Config:
     workspace.mkdir(parents=True, exist_ok=True)
     session_db = _expand(str(wa_raw.get("session_db") or "~/.sanka/whatsapp.db"))
     session_db.parent.mkdir(parents=True, exist_ok=True)
+    history_db = _expand(str(wa_raw.get("history_db") or session_db.parent / "history.db"))
+    history_db.parent.mkdir(parents=True, exist_ok=True)
+    secure_db(session_db)
+    secure_db(history_db)
 
     return Config(
         persona=str(raw.get("persona") or "").strip(),
@@ -185,6 +212,7 @@ def load_config(path: str | None = None) -> Config:
             session_db=session_db,
             require_mention=bool(wa_raw.get("require_mention", True)),
             bot_name=str(wa_raw.get("bot_name") or "sanka"),
+            history_db=history_db,
         ),
         roles=roles,
         default_role=default_role,

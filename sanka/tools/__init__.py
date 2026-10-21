@@ -24,10 +24,19 @@ OWNER_ONLY = {"owner": True}
 
 
 class ToolContext:
-    def __init__(self, config: Config, role: RoleConfig, allowed: tuple[str, ...]):
+    def __init__(
+        self,
+        config: Config,
+        role: RoleConfig,
+        allowed: tuple[str, ...],
+        chat_id: str = "",
+        history=None,
+    ):
         self.config = config
         self.role = role
         self.allowed = allowed
+        self.chat_id = chat_id
+        self.history = history
 
 
 def _int(args: dict, key: str, default: int) -> int:
@@ -38,8 +47,13 @@ def _int(args: dict, key: str, default: int) -> int:
 
 
 def _resolve(ctx: ToolContext, raw: str) -> Path:
+    """Resolve path tool terhadap workspace; tolak apa pun yang keluar dari workspace."""
+    base = ctx.config.workspace.resolve()
     path = Path(str(raw)).expanduser()
-    return path if path.is_absolute() else ctx.config.workspace / path
+    path = (path if path.is_absolute() else base / path).resolve()
+    if not path.is_relative_to(base):
+        raise PermissionError(f"path di luar workspace: {raw}")
+    return path
 
 
 def truncate(text: str) -> str:
@@ -57,6 +71,8 @@ async def execute(specs: dict[str, Handler], name: str, args: dict, ctx: ToolCon
         return f"error: tool '{name}' tidak punya implementasi"
     try:
         result = await spec.fn(args, ctx)
+    except PermissionError as exc:  # penolakan path tidak perlu traceback
+        result = f"error: {exc}"[:MAX_ERROR]
     except Exception as exc:  # tool apa pun tidak boleh mematikan bot
         log.exception("tool %s gagal", name)
         result = f"error: {type(exc).__name__}: {exc}"[:MAX_ERROR]

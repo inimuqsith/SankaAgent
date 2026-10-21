@@ -114,6 +114,17 @@ def test_payload_has_sender_name_time_and_no_gaps(tmp_path: Path) -> None:
     assert content.endswith(FOOTER)
 
 
+def test_payload_header_includes_chat_name(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    current = chat_message("m1", "halo")
+
+    content = asyncio.run(
+        build_user_content(config, "chat", [current], current, None, chat_name="Grup Uji")
+    )
+
+    assert content.startswith('Konteks WhatsApp "Grup Uji" (1 pesan terakhir')
+
+
 def test_long_text_preview_and_read_full(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     body = "\n".join(f"baris {index:02d}" for index in range(1, 41))
@@ -127,6 +138,25 @@ def test_long_text_preview_and_read_full(tmp_path: Path) -> None:
     ctx = ToolContext(config, RoleConfig("member"), ("read",))
     result = asyncio.run(execute(TOOLS.by_name, "read", {"path": path}, ctx))
     assert "baris 40" in result
+
+
+def test_paths_confined_to_workspace(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    (tmp_path / "notes.txt").write_text("aman", encoding="utf-8")
+    (tmp_path / "escape").symlink_to("/etc/passwd")
+    member = ToolContext(config, RoleConfig("member"), ("read",))
+    owner = ToolContext(config, RoleConfig("owner"), ("write",))
+
+    def read(path: str) -> str:
+        return asyncio.run(execute(TOOLS.by_name, "read", {"path": path}, member))
+
+    assert "aman" in read("notes.txt")
+    assert "aman" in read(str(tmp_path / "notes.txt"))
+    for outside in ("/etc/passwd", "../catatan.txt", "escape"):
+        assert "di luar workspace" in read(outside)
+    result = asyncio.run(execute(TOOLS.by_name, "write", {"path": "../escape.txt", "content": "x"}, owner))
+    assert "di luar workspace" in result
+    assert not (tmp_path.parent / "escape.txt").exists()
 
 
 def test_document_png_is_downloaded_and_injected(tmp_path: Path) -> None:

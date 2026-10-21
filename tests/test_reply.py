@@ -18,6 +18,7 @@ from sanka.config import (
     SandboxConfig,
     WhatsAppConfig,
 )
+from sanka.history import HistoryStore
 from sanka.wa import App, Sessions, handle_message
 
 BOT_JID = "628567770837@s.whatsapp.net"
@@ -138,6 +139,22 @@ def test_unaddressed_group_message_has_no_presence() -> None:
     _, presence = asyncio.run(reply_for(group_event("jawab ya", mention=False)))
 
     assert presence == []
+
+
+def test_own_message_is_archived_without_reply(tmp_path) -> None:
+    store = HistoryStore(tmp_path / "history.db", tmp_path)
+    client, sent, presence = transport()
+    app = App(make_config(), None, None, Sessions(store=store))
+    app.bot_digits = {"628567770837"}
+    ev = dm_event("dari ponsel sendiri")
+    ev.Info.MessageSource.IsFromMe = True
+
+    asyncio.run(handle_message(client, ev, app))
+
+    assert sent == [] and presence == []
+    stored = store.find("628999999999@s.whatsapp.net", "3EB0DM")
+    assert stored is not None and stored.text == "dari ponsel sendiri" and stored.outgoing
+    store.close()
 
 
 class FakeLLM:

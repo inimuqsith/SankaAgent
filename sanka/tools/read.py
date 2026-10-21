@@ -30,7 +30,7 @@ TOOL = Handler(
     parameters={
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "Path file (relatif ke workspace atau absolut)."},
+            "path": {"type": "string", "description": "Path file di dalam workspace (relatif atau absolut)."},
             "start": {"type": "integer", "description": "Baris awal (default 1)."},
             "limit": {"type": "integer", "description": "Jumlah baris (default 400)."},
         },

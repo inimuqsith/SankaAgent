@@ -30,8 +30,8 @@ def clear_modules(prefix: str) -> None:
 
 
 def test_builtin_handlers_discovered() -> None:
-    assert set(COMMANDS.names()) == {"help", "ping", "reset"}
-    assert set(TOOLS.names()) == {"mcp", "read", "sandbox", "shell", "web_search", "write"}
+    assert set(COMMANDS.names()) == {"backfill", "help", "ping", "reset"}
+    assert set(TOOLS.names()) == {"chat_history", "mcp", "read", "sandbox", "shell", "web_search", "write"}
     assert {handler.family for handler in TOOLS.by_name.values()} == FAMILIES
 
 
@@ -93,5 +93,5 @@ def test_explicit_empty_permissions_deny_all() -> None:
     assert commands_for(denied) == []
 
     default = RoleConfig("member")
-    assert set(tool_patterns(default)) == {"read", "web_search", "mcp__*"}
-    assert {handler.name for handler in tools_for(default)} == {"read", "web_search"}
+    assert set(tool_patterns(default)) == {"chat_history", "read", "web_search", "mcp__*"}
+    assert {handler.name for handler in tools_for(default)} == {"chat_history", "read", "web_search"}

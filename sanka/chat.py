@@ -10,10 +10,14 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from neonize.utils import extract_text
 
 from .config import Config
+
+if TYPE_CHECKING:
+    from .history import HistoryStore
 
 log = logging.getLogger(__name__)
 
@@ -107,18 +111,47 @@ class ChatMessage:
 
 
 class Sessions:
-    """Log pesan per chat; yang disimpan hanya `limit` entri terbaru."""
+    """Jendela pesan per chat; ditulis ke SQLite dan dimuat ulang setelah restart."""
 
-    def __init__(self, limit: int = HISTORY_LIMIT):
+    def __init__(self, limit: int = HISTORY_LIMIT, store: HistoryStore | None = None):
         self.limit = max(1, limit)
+        self.store = store
         self._data: dict[str, list[ChatMessage]] = {}
+        self._loaded: set[str] = set()
+
+    def _ensure(self, chat_id: str) -> None:
+        if self.store is None or chat_id in self._loaded:
+            return
+        try:
+            self._data[chat_id] = self.store.recent(chat_id, self.limit)
+        except Exception:  # arsip rusak tidak boleh mematikan percakapan
+            log.exception("gagal memuat riwayat chat=%s", chat_id)
+            self._data.setdefault(chat_id, [])
+        self._loaded.add(chat_id)
+
+    @staticmethod
+    def _merge(old: ChatMessage, new: ChatMessage) -> ChatMessage:
+        """Pesan yang sama bisa datang dari event live dan history sync; pilih yang lebih kaya."""
+        return new if (new.media and not old.media) or (new.quote and not old.quote) or (new.text and not old.text) else old
 
     def append(self, chat_id: str, message: ChatMessage) -> None:
+        self._ensure(chat_id)
         history = self._data.setdefault(chat_id, [])
-        history.append(message)
+        for index, old in enumerate(reversed(history)):
+            if message.id and old.id == message.id:
+                history[len(history) - 1 - index] = self._merge(old, message)
+                break
+        else:
+            history.append(message)
         del history[: -self.limit]
+        if self.store is not None:
+            try:
+                self.store.add(chat_id, message)
+            except Exception:
+                log.exception("gagal menyimpan pesan chat=%s id=%s", chat_id, message.id)
 
     def get(self, chat_id: str) -> list[ChatMessage]:
+        self._ensure(chat_id)
         return list(self._data.get(chat_id, []))
 
     def find(self, chat_id: str, message_id: str) -> ChatMessage | None:
@@ -127,7 +160,32 @@ class Sessions:
         for item in reversed(self.get(chat_id)):
             if item.id == message_id:
                 return item
-        return None
+        if self.store is None:
+            return None
+        try:
+            return self.store.find(chat_id, message_id)
+        except Exception:
+            log.exception("gagal mencari pesan lama chat=%s id=%s", chat_id, message_id)
+            return None
+
+    def chat_name(self, chat_id: str) -> str:
+        if self.store is None:
+            return ""
+        try:
+            return self.store.chat_name(chat_id)
+        except Exception:
+            log.exception("gagal membaca nama chat=%s", chat_id)
+            return ""
+
+    def remember_name(self, chat_id: str, name: str) -> None:
+        if self.store is None or not name.strip():
+            return
+        if self.chat_name(chat_id):
+            return
+        try:
+            self.store.set_chat_name(chat_id, name)
+        except Exception:
+            log.exception("gagal menyimpan nama chat=%s", chat_id)
 
     def through(self, chat_id: str, message: ChatMessage) -> list[ChatMessage]:
         """Entri sampai `message` (identitas objek); pesan yang sedang dijawab selalu terakhir."""
@@ -138,8 +196,32 @@ class Sessions:
         tail = history[-(self.limit - 1) :] if self.limit > 1 else []
         return [*tail, message]
 
-    def reset(self, chat_id: str) -> None:
+    def ingest(self, chat_id: str, messages: list[ChatMessage]) -> None:
+        """Masukkan batch history sync ke arsip; cache chat dimuat ulang saat dibutuhkan."""
+        if not messages or self.store is None:
+            return
+        try:
+            self.store.add_many([(chat_id, message) for message in messages])
+        except Exception:
+            log.exception("gagal menyimpan history sync chat=%s", chat_id)
+            return
+        loaded = chat_id in self._loaded
+        self.invalidate(chat_id)
+        if loaded:
+            self._ensure(chat_id)
+
+    def invalidate(self, chat_id: str) -> None:
         self._data.pop(chat_id, None)
+        self._loaded.discard(chat_id)
+
+    def reset(self, chat_id: str) -> None:
+        if self.store is not None:
+            try:
+                self.store.reset(chat_id)
+            except Exception:
+                log.exception("gagal menandai reset chat=%s", chat_id)
+        self._data.pop(chat_id, None)
+        self._loaded.discard(chat_id)
 
 
 INVISIBLE = dict.fromkeys(map(ord, "\u2068\u2069\u200e\u200f\u202a\u202b\u202c\u202d\u202e"), None)
@@ -148,6 +230,13 @@ INVISIBLE = dict.fromkeys(map(ord, "\u2068\u2069\u200e\u200f\u202a\u202b\u202c\u
 def clean(text: str) -> str:
     """Buang karakter isolasi bidi yang membungkus mention WhatsApp, normalisasi NBSP."""
     return (text or "").translate(INVISIBLE).replace("\u00a0", " ")
+
+
+def digits(value: str) -> str:
+    """Digit JID tanpa device/server; JID tanpa digit dipakai apa adanya."""
+    head = str(value or "").split("@")[0].split(":")[0]
+    found = "".join(ch for ch in head if ch.isdigit())
+    return found or str(value or "").lower()
 
 
 def sanitize(value: str, limit: int = 60) -> str:
@@ -183,6 +272,40 @@ def unwrap_message(message):
             break
         message = inner
     return message
+
+
+def contexts(message):
+    """ContextInfo dari isi pesan (extended text atau media), termasuk wrapper."""
+    body = unwrap_message(message)
+    for field_name in ("extendedTextMessage", *MEDIA_FIELDS):
+        content = getattr(body, field_name, None)
+        if content is None or not content.ListFields():
+            continue
+        context = getattr(content, "contextInfo", None)
+        if context is not None:
+            yield context
+
+
+def quote_from_proto(message, message_id: str) -> Quote | None:
+    """Kutipan apa adanya dari proto (tanpa lookup log); dipakai history sync."""
+    for context in contexts(message):
+        quoted = context.quotedMessage
+        if not quoted.ListFields():
+            continue
+        text = message_text(quoted)
+        media = describe_media(quoted, context.stanzaID or f"{message_id}-quote")
+        if not text.strip() and media is None:
+            continue
+        participant = context.participant or ""
+        sender_id = digits(participant) if participant else ""
+        return Quote(
+            id=context.stanzaID,
+            sender_name=sender_id or participant,
+            sender_id=sender_id,
+            text=text,
+            media=media,
+        )
+    return None
 
 
 def message_text(message) -> str:
@@ -252,8 +375,15 @@ def text_path(config: Config, chat_id: str, message_id: str) -> Path:
 
 async def download_media(client, config: Config, chat_id: str, message_id: str, media: Media) -> None:
     """Unduh lampiran sekali; kegagalan dicatat di `media.error` dan tidak pernah dilempar."""
-    if media.error or media.path is not None:
+    if media.error:
         return
+    if media.path is not None:
+        try:
+            if media.path.is_file() and media.path.stat().st_size:
+                return
+        except OSError:
+            pass
+        media.path = None
     target = attachment_path(config, chat_id, message_id, media.filename)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -263,6 +393,9 @@ async def download_media(client, config: Config, chat_id: str, message_id: str, 
             return
         if client is None:
             media.error = "client tidak tersedia"
+            return
+        if media.proto is None:
+            media.error = "proto tidak tersedia"
             return
         await client.download_any(media.proto, str(target))
         if not target.is_file() or not target.stat().st_size:
@@ -480,7 +613,8 @@ def _message_lines(
 ) -> list[str]:
     stamp = f"[{entry.when:%Y-%m-%d %H:%M}]"
     if entry.outgoing:
-        head = f"{stamp} {_flatten(config.whatsapp.bot_name, NAME_LIMIT)} (kamu):"
+        name = _flatten(entry.sender_name or config.whatsapp.bot_name, NAME_LIMIT) or "-"
+        head = f"{stamp} {name} (kamu):"
     else:
         name = _flatten(entry.sender_name, NAME_LIMIT) or "-"
         ident = entry.sender_id if entry.sender_id and entry.sender_id != entry.sender_name else ""
@@ -516,6 +650,7 @@ async def build_user_content(
     messages: list[ChatMessage],
     current: ChatMessage,
     client=None,
+    chat_name: str = "",
 ) -> str | list[dict]:
     """Rakit payload: header konteks, tiap pesan (nama, nomor, waktu, teks, kutipan, lampiran)."""
     for entry in messages:
@@ -524,7 +659,8 @@ async def build_user_content(
     order = _render_order(messages)
     numbers, planned = _plan_images(config, current, order)
 
-    lines = [f"Konteks WhatsApp ({len(messages)} pesan terakhir, lama → baru; waktu lokal):"]
+    label = f' "{_flatten(chat_name, NAME_LIMIT)}"' if chat_name.strip() else ""
+    lines = [f"Konteks WhatsApp{label} ({len(messages)} pesan terakhir, lama → baru; waktu lokal):"]
     for entry in messages:
         lines.append("")
         lines.extend(_message_lines(config, chat_id, entry, numbers, current))

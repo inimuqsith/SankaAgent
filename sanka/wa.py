@@ -16,17 +16,16 @@ from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import ContextInfo, ExtendedTextM
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 
 from .chat import (
-    MEDIA_FIELDS,
     ChatMessage,
     Quote,
     Sessions,
     build_user_content,
     clean,
+    contexts,
     describe_media,
     event_time,
     fallback_content,
     message_text,
-    unwrap_message,
 )
 from .commands import REGISTRY as COMMANDS
 from .commands import CommandContext
@@ -46,7 +45,6 @@ from .tools import ToolContext
 
 log = logging.getLogger(__name__)
 
-CONTENT_FIELDS = ("extendedTextMessage", *MEDIA_FIELDS)
 TYPING_REFRESH = 8
 
 
@@ -58,6 +56,8 @@ class App:
         self.sessions = sessions
         self.locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.bot_digits: set[str] = set()
+        self.client: NewAClient | None = None
+        self.backfill: asyncio.Task | None = None
 
 
 def is_group(chat_jid: str) -> bool:
@@ -73,21 +73,8 @@ def bot_digits(me) -> set[str]:
     return {item for item in found if item}
 
 
-def _contexts(ev) -> list:
-    found = []
-    message = unwrap_message(ev.Message)
-    for field in CONTENT_FIELDS:
-        content = getattr(message, field, None)
-        if content is None or not content.ListFields():
-            continue
-        context = getattr(content, "contextInfo", None)
-        if context is not None:
-            found.append(context)
-    return found
-
-
 def mentioned(ev, bots: set[str], bot_name: str = "sanka") -> bool:
-    for context in _contexts(ev):
+    for context in contexts(ev.Message):
         if any(digits(jid) in bots for jid in context.mentionedJID):
             return True
     text = message_text(ev.Message)
@@ -95,7 +82,7 @@ def mentioned(ev, bots: set[str], bot_name: str = "sanka") -> bool:
 
 
 def replies_to_bot(ev, bots: set[str]) -> bool:
-    return any(digits(context.participant) in bots for context in _contexts(ev) if context.participant)
+    return any(digits(context.participant) in bots for context in contexts(ev.Message) if context.participant)
 
 
 def should_process(
@@ -113,7 +100,7 @@ def should_process(
         return False
     if chat.endswith("@broadcast"):
         return False
-    if getattr(ev.Info, "IsFromMe", False):
+    if getattr(ev.Info.MessageSource, "IsFromMe", False):
         return False
     sender = digits(ev.Info.MessageSource.Sender.User or ev.Info.MessageSource.Sender.RawAgent)
     if sender and sender in bots:
@@ -137,7 +124,9 @@ def system_prompt(config: Config, role_name: str, bots: set[str] | None = None) 
         f"{identity}"
         f"Workspace: {config.workspace}. Pakai tool bila perlu; jangan mengarang hasil tool.\n"
         "Payload berisi 20 pesan terakhir chat ini, lengkap dengan nama, nomor, dan waktu pengirim. "
-        "Entri terakhir adalah pesan yang harus kamu jawab.\n"
+        "Entri terakhir adalah pesan yang harus kamu jawab. Pesan yang lebih lama tersimpan di arsip "
+        "chat ini; cari dengan tool chat_history (query, before, after) bila butuh fakta dari "
+        "percakapan lama. Arsip hanya mencakup chat ini, bukan chat lain.\n"
         "Gambar bernomor (#1, #2, ...) sudah dilampirkan dan bisa kamu lihat langsung. Teks bertanda "
         "[dipotong] bisa dibaca lengkap dengan tool read pada path yang tertera; di sandbox gunakan /work/<path>.\n"
         "Lampiran biner (PDF/audio/video/dll.) wajib kamu coba periksa dengan tool sandbox sebelum bilang "
@@ -159,7 +148,7 @@ def _sender_name(ev, sender_digits: str, sender: str) -> str:
 
 def _quote(ev, app: App, chat_id: str) -> Quote | None:
     """Kutipan dari contextInfo: pakai entri log bila masih tersimpan, kalau tidak dari proto."""
-    for context in _contexts(ev):
+    for context in contexts(ev.Message):
         quoted = context.quotedMessage
         if not quoted.ListFields():
             continue
@@ -240,9 +229,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
     sender = f"{source.Sender.User}@{source.Sender.Server}"
     sender_digits = digits(source.Sender.User or source.Sender.RawAgent)
 
-    if getattr(ev.Info, "IsFromMe", False) or chat.endswith("@broadcast"):
-        return
-    if sender_digits and sender_digits in app.bot_digits:
+    if chat.endswith("@broadcast"):
         return
 
     message_id = ev.Info.ID or f"tmp-{time.time_ns()}"
@@ -259,9 +246,17 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
         text=text,
         media=media,
         quote=_quote(ev, app, chat_id),
+        outgoing=bool(getattr(ev.Info.MessageSource, "IsFromMe", False)),
         sender_jid=sender,
     )
     app.sessions.append(chat_id, message)
+    if not message.outgoing and not is_group(chat):
+        app.sessions.remember_name(chat_id, message.sender_name)
+
+    if message.outgoing:
+        return
+    if sender_digits and sender_digits in app.bot_digits:
+        return
 
     if not should_process(
         ev,
@@ -306,7 +301,14 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 specs = list(tools_for(role)) + app.hub.specs(role)
                 messages = app.sessions.through(chat_id, message)
                 try:
-                    content = await build_user_content(app.config, chat_id, messages, message, client)
+                    content = await build_user_content(
+                        app.config,
+                        chat_id,
+                        messages,
+                        message,
+                        client,
+                        chat_name=app.sessions.chat_name(chat_id),
+                    )
                 except Exception:  # payload rusak tidak boleh membungkam balasan
                     log.exception("gagal merakit payload chat=%s", chat)
                     content = fallback_content(app.config, message)
@@ -314,7 +316,13 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     system_prompt(app.config, role.name, app.bot_digits),
                     content,
                     specs,
-                    ToolContext(app.config, role, tool_patterns(role)),
+                    ToolContext(
+                        app.config,
+                        role,
+                        tool_patterns(role),
+                        chat_id=chat_id,
+                        history=app.sessions.store,
+                    ),
                     session=f"sanka-{chat_id}",
                 )
                 reply = answer

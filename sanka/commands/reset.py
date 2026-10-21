@@ -8,12 +8,12 @@ from . import CommandContext
 
 async def reset(ctx: CommandContext) -> str:
     ctx.app.sessions.reset(ctx.chat_id)
-    return "Konteks percakapan di chat ini sudah direset."
+    return "Jendela konteks chat ini sudah direset; arsip riwayat tetap tersimpan."
 
 
 COMMAND = Handler(
     name="reset",
-    description="Hapus konteks percakapan chat ini.",
+    description="Hapus jendela konteks chat ini (arsip riwayat tetap).",
     fn=reset,
     aliases=("r", "clear"),
     defaults={"owner": True, "member": True},

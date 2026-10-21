@@ -12,6 +12,7 @@ workspace: "~/.sanka/workspace"
 
 whatsapp:
   session_db: "~/.sanka/whatsapp.db"
+  history_db: "~/.sanka/history.db"
   require_mention: true
   bot_name: sanka
 
@@ -24,7 +25,7 @@ roles:
     tools: ["*"]
     commands: ["*"]
   member:
-    tools: ["read", "web_search", "mcp__*"]
+    tools: ["read", "web_search", "chat_history", "mcp__*"]
     commands: ["help", "ping", "reset"]
 default_role: member
 

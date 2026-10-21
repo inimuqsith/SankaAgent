@@ -23,7 +23,7 @@ TOOL = Handler(
     parameters={
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "Path file (relatif ke workspace atau absolut)."},
+            "path": {"type": "string", "description": "Path file di dalam workspace (relatif atau absolut)."},
             "content": {"type": "string", "description": "Isi file penuh."},
         },
         "required": ["path", "content"],

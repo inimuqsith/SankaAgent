@@ -2,10 +2,11 @@
 
 Bot WhatsApp pribadi: satu proses Python (Neonize) + model OpenAI-compatible + tool.
 DM selalu dilayani; grup hanya saat bot di-mention atau dibalas.
-Setiap pesan masuk dicatat lengkap (nama, nomor, waktu, teks, lampiran, kutipan) dan 20 pesan
-terakhir per chat dikirim ke model sebagai satu payload, jadi konteks tetap ada meski bot tidak
-menjawab. Lampiran diunduh ke `workspace/attachments/`; gambar dikirim ke model sebagai data URL,
-teks di-inline, biner cukup diberi path untuk tool `sandbox`.
+Setiap pesan masuk dicatat lengkap (nama, nomor, waktu, teks, lampiran, kutipan), disimpan ke
+arsip SQLite lokal, dan 20 pesan terakhir per chat dikirim ke model sebagai satu payload. Pesan
+yang lebih lama tetap ada di arsip dan bisa dicari agent lewat tool `chat_history`; konteks tidak
+hilang saat restart. Lampiran diunduh ke `workspace/attachments/`; gambar dikirim ke model sebagai
+data URL, teks di-inline, biner cukup diberi path untuk tool `sandbox`.
 Pesan yang dilayani langsung ditandai "mengetik" sampai balasan terkirim (disentuh ulang tiap 8 detik).
 
 ## Pasang
@@ -27,8 +28,8 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sand
 | --- | --- |
 | `persona` | system prompt dasar |
 | `llm` | `base_url`, `model`, `api_key_env`, `max_turns`, `timeout_seconds` |
-| `workspace` | direktori kerja tool `read`/`write`/`shell`/`sandbox` |
-| `whatsapp` | `session_db`, `require_mention`, `bot_name` |
+| `workspace` | direktori kerja tool `read`/`write`/`shell`/`sandbox`; `read`/`write` menolak path di luarnya |
+| `whatsapp` | `session_db`, `history_db`, `require_mention`, `bot_name` |
 | `roles` | `users` (nomor), `tools`, `commands`; pola glob (`*`, `mcp__*`) |
 | `default_role` | role untuk nomor tak dikenal |
 | `sandbox` | `runtime` (podman), `image`, `timeout_seconds` |
@@ -38,18 +39,46 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sand
 `tools:` dan `commands:` yang tidak ditulis memakai pola default tiap handler (lihat di bawah);
 kalau ditulis, isi YAML menang. `tools: []` atau `commands: []` berarti role itu tidak boleh apa pun.
 
-Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `mcp__<server>__<tool>`.
+Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `chat_history`,
+`mcp__<server>__<tool>`.
 `web_search` memakai SearXNG (`web_search.base_url`, butuh `format: json` di `settings.yml`) dan
 jatuh ke backend `ddgs` (wikipedia/yahoo/startpage/brave) kalau instance itu mati atau kosong.
-Command: `/ping`, `/help`, `/reset` (plus alias `/p`, `/h`, `/r`). `/help` membaca metadata registry.
+Command: `/ping`, `/help`, `/reset`, `/backfill` (owner, DM; scan QR sekali), plus alias `/p`,
+`/h`, `/r`. `/help` membaca metadata registry.
 
 Kalau WhatsApp mengalamatkan pengirim lewat LID (`...@lid`), cocokkan role dengan digit LID itu,
 bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
 
 ## Konteks percakapan & lampiran
 
-- Log in-memory 20 pesan per chat (`sanka/chat.py`); restart atau `/reset` mengosongkannya.
-  Pesan grup yang tidak di-mention tetap dicatat supaya payload berikutnya punya konteks.
+- Jendela 20 pesan per chat dimuat dari arsip SQLite (`sanka/chat.py` + `sanka/history.py`), jadi
+  restart tidak mengosongkan konteks. Pesan grup yang tidak di-mention tetap dicatat supaya payload
+  berikutnya punya konteks. `/reset` hanya mengosongkan jendela aktif; arsip lama tetap ada.
+- Semua pesan yang pernah diterima (termasuk pesan yang dikirim dari ponsel sendiri) dan seluruh
+  event `HistorySync` disimpan ke `whatsapp.history_db` (default `~/.sanka/history.db`, di luar
+  workspace). File DB dibuat `0600`, direktorinya `0700`, dan tidak bisa dibaca tool file/sandbox.
+  Deduplikasi memakai `(chat_id, message_id)`.
+- Nama chat disimpan di `chats.name` dari `HistorySync` (`Conversation.name`/`displayName`) dan
+  `GroupInfoEvent`; DM memakai push name saat nama belum ada. Header payload, tool `chat_history`,
+  dan ringkasan memakai nama asli, bukan menebak dari isi pesan.
+- Tool `chat_history` hanya mencari chat yang sedang dipakai (`query`, `before`, `after`, `limit`),
+  jadi isi grup lain tidak bocor ke jawaban. Pesan yang lebih tua dari 20 entri payload tetap bisa
+  dicari; gambar/teks lampiran lama diunduh ulang saat masuk jendela payload.
+- Saat pairing baru, Sanka meminta history sync 730 hari / 5 GB dan mengaktifkan group history.
+  WhatsApp tetap yang memutuskan kiriman; pesan yang sudah tidak ada di ponsel tidak bisa diambil.
+  Neonize 0.5.2 belum mengekspos request history on-demand, jadi sesi yang sudah terlanjur pairing
+  sebelum fitur ini hanya mendapat pesan baru.
+- Untuk backfill sesi lama tanpa mengganggu bot utama, jalankan perangkat sementara lalu scan QR.
+  Dari WhatsApp, owner bisa mengirim `/backfill` di DM: bot mengirim gambar QR, menyimpan hasil sync,
+  lalu logout dan menghapus sesi sementara. Alternatif terminal:
+
+  ```bash
+  .venv/bin/python -m sanka backfill
+  ```
+
+  Keduanya memakai `backfill.db` terpisah dan menulis ke `history.db`. Bot utama boleh tetap
+  berjalan. WhatsApp membatasi jumlah perangkat tertaut; kalau penuh, hapus salah satu perangkat
+  lama dulu di pengaturan WhatsApp.
 - Tiap entri payload berbentuk `[YYYY-MM-DD HH:MM] nama (nomor):` diikuti teks, kutipan
   (`↳ membalas ...`), dan baris lampiran. Entri terakhir adalah pesan yang harus dijawab.
 - Lampiran diunduh sebelum panggilan LLM ke `workspace/attachments/<chat>/<id>-<nama>`; file yang
@@ -112,7 +141,9 @@ sedangkan `tools: []` / `commands: []` berarti tolak semua.
 ```bash
 python -m sanka               # pairing: scan QR di terminal
 python -m sanka selftest      # cek tool + LLM tanpa WhatsApp
+python -m sanka backfill      # perangkat sementara: tarik history lama, lalu logout
 ```
 
 Session WhatsApp disimpan di `whatsapp.session_db`, jadi QR hanya muncul saat pairing pertama.
+`history.db` menyimpan arsip pesan dan dimuat ulang setelah restart.
 `shell` dan `sandbox` memberi akses host/container penuh: beri hanya ke role yang dipercaya.
