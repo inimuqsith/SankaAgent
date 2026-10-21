@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,6 +74,7 @@ def test_podman_argv_has_keep_id_and_selinux_suffix(tmp_path: Path, monkeypatch)
     argv = calls[0][0]
     mount = argv[argv.index("-v") + 1]
     assert "--userns=keep-id" in argv
+    assert "--user" not in argv
     assert mount == f"{ctx.config.workspace}:/work:Z"
     assert argv[argv.index("--network") + 1] == "none"
     assert "--read-only" in argv and argv[argv.index("--tmpfs") + 1] == "/tmp"
@@ -98,11 +100,30 @@ def test_docker_argv_drops_podman_flags_and_uses_host_workspace(
     argv, _ = calls[0]
     mount = argv[argv.index("-v") + 1]
     assert "--userns=keep-id" not in argv
+    assert argv[argv.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
     assert not mount.endswith(":Z")
     assert mount == f"{host_ws}:/work"
     assert argv[argv.index("--network") + 1] == "bridge"
     pairs = [argv[index + 1] for index, item in enumerate(argv) if item == "--env"]
     assert "NO_PROXY=localhost" in pairs
+
+
+def test_docker_socket_permission_denied_is_actionable(tmp_path: Path, monkeypatch) -> None:
+    fake_runtimes(monkeypatch, {"docker"})
+    monkeypatch.setenv("OPENCODE_GO_API_KEY", "secret-xyz")
+    denied = (
+        b"permission denied while trying to connect to the Docker daemon socket "
+        b"at unix:///var/run/docker.sock"
+    )
+    capture(monkeypatch, FakeProc(out=denied, code=125))
+
+    result = run(make_ctx(tmp_path, runtime="docker"))
+
+    assert not result.startswith("exit=")
+    assert "UID container" in result or "uid container" in result
+    assert "DOCKER_GID" in result
+    assert "stat -c '%g %a' /var/run/docker.sock" in result
+    assert "secret-xyz" not in result
 
 
 def test_runtime_autodetect_and_missing_runtime_error(tmp_path: Path, monkeypatch) -> None:

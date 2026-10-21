@@ -38,6 +38,9 @@ def build_argv(
     args = [runtime, "run", "--rm", "-i"]
     if Path(runtime).name == "podman":
         args.append("--userns=keep-id")
+    elif Path(runtime).name == "docker":
+        # File di /work harus milik uid bot, bukan root daemon.
+        args += ["--user", f"{os.getuid()}:{os.getgid()}"]
     args += ["--network", cfg.network or "none", "--read-only", "--tmpfs", "/tmp"]
     for name in dict.fromkeys((*CONTAINER_ENV, *cfg.env)):
         if name in os.environ:
@@ -62,6 +65,16 @@ def _runtime_error(cfg: SandboxConfig) -> str:
 
 def _source_error(source: Path) -> str:
     return f"error: workspace '{source}' bukan direktori"
+
+
+DOCKER_SOCKET_HINT = (
+    "error: docker.sock tidak bisa diakses oleh uid container (permission denied).\n"
+    "Grup 'docker' di image harus memakai gid yang sama dengan socket di host. "
+    "Build ulang dengan:\n"
+    "  --build-arg DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)\n"
+    "Periksa di host: stat -c '%g %a' /var/run/docker.sock\n"
+    "Pastikan user sanka ada di grup itu lalu jalankan ulang container."
+)
 
 
 def _tail(raw: bytes) -> str:
@@ -96,6 +109,10 @@ async def _sandbox(args: dict, ctx: ToolContext) -> str:
         proc.kill()
         await proc.wait()
         return f"error: timeout setelah {timeout} detik"
+    if proc.returncode != 0:
+        low = out.lower()
+        if b"permission denied" in low and b"docker.sock" in low:
+            return DOCKER_SOCKET_HINT
     return f"exit={proc.returncode}\n{_tail(out).strip()}".strip()
 
 

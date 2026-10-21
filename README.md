@@ -81,6 +81,10 @@ root filesystem read-only dengan tmpfs `/tmp`, dan output dipotong ke 16 KB tera
 penanda `(dipotong)`. `timeout` per panggilan (default `sandbox.timeout_seconds`) membunuh proses
 runtime dan mengembalikan `error: timeout setelah N detik`.
 
+Dengan runtime `docker`, container sandbox dijalankan sebagai uid/gid bot (`--user 1000:1000`)
+supaya file hasil perintah di `/work` tidak menjadi milik root. Podman tidak memakai flag itu
+karena sudah ditangani `--userns=keep-id`.
+
 Container tidak mewarisi environment bot. Hanya `TZ` dan `LANG` yang diteruskan; tambahkan nama
 lain lewat `sandbox.env: ["NO_PROXY"]` bila perlu. API key tidak pernah masuk argv/env sandbox.
 
@@ -339,8 +343,20 @@ berhenti; kalau `whatsapp.db` tidak terbawa, server akan meminta pairing QR baru
 Image sudah membawa Docker CLI, tetapi tool `sandbox` butuh daemon. Di Dokploy, jalankan bot
 dengan daemon host hanya bila perlu:
 
-- mount `/var/run/docker.sock:/var/run/docker.sock` dan pastikan uid 1000 bisa membukanya
-  (biasanya dengan menambahkan container ke group pemilik socket, mis. gid `999`),
+- mount `/var/run/docker.sock:/var/run/docker.sock` dan pastikan uid 1000 bisa membukanya.
+  Image membuat grup `docker` dengan gid yang sama dengan socket host dan memasukkan `sanka` ke
+  grup itu. Default `DOCKER_GID=994`; samakan dengan host lewat build-arg saat build:
+
+  ```bash
+  # di host
+  stat -c '%g %a' /var/run/docker.sock
+  # build (ganti 994 bila hasil stat berbeda)
+  docker build --build-arg DOCKER_GID=994 -t sanka-agent .
+  ```
+
+  Di Dokploy, isi build-arg `DOCKER_GID` pada pengaturan build. Jangan `chmod`/`chgrp` socket di
+  host; kecocokan gid diselesaikan di image. Bila gid salah, `sandbox` mengembalikan pesan yang
+  menyebut `DOCKER_GID` dan perintah `stat -c '%g %a' /var/run/docker.sock`.
 - set `sandbox.runtime: docker`,
 - set `sandbox.host_workspace` ke workspace versi host, bukan `/app/...`:
 

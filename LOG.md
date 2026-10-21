@@ -1,5 +1,18 @@
 # LOG
 
+## 2026-10-22 (gid socket docker + ownership)
+
+- `Dockerfile`: `ARG DOCKER_GID=994` setelah `RUN useradd ... sanka`; `groupadd -g "${DOCKER_GID}"
+  docker || true` lalu `usermod -aG docker sanka`, sebelum `USER sanka`. Nilai bisa ditimpa lewat
+  `--build-arg DOCKER_GID=<gid>`; acuan host `stat -c %g /var/run/docker.sock`.
+- `sandbox`: runtime `docker` menambahkan `--user <uid>:<gid>` agar file di `/work` milik uid bot,
+  bukan root daemon. Podman tidak memakai `--user` (tetap `--userns=keep-id`).
+- Exit != 0 dengan `permission denied` + `docker.sock` -> pesan actionable yang menyebut
+  `DOCKER_GID` dan `stat -c '%g %a' /var/run/docker.sock`; tidak memuat environment.
+- Verifikasi: `pytest -q` 85 lulus; image dibangun dengan `--build-arg DOCKER_GID=994`, di dalamnya
+  `id` = `uid=1000(sanka) gid=1000(sanka) groups=1000(sanka),994(docker)` dan Docker CLI 27.5.1.
+  Daemon Docker tidak ada di mesin dev, jadi `docker ps` dan ownership di `/work` live diuji di server.
+
 ## 2026-10-22 (sandbox podman/docker)
 
 - Tool `sandbox` mendukung dua runtime: `podman` (flag `--userns=keep-id`, mount `:Z`) dan
