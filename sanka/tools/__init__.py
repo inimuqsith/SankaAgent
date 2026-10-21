@@ -34,7 +34,8 @@ class ToolContext:
         history=None,
         memory=None,
         skills=None,
-        send_file: Callable[[Path, str], Awaitable[str]] | None = None,
+        send_file: Callable[[str, Path, str], Awaitable[str]] | None = None,
+        send_message: Callable[[str, str], Awaitable[str]] | None = None,
     ):
         self.config = config
         self.role = role
@@ -44,6 +45,7 @@ class ToolContext:
         self.memory = memory
         self.skills = skills
         self.send_file = send_file
+        self.send_message = send_message
 
 
 def _int(args: dict, key: str, default: int) -> int:

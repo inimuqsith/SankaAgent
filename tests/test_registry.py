@@ -46,6 +46,7 @@ def test_builtin_handlers_discovered() -> None:
         "read",
         "sandbox",
         "send",
+        "send_to",
         "shell",
         "skill",
         "web_search",

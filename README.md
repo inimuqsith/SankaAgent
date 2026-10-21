@@ -46,7 +46,7 @@ diperbarui/diarsipkan. Kalau bot juga menerima DM publik, batasi `roles.member.u
 role terpisah untuk tamu.
 
 Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `chat_history`, `memory`,
-`skill`, `send`, `mcp__<server>__<tool>`.
+`skill`, `send`, `send_to`, `mcp__<server>__<tool>`.
 `web_search` memakai SearXNG (`web_search.base_url`, butuh `format: json` di `settings.yml`) dan
 jatuh ke backend `ddgs` (wikipedia/yahoo/startpage/brave) kalau instance itu mati atau kosong.
 Command: `/ping`, `/help`, `/reset`, plus `/backfill` (owner, DM; scan QR sekali), `/memori`,
@@ -170,6 +170,15 @@ sisanya sebagai dokumen. Stiker tidak punya caption, jadi caption dikirim sebaga
 terpisah. File yang terkirim dicatat di jendela konteks sebagai `(stiker|foto|file terkirim: ...)`,
 jadi percakapan berikutnya tahu hasil kerja sudah diantar. Owner dan member bisa memakainya; role
 yang tidak diberi `send`/`command kirim` tidak bisa.
+
+**Kirim ke grup lain.** Tool `send_to` (default hanya owner) mengirim teks dan/atau file ke grup
+lain yang sudah ada di arsip. `chat` menerima nama grup, potongan nama, atau JID `@g.us`; `chat`
+kosong menampilkan daftar grup (nama + JID, terbaru dulu). Nama yang cocok ke beberapa grup
+mengembalikan kandidat tanpa mengirim apa pun. Setiap kiriman langsung masuk jendela konteks chat
+tujuan dan ditulis ke `history_db`, jadi pesan berikutnya di grup itu sudah melihat apa yang bot
+kirim tanpa menunggu event echo. Pesan masuk dari grup mana pun tetap dicatat live sebelum filter
+mention, jadi tidak ada tool fetch terpisah. Role non-owner hanya bisa memakai `send_to` bila
+ditambahkan ke `tools:`.
 
 ## Menambah command atau tool
 

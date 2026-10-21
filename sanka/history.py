@@ -381,6 +381,30 @@ class HistoryStore:
             row = self._require().execute("SELECT name FROM chats WHERE chat_id=?", (chat_id,)).fetchone()
             return str(row["name"]) if row else ""
 
+    def groups(self, query: str = "", limit: int = 20) -> list[tuple[str, str]]:
+        """Grup yang sudah ada di arsip, aktivitas terbaru dulu; hasil (JID, nama)."""
+        limit = max(1, min(int(limit or 20), 50))
+        term = str(query or "").strip()
+        like = f"%{term}%"
+        sql = """
+            SELECT chat_id, COALESCE(MAX(NULLIF(name, '')), '') AS name, MAX(last) AS last FROM (
+                SELECT messages.chat_id AS chat_id, COALESCE(chats.name, '') AS name,
+                       MAX(messages.ts) AS last
+                FROM messages LEFT JOIN chats ON chats.chat_id=messages.chat_id
+                WHERE messages.chat_id LIKE '%@g.us'
+                  AND (?='' OR COALESCE(chats.name, '') LIKE ? OR messages.chat_id LIKE ?)
+                GROUP BY messages.chat_id
+                UNION ALL
+                SELECT chats.chat_id AS chat_id, chats.name AS name, 0 AS last
+                FROM chats WHERE chats.chat_id LIKE '%@g.us' AND chats.name<>''
+                  AND (?='' OR chats.name LIKE ? OR chats.chat_id LIKE ?)
+            )
+            GROUP BY chat_id ORDER BY last DESC LIMIT ?
+        """
+        with self._lock:
+            rows = self._require().execute(sql, (term, like, like, term, like, like, limit)).fetchall()
+            return [(str(row["chat_id"]), str(row["name"])) for row in rows]
+
     def _set_contact(self, jid: str, name: str = "", push_name: str = "") -> None:
         if not jid:
             return

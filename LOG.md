@@ -313,3 +313,26 @@
   `selfie-topi-hitam.webp` (342×342, animasi, 242 KB) terdeteksi stiker dan konversi Neonize
   menghasilkan WebP 512×512 animasi 411 KB (<500 KB); stiker statis 512×512 135 KB juga terdeteksi
   stiker.
+
+## 2026-10-22 (kirim ke grup lain)
+
+- `sanka/tools/send_to.py` (baru, `family=write`, default owner): target hanya grup yang sudah ada
+  di arsip. `chat` menerima JID, nama persis, atau potongan nama; kandidat ganda/unknown
+  dikembalikan sebagai daftar (nama + JID) tanpa mengirim. `text` dan/atau `path`+`caption`; path
+  tetap dibatasi workspace lewat `_resolve`. `send` lama tetap untuk chat aktif.
+- `sanka/history.py`: `groups(query, limit)` menyatukan grup dari `messages` dan `chats` (nama ikut,
+  terbaru dulu) supaya target bisa dicari tanpa membuka isi grup lain.
+- `sanka/wa.py`: `App.send_text(chat_id, text)` mengirim teks ke chat mana pun, memakai mention asli
+  dari log chat tujuan, dan langsung `Sessions.append(... outgoing=True)` di chat tujuan — jadi
+  jendela konteks + `history_db` grup itu realtime, bukan menunggu event echo. `ToolContext`
+  membawa `send_file` (kini `chat_id` pertama) dan `send_message`; prompt hanya menyebut `send_to`
+  bila tool itu ada di role.
+- Pesan masuk dari grup lain memang sudah dicatat di `handle_message` sebelum gate mention, jadi
+  tidak ada tool `fetch`; test `test_group_history_keeps_unaddressed_messages` tetap menjaga jalur
+  itu. Kiriman keluar lintas grup ditutup test baru: resolusi potongan nama, penulisan DB chat
+  tujuan, chat asal tidak tersentuh, target ambigu, unknown, daftar grup, dan penolakan role member.
+- Verifikasi: `pytest -q` 65 lulus; `python -m sanka selftest` SELFTEST OK (owner punya `send_to`,
+  member tidak). Smoke pada salinan `~/.sanka/history.db` asli: `chat="jhepret"` -> JID
+  `120363422939208659@g.us`, transport palsu menerima teks, DB mencatat `outgoing=1` dengan nama
+  `sanka`. Bot live di-restart 03:05:05 (PID 103256, log `~/.sanka/sanka.log`); startup menampilkan
+  tool `send_to` dan tersambung ke WhatsApp.

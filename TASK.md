@@ -41,6 +41,10 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   mengirim dari workspace ke chat aktif lewat Neonize, dengan batas ukuran dan pencatatan ke
   jendela konteks. Jalur dipilih dari isi file: stiker WebP ≤512 px (transparan/animasi) sebagai
   stiker, JPEG/PNG/WebP lain sebagai foto, sisanya dokumen; caption stiker dikirim sebagai teks.
+- [x] Kirim ke grup lain: tool `send_to` (default owner) menerima nama/potongan nama/JID grup yang
+  sudah ada di arsip, mengirim teks dan/atau file, menolak target ambigu, dan langsung mencatat
+  pesan keluar di jendela + `history_db` chat tujuan. Pesan masuk semua grup sudah dicatat live
+  sebelum filter mention, jadi tidak perlu tool fetch terpisah.
 
 ## Nanti
 

@@ -9,7 +9,6 @@ import re
 import time
 from collections import defaultdict
 from datetime import date, datetime
-from functools import partial
 from pathlib import Path
 
 from neonize.aioze.client import NewAClient
@@ -51,6 +50,7 @@ log = logging.getLogger(__name__)
 
 TYPING_REFRESH = 8
 MAX_SEND_BYTES = 100 * 1024 * 1024
+MAX_SEND_TEXT = 60_000
 STICKER_MAX_SIDE = 512
 PHOTO_MAGIC = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
 REFLECT_MIN_CHARS = 8
@@ -230,6 +230,43 @@ class App:
         )
         return f"ok: {noun} terkirim: {target.name} ({human_size(size)})"
 
+    async def send_text(self, chat_id: str, text: str) -> str:
+        """Kirim teks ke chat mana pun; langsung dicatat di jendela chat tujuan."""
+        if self.client is None:
+            return "error: client WhatsApp tidak tersedia"
+        body = clean(str(text or "")).strip()
+        if not body:
+            return "error: teks kosong"
+        if len(body) > MAX_SEND_TEXT:
+            return f"error: teks terlalu panjang ({len(body)} karakter; maksimal {MAX_SEND_TEXT})"
+        body, mentions = _resolve_mentions(body, self, chat_id)
+        payload = (
+            ExtendedTextMessage(text=body, contextInfo=ContextInfo(mentionedJID=mentions))
+            if mentions
+            else body
+        )
+        try:
+            sent = await self.client.send_message(_jid(chat_id), payload)
+        except SendMessageError as exc:
+            log.exception("gagal mengirim teks ke %s", chat_id)
+            return f"error: gagal mengirim teks: {exc}"
+        except Exception as exc:  # kegagalan transport tidak boleh mematikan turn
+            log.exception("gagal mengirim teks ke %s", chat_id)
+            return f"error: gagal mengirim teks: {type(exc).__name__}: {exc}"
+        self.sessions.append(
+            chat_id,
+            ChatMessage(
+                id=getattr(sent, "ID", "") or f"text-{time.time_ns()}",
+                sender_name=self.config.whatsapp.bot_name,
+                sender_id="",
+                when=datetime.now(),
+                text=body,
+                outgoing=True,
+            ),
+        )
+        name = self.sessions.chat_name(chat_id)
+        return f"ok: teks terkirim ke {name or chat_id}"
+
 
 def _jid(chat_id: str):
     user, _, server = chat_id.partition("@")
@@ -292,6 +329,7 @@ def system_prompt(
     bots: set[str] | None = None,
     memory: str = "",
     skills: str = "",
+    cross_send: bool = False,
 ) -> str:
     # Tanpa identitas ini model membaca mention @<LID bot> sebagai nomor orang lain.
     identity = (
@@ -330,7 +368,14 @@ def system_prompt(
         "action=save; arsipkan skill yang tidak berguna dengan action=archive. "
         "Simpan hanya fakta/preferensi yang eksplisit dan tahan lama, jangan rahasia/tebakan/status sesi. "
         "Untuk mengirim file hasil kerja, gunakan tool send bila tersedia; jangan hanya menyebut path.\n"
-        "Format balasan untuk WhatsApp: tanpa heading markdown, tanpa tabel.\n"
+        + (
+            "Untuk mengirim pesan/file ke grup lain yang sudah ada, gunakan tool send_to dengan chat "
+            "berisi nama grup atau JID; chat kosong menampilkan daftar grup di arsip. Jangan mengarang "
+            "nama grup atau mengirim tanpa target yang jelas.\n"
+            if cross_send
+            else ""
+        )
+        + "Format balasan untuk WhatsApp: tanpa heading markdown, tanpa tabel.\n"
         f"Tanggal: {date.today().isoformat()}."
     )
     return "\n\n".join(part for part in (base, memory, skills) if part.strip())
@@ -513,7 +558,8 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         skill_block = app.skills.index()
                     except Exception:
                         log.exception("gagal membaca indeks skill")
-                send_file = partial(app.send_file, chat_id) if app.client is not None else None
+                send_file = app.send_file if app.client is not None else None
+                send_message = app.send_text if app.client is not None else None
                 messages = app.sessions.through(chat_id, message)
                 try:
                     content = await build_user_content(
@@ -534,6 +580,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         app.bot_digits,
                         memory=memory_block,
                         skills=skill_block,
+                        cross_send=any(spec.name == "send_to" for spec in specs),
                     ),
                     content,
                     specs,
@@ -546,6 +593,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         memory=app.memory,
                         skills=app.skills,
                         send_file=send_file,
+                        send_message=send_message,
                     ),
                     session=f"sanka-{chat_id}",
                 )

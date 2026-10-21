@@ -13,7 +13,7 @@ async def _send(args: dict, ctx: ToolContext) -> str:
     if not path.is_file():
         return f"error: file tidak ditemukan: {args.get('path')}"
     caption = str(args.get("caption") or "").strip()[:1024]
-    return await ctx.send_file(path, caption)
+    return await ctx.send_file(ctx.chat_id, path, caption)
 
 
 TOOL = Handler(

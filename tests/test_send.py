@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 from neonize.aioze.client import NewAClient
 
+from sanka.chat import ChatMessage
 from sanka.commands import CommandContext
 from sanka.commands.kirim import COMMAND as KIRIM
 from sanka.config import Config, LLMConfig, RoleConfig, SandboxConfig, WhatsAppConfig
+from sanka.history import HistoryStore
 from sanka.tools import REGISTRY as TOOLS
 from sanka.tools import ToolContext, execute
 from sanka.wa import App, Sessions
@@ -32,10 +35,10 @@ def make_config(root: Path) -> Config:
 def test_send_tool_uses_callback_and_confines_path(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     (tmp_path / "laporan.txt").write_text("isi", encoding="utf-8")
-    calls: list[tuple[Path, str]] = []
+    calls: list[tuple[str, Path, str]] = []
 
-    async def fake(path: Path, caption: str) -> str:
-        calls.append((path, caption))
+    async def fake(chat_id: str, path: Path, caption: str) -> str:
+        calls.append((chat_id, path, caption))
         return f"ok: {path.name}"
 
     ctx = ToolContext(config, RoleConfig("owner"), ("send",), chat_id="chat", send_file=fake)
@@ -43,7 +46,7 @@ def test_send_tool_uses_callback_and_confines_path(tmp_path: Path) -> None:
     result = asyncio.run(execute(TOOLS.by_name, "send", {"path": "laporan.txt", "caption": "hasil"}, ctx))
 
     assert result == "ok: laporan.txt"
-    assert calls == [(tmp_path / "laporan.txt", "hasil")]
+    assert calls == [("chat", tmp_path / "laporan.txt", "hasil")]
     assert "tidak ditemukan" in asyncio.run(execute(TOOLS.by_name, "send", {"path": "hilang.txt"}, ctx))
     assert "di luar workspace" in asyncio.run(execute(TOOLS.by_name, "send", {"path": "/etc/passwd"}, ctx))
 
@@ -159,3 +162,70 @@ def test_kirim_command_parses_path_and_caption(tmp_path: Path) -> None:
 
     assert asyncio.run(KIRIM.fn(ctx)) == "ok"
     assert calls == [("chat", path, "hasil kerja")]
+
+
+def test_send_to_resolves_group_and_logs_target_context(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    store = HistoryStore(tmp_path / "history.db", tmp_path)
+    store.set_chat_name("1203@g.us", "ALD XXVII JHEPRET CLUB FOTOGRAFI")
+    store.set_chat_name("999@g.us", "Tester Sanka & MapHb")
+    store.add(
+        "1203@g.us",
+        ChatMessage(
+            id="m2", sender_name="Fahri", sender_id="6282", when=datetime.now(), text="rapat"
+        ),
+    )
+    client = NewAClient.__new__(NewAClient)
+    sent: list[tuple] = []
+
+    async def send_message(to, message, link_preview=False, add_msg_secret=False):
+        sent.append((to.User, to.Server, message))
+        return SimpleNamespace(ID="T1")
+
+    client.send_message = send_message
+    app = App(config, None, None, Sessions(store=store))
+    app.client = client
+    ctx = ToolContext(
+        config,
+        RoleConfig("owner"),
+        ("send_to",),
+        chat_id="999@g.us",
+        history=store,
+        send_file=app.send_file,
+        send_message=app.send_text,
+    )
+
+    result = asyncio.run(
+        execute(TOOLS.by_name, "send_to", {"chat": "jhepret", "text": "rapat jam 7"}, ctx)
+    )
+
+    assert result.startswith('ok: terkirim ke "ALD XXVII JHEPRET CLUB FOTOGRAFI"')
+    assert sent == [("1203", "g.us", "rapat jam 7")]
+    stored = app.sessions.get("1203@g.us")[-1]
+    assert stored.text == "rapat jam 7" and stored.outgoing is True
+    assert store.recent("1203@g.us", 1)[-1].text == "rapat jam 7"  # realtime, bukan hanya cache
+    assert not app.sessions.get("999@g.us")  # chat asal tidak ikut dicatat
+    store.close()
+
+
+def test_send_to_lists_ambiguity_and_is_owner_only(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    store = HistoryStore(tmp_path / "history.db", tmp_path)
+    store.set_chat_name("1@g.us", "Grup Foto A")
+    store.set_chat_name("2@g.us", "Grup Foto B")
+    ctx = ToolContext(config, RoleConfig("owner"), ("send_to",), history=store)
+
+    listing = asyncio.run(execute(TOOLS.by_name, "send_to", {}, ctx))
+    assert "Grup di arsip" in listing and "Grup Foto A (1@g.us)" in listing
+
+    ambiguous = asyncio.run(execute(TOOLS.by_name, "send_to", {"chat": "foto", "text": "x"}, ctx))
+    assert "beberapa grup cocok" in ambiguous
+    assert "1@g.us" in ambiguous and "2@g.us" in ambiguous
+
+    missing = asyncio.run(execute(TOOLS.by_name, "send_to", {"chat": "tidak ada", "text": "x"}, ctx))
+    assert "tidak ada di arsip" in missing and "Grup Foto A" in missing
+
+    member = ToolContext(config, RoleConfig("member"), ("send",), history=store)
+    denied = asyncio.run(execute(TOOLS.by_name, "send_to", {"chat": "Grup Foto A", "text": "x"}, member))
+    assert "tidak diizinkan untuk role 'member'" in denied
+    store.close()
