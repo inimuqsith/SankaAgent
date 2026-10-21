@@ -75,3 +75,90 @@
 - Verifikasi: `pytest -q` 12 lulus; smoke refresh (LLM 90 ms, interval 20 ms) menghasilkan 5
   `COMPOSING` tanpa task tertinggal; presence yang selalu raise tidak menggagalkan balasan;
   `python -m sanka selftest` PASS.
+
+## 2026-10-21 (konteks & lampiran)
+
+- `sanka/chat.py` (baru): log 20 pesan per chat (`ChatMessage`/`Quote`/`Media`, `Sessions`),
+  deskriptor media dari field proto (unwrap `viewOnce`/`ephemeral`/`documentWithCaption`), unduhan
+  `download_any` ke `workspace/attachments/<chat>/` (file lama dipakai ulang), dan
+  `build_user_content` yang merakit payload.
+- Payload memuat nama, nomor, waktu lokal, teks, kutipan (`↳ membalas`), dan baris lampiran per
+  pesan. Gambar dipilih berurutan (pesan terbaru -> kutipannya -> sisanya, maks 6 / 5 MB / 10 MB)
+  lalu diinjeksi sebagai data URL; dokumen ber-MIME `image/*` ikut diinjeksi karena deteksi memakai
+  MIME/ekstensi, bukan nama field. Teks panjang dipotong dan disimpan utuh di
+  `workspace/whatsapp/<chat>/<id>.txt` dengan penanda `read path="..."`.
+- `sanka/wa.py`: pencatatan terjadi sebelum routing (grup tanpa mention tetap masuk log, tanpa
+  presence), kutipan diresolusi lewat `stanzaID`, `should_process(has_media=True)` menerima gambar
+  tanpa caption, balasan bot dicatat sebagai entri `outgoing`, dan system prompt menjelaskan
+  payload/gambar/izin sandbox. Riwayat gaya chat-completion dihapus; `HISTORY_LIMIT` 30 -> 20.
+- `sanka/llm.py`: `run(system, user_content, ...)` menerima `str | list[dict]`; APIError 4xx pada
+  payload bergambar diulang sekali tanpa gambar plus catatan path (bukan langsung `API_ERROR_TEXT`).
+- Bug temuan test: `Info.VerifiedName` adalah message proto (bukan string), jadi pemakaian
+  `Pushname or VerifiedName or ...` menghasilkan nama pengirim kosong. Nama sekarang dari `Pushname`
+  dengan fallback digit nomor, dites lewat kutipan yang menampilkan `628222222222`.
+- Test: `tests/test_context.py` (6) untuk log/payload/pemotongan/gambar/PDF/kutipan,
+  `tests/test_reply.py` (2 baru) untuk riwayat grup dan kutipan dari log, `tests/test_smoke.py`
+  (1 baru) untuk routing media tanpa caption. Total 22 lulus.
+- Verifikasi: `pytest -q` 22 lulus; `python -m sanka selftest` -> `SELFTEST OK`.
+- Smoke nyata dengan `deepseek-v4.1-flash`: PNG merah 64x64 dikirim sebagai `documentMessage`
+  (`image/png`) -> balasan "Merah"; PDF => model memanggil `sandbox` 2x dan menjawab
+  `KODE-RAHASIA-123`; teks 40 baris => model memanggil `read` pada path penanda dan menjawab
+  "baris 40"; payload bergambar yang ditolak HTTP 400 diulang tanpa gambar. Role `member` tanpa
+  `sandbox` ditolak (`error: tool 'sandbox' tidak diizinkan untuk role 'member'`).
+
+## 2026-10-21 (izin role runtime)
+
+- `config.yaml` (gitignored): `roles.owner.users` diisi nomor asli + LID dari session DB
+  (`6285111242960`, `130799689031758`); `roles.member.tools` ditambah `sandbox` atas permintaan
+  owner, jadi member = `read`, `web_search`, `sandbox`. `shell`/`write` tetap owner-only.
+- Handler `sandbox` tetap `defaults=OWNER_ONLY`; role lain hanya dapat lewat daftar `tools:`
+  eksplisit. README diperbaiki (bukan "owner-only" mutlak).
+- Bukti: pengirim `628999999999` (member) dengan config asli -> `role=member`, model memanggil
+  `sandbox` 2x dan menjawab isi PDF `MEMBER-OK-777`. Bot di-restart 23:54:37, tersambung kembali.
+
+## 2026-10-21 (identitas bot di prompt)
+
+- `sanka/wa.py`: `system_prompt(config, role_name, bots)` menambah baris identitas
+  (`Identitasmu: <bot_name>, nomor <nomor HP + LID>. Mention @<nomor itu> ... adalah untukmu`).
+  `handle_message` meneruskan `app.bot_digits`. Tanpa ini model membaca mention
+  `@73041086251252` (LID bot) sebagai nomor orang lain, persis seperti balasan live 23.54
+  ("mention-nya ke @+7... bukan ke aku").
+- Test `tests/test_smoke.py`: prompt memuat nomor PN + LID bot (23 test lulus).
+- Bukti live: group event dengan `mentionedJID` = LID bot -> "Itu akun aku sendiri, Sanka."
+  Tanpa baris identitas, model justru mengarang pemetaan LID -> nomor ("terhubung ke 628567770837")
+  padahal nomor itu tidak ada di payload.
+- Bot di-restart 23:58:46 (PID 38536, tersambung) supaya prompt baru terpakai.
+
+## 2026-10-22 (web_search SearXNG)
+
+- `sanka/config.py`: `WebSearchConfig(base_url, timeout_seconds)`; key YAML `web_search`; kosong =
+  hanya ddgs. `config.example.yaml` diberi contoh, `config.yaml` diarahkan ke
+  `http://127.0.0.1:8080` (container `sanka-searxng` yang sudah ada).
+- `sanka/tools/web_search.py`: `_searx` memanggil `GET /search?q=...&format=json` (urllib di
+  `to_thread`, UA `sanka-agent/0.1`, timeout dari config), `searx_hits` memetakan JSON -> hit
+  seragam dan membuang entri tanpa URL. Fallback ke loop `ddgs` (`WEB_BACKENDS`) bila instance mati,
+  JSON ditolak, atau hasil kosong; log satu baris, tanpa traceback.
+- Pengukuran (kueri "searxng vs duckduckgo"): SearXNG 41 hasil/0,70 s vs ddgs hanya 1 backend jalan
+  (yahoo) 5 hasil/1,33 s; `backend="auto"` gagal total karena `html.duckduckgo.com` unreachable.
+- Test: `tests/test_smoke.py` (+2) untuk `searx_hits` dan parsing YAML `web_search` (25 test lulus).
+- Bukti live: tool dengan config asli -> 5 URL dari SearXNG (1,66 s); `base_url` diarahkan ke port
+  mati -> log `searxng ... gagal (URLError...); fallback ke ddgs` lalu hasil ddgs tetap keluar.
+
+## 2026-10-22 (mention asli & teks bersih)
+
+- `sanka/chat.py`: `clean()` membuang karakter isolasi bidi (`U+2068`/`U+2069`, `U+200E/F`,
+  `U+202A-E`) dan NBSP; dipakai `message_text()` dan `_flatten()` sehingga payload tidak lagi berisi
+  token mention "kotor". `ChatMessage.sender_jid` menyimpan JID asli (`…@lid` / `…@s.whatsapp.net`)
+  untuk mention balasan.
+- `sanka/wa.py`: `_resolve_mentions()` mengubah `@<nomor>` di balasan jadi `@<digit>` kanonik dan
+  mengumpulkan JID peserta chat; balasan dikirim sebagai `ExtendedTextMessage` dengan
+  `contextInfo.mentionedJID` eksplisit (quote tetap lewat `reply_message`). `format_reply` hasilnya
+  lewat `clean()` dulu. Prompt menambah baris: tulis `@<nomor>` persis, tanpa `+`/spasi.
+- Tanpa flag `mentions_are_lids` global: JID disebut eksplisit, jadi pengirim LID dan nomor HP bisa
+  jadi mention dalam satu balasan.
+- Test: `tests/test_reply.py` (+2) untuk mention LID (bentuk `@+1 3079 96890 31758`) dan nomor HP
+  plus token tak dikenal; `tests/test_context.py` (+1) untuk pembuangan isolasi; total 28 lulus.
+- Bukti live: pesan grup dengan mention `@⁨Sanka⁩`, model menjawab `Halo Muqsith! @130799689031758`
+  -> proto keluar `mentionedJID=['130799689031758@lid']`, `stanzaID` quote utuh, tanpa `U+2068`.
+- "Le Watasi" di balasan 00.07 adalah artefak model (tidak deterministik, bukan dari payload);
+  mitigasi: payload dan balasan sekarang bebas karakter isolasi + token mention kanonik.

@@ -16,6 +16,25 @@ log = logging.getLogger(__name__)
 TURN_LIMIT_TEXT = "Batas langkah agent tercapai. Coba lagi atau persempit permintaannya."
 API_ERROR_TEXT = "Maaf, model sedang error. Coba lagi sebentar."
 USER_AGENT = "sanka-agent/0.1"
+IMAGE_LOST = "[Gambar gagal dilampirkan ke model; gunakan path di atas dengan sandbox.]"
+
+
+def _has_images(content: str | list[dict]) -> bool:
+    return isinstance(content, list) and any(
+        isinstance(part, dict) and part.get("type") == "image_url" for part in content
+    )
+
+
+def _client_error(exc: APIError) -> bool:
+    status = getattr(exc, "status_code", None)
+    return isinstance(status, int) and 400 <= status < 500
+
+
+def _text_only(content: str | list[dict]) -> str:
+    if isinstance(content, str):
+        return content
+    texts = [str(part.get("text", "")) for part in content if isinstance(part, dict) and part.get("type") == "text"]
+    return "\n".join([*texts, IMAGE_LOST])
 
 
 class LLM:
@@ -46,17 +65,16 @@ class LLM:
     async def run(
         self,
         system: str,
-        history: list[dict],
-        user_text: str,
+        user_content: str | list[dict],
         specs: list[Handler],
         ctx: ToolContext,
         session: str = "",
     ) -> str:
         messages: list[dict] = [
             {"role": "system", "content": system},
-            *history,
-            {"role": "user", "content": user_text},
+            {"role": "user", "content": user_content},
         ]
+        images = _has_images(user_content)
         by_name = {spec.name: spec for spec in specs}
         tools = self._tools(specs)
         for _ in range(max(1, self.config.llm.max_turns)):
@@ -69,7 +87,15 @@ class LLM:
                 kwargs["tools"] = tools
             try:
                 response = await self.client.chat.completions.create(**kwargs)
-            except (APIError, TimeoutError):
+            except APIError as exc:
+                if images and _client_error(exc):  # model tanpa vision: buang gambar, ulangi sekali
+                    log.warning("model menolak gambar, ulang tanpa gambar: %s", exc)
+                    messages[1] = {"role": "user", "content": _text_only(user_content)}
+                    images = False
+                    continue
+                log.exception("LLM gagal")
+                return API_ERROR_TEXT
+            except TimeoutError:
                 log.exception("LLM gagal")
                 return API_ERROR_TEXT
             message = response.choices[0].message

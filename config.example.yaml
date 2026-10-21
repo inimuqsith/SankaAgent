@@ -33,6 +33,10 @@ sandbox:
   image: "docker.io/library/python:3.12-slim"
   timeout_seconds: 120
 
+web_search:
+  base_url: ""          # instance SearXNG, mis. "http://127.0.0.1:8080"; kosong = hanya ddgs
+  timeout_seconds: 10
+
 mcp:
   servers: {}
   # contoh:

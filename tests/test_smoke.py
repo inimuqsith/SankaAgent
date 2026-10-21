@@ -12,9 +12,11 @@ from sanka.config import (
     SandboxConfig,
     WhatsAppConfig,
 )
+from sanka.config import load_config
 from sanka.format import format_reply
 from sanka.permissions import allows, role_for
-from sanka.wa import should_process
+from sanka.tools.web_search import searx_hits
+from sanka.wa import should_process, system_prompt
 
 BOT = {"628567770837"}
 
@@ -87,6 +89,39 @@ def test_group_routing() -> None:
     assert routed(group_event("jawab ya", participant="628567770837@s.whatsapp.net")) is True
 
 
+def media_event(is_dm: bool) -> Message:
+    ev = Message()
+    ev.Info.MessageSource.Chat.User = "628999999999" if is_dm else "1234567890"
+    ev.Info.MessageSource.Chat.Server = "s.whatsapp.net" if is_dm else "g.us"
+    ev.Info.MessageSource.Sender.User = "628999999999" if is_dm else "628222222222"
+    ev.Info.MessageSource.Sender.Server = "s.whatsapp.net"
+    ev.Message.imageMessage.mimetype = "image/jpeg"
+    return ev
+
+
+def test_captionless_media_routing() -> None:
+    config = make_config()
+
+    def routed(ev: Message, is_dm: bool) -> bool:
+        chat = "628999999999@s.whatsapp.net" if is_dm else "1234567890@g.us"
+        return should_process(
+            ev,
+            chat,
+            extract_text(ev.Message),
+            is_dm=is_dm,
+            bot_name=config.whatsapp.bot_name,
+            require_mention=config.whatsapp.require_mention,
+            bots=BOT,
+            has_media=True,
+        )
+
+    assert routed(media_event(True), is_dm=True) is True
+    assert routed(media_event(False), is_dm=False) is False
+    addressed = media_event(False)
+    addressed.Message.imageMessage.contextInfo.mentionedJID.append("628567770837@s.whatsapp.net")
+    assert routed(addressed, is_dm=False) is True
+
+
 def dm_event() -> Message:
     ev = Message()
     ev.Info.MessageSource.Chat.User = "628999999999"
@@ -106,3 +141,45 @@ def test_format_reply() -> None:
     assert len(chunks) == 2
     assert all(len(chunk) <= 3500 for chunk in chunks)
     assert format_reply("   ") == []
+
+
+def test_system_prompt_lists_bot_numbers() -> None:
+    config = make_config()
+
+    prompt = system_prompt(config, "owner", {"628567770837", "73041086251252"})
+
+    assert "628567770837" in prompt
+    assert "73041086251252" in prompt
+
+
+def test_searx_hits_drop_entries_without_url() -> None:
+    payload = {
+        "results": [
+            {"title": "A", "url": "https://a.test", "content": "isi a", "engine": "brave"},
+            {"title": "B", "url": "", "content": "tanpa url"},
+            {"title": "C", "url": "https://c.test", "content": "isi c"},
+        ]
+    }
+
+    assert searx_hits(payload, 1) == [{"title": "A", "href": "https://a.test", "body": "isi a"}]
+    assert [hit["href"] for hit in searx_hits(payload, 5)] == ["https://a.test", "https://c.test"]
+
+
+def test_web_search_config_from_yaml(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    target = tmp_path / "config.yaml"
+    target.write_text(
+        "persona: p\n"
+        "llm:\n  api_key_env: SANKA_TEST_KEY\n"
+        f"workspace: \"{tmp_path / 'ws'}\"\n"
+        f"whatsapp:\n  session_db: \"{tmp_path / 's.db'}\"\n"
+        "roles:\n  member: {}\n"
+        "default_role: member\n"
+        "web_search:\n  base_url: \"http://127.0.0.1:8080/\"\n  timeout_seconds: 7\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(str(target))
+
+    assert config.web_search.base_url == "http://127.0.0.1:8080"
+    assert config.web_search.timeout_seconds == 7

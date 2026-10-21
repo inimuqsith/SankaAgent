@@ -83,7 +83,7 @@ async def selftest(config: Config) -> int:
         results.append(_report("web_search", "PASS" if passed else "FAIL", "" if passed else search[:200]))
 
         llm = LLM(config)
-        answer = await llm.run("balas: ok", [], "ping", [], ctx, session="sanka-selftest")
+        answer = await llm.run("balas: ok", "ping", [], ctx, session="sanka-selftest")
         passed = bool(answer.strip()) and answer != API_ERROR_TEXT
         results.append(_report("llm", "PASS" if passed else "FAIL", "" if passed else answer[:200]))
 

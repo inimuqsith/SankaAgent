@@ -44,6 +44,12 @@ class SandboxConfig:
 
 
 @dataclass(frozen=True)
+class WebSearchConfig:
+    base_url: str = ""  # kosong = hanya backend ddgs
+    timeout_seconds: float = 10.0
+
+
+@dataclass(frozen=True)
 class MCPServerConfig:
     name: str
     command: str
@@ -61,6 +67,7 @@ class Config:
     default_role: str
     sandbox: SandboxConfig
     mcp: dict[str, MCPServerConfig]
+    web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
 
     def api_key(self) -> str:
         return os.environ[self.llm.api_key_env]
@@ -157,6 +164,7 @@ def load_config(path: str | None = None) -> Config:
 
     wa_raw = raw.get("whatsapp") if isinstance(raw.get("whatsapp"), dict) else {}
     sandbox_raw = raw.get("sandbox") if isinstance(raw.get("sandbox"), dict) else {}
+    search_raw = raw.get("web_search") if isinstance(raw.get("web_search"), dict) else {}
 
     workspace = _expand(str(raw.get("workspace") or "~/.sanka/workspace"))
     workspace.mkdir(parents=True, exist_ok=True)
@@ -186,4 +194,8 @@ def load_config(path: str | None = None) -> Config:
             timeout_seconds=float(sandbox_raw.get("timeout_seconds") or 120),
         ),
         mcp=_mcp_servers(raw.get("mcp")),
+        web_search=WebSearchConfig(
+            base_url=str(search_raw.get("base_url") or "").strip().rstrip("/"),
+            timeout_seconds=float(search_raw.get("timeout_seconds") or 10),
+        ),
     )

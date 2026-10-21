@@ -1,7 +1,11 @@
 # SankaAgent
 
 Bot WhatsApp pribadi: satu proses Python (Neonize) + model OpenAI-compatible + tool.
-DM selalu dilayani; grup hanya saat bot di-mention atau dibalas. Lampiran diabaikan.
+DM selalu dilayani; grup hanya saat bot di-mention atau dibalas.
+Setiap pesan masuk dicatat lengkap (nama, nomor, waktu, teks, lampiran, kutipan) dan 20 pesan
+terakhir per chat dikirim ke model sebagai satu payload, jadi konteks tetap ada meski bot tidak
+menjawab. Lampiran diunduh ke `workspace/attachments/`; gambar dikirim ke model sebagai data URL,
+teks di-inline, biner cukup diberi path untuk tool `sandbox`.
 Pesan yang dilayani langsung ditandai "mengetik" sampai balasan terkirim (disentuh ulang tiap 8 detik).
 
 ## Pasang
@@ -28,16 +32,40 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sand
 | `roles` | `users` (nomor), `tools`, `commands`; pola glob (`*`, `mcp__*`) |
 | `default_role` | role untuk nomor tak dikenal |
 | `sandbox` | `runtime` (podman), `image`, `timeout_seconds` |
+| `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
 | `mcp.servers` | `command`, `args`, `env` per server stdio |
 
 `tools:` dan `commands:` yang tidak ditulis memakai pola default tiap handler (lihat di bawah);
 kalau ditulis, isi YAML menang. `tools: []` atau `commands: []` berarti role itu tidak boleh apa pun.
 
 Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `mcp__<server>__<tool>`.
+`web_search` memakai SearXNG (`web_search.base_url`, butuh `format: json` di `settings.yml`) dan
+jatuh ke backend `ddgs` (wikipedia/yahoo/startpage/brave) kalau instance itu mati atau kosong.
 Command: `/ping`, `/help`, `/reset` (plus alias `/p`, `/h`, `/r`). `/help` membaca metadata registry.
 
 Kalau WhatsApp mengalamatkan pengirim lewat LID (`...@lid`), cocokkan role dengan digit LID itu,
 bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
+
+## Konteks percakapan & lampiran
+
+- Log in-memory 20 pesan per chat (`sanka/chat.py`); restart atau `/reset` mengosongkannya.
+  Pesan grup yang tidak di-mention tetap dicatat supaya payload berikutnya punya konteks.
+- Tiap entri payload berbentuk `[YYYY-MM-DD HH:MM] nama (nomor):` diikuti teks, kutipan
+  (`↳ membalas ...`), dan baris lampiran. Entri terakhir adalah pesan yang harus dijawab.
+- Lampiran diunduh sebelum panggilan LLM ke `workspace/attachments/<chat>/<id>-<nama>`; file yang
+  sudah ada dipakai ulang. Gambar (field `imageMessage` atau dokumen ber-MIME `image/*`) dikirim
+  inline sebagai data URL, maksimal 6 gambar, 5 MB per file, 10 MB total; sisanya hanya diberi path.
+- Lampiran teks (`text/*`, JSON/YAML/XML, atau ekstensi teks) di-inline untuk pesan terbaru; pesan
+  lama cukup metadata + path. Teks atau lampiran yang dipotong disimpan utuh di
+  `workspace/whatsapp/<chat>/<id>.txt` dengan penanda `read path="..."` (tool `read` menerima path
+  itu langsung, `sandbox` memakai `/work/<path>`).
+- PDF/audio/video tidak diparse Sanka: model diminta memeriksanya lewat `sandbox` (default hanya
+  `owner`; role lain harus mencantumkan `sandbox` di `tools:`) atau melaporkan bahwa role pengirim
+  butuh izin sandbox.
+- Balasan yang memuat `@<nomor>` dikirim sebagai mention asli: JID diambil dari log chat, bentuk
+  `@+62 ...`/`@62 ...` dikanonikkan jadi `@62...`, dan alamat yang tidak dikenal cuma jadi teks.
+  Karakter isolasi bidi (`U+2068`/`U+2069`) pembungkus mention WhatsApp dibuang dari teks masuk
+  maupun balasan.
 
 ## Menambah command atau tool
 
