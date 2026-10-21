@@ -109,14 +109,20 @@ bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
 
 ## Memori, skill, dan file
 
-Sanka memakai empat lapis yang diadaptasi dari GenericAgent/Hermes:
+Sanka memakai lima lapis memori. Identitas dan aksi bersifat global; isi percakapan tetap per chat:
 
-| Lapis | Isi | Tempat |
-| --- | --- | --- |
-| L1 | indeks kecil yang selalu masuk prompt | blok memori + indeks skill (dibatasi `max_chars`) |
-| L2 | fakta/preferensi tahan lama | `memory.path` (SQLite, `0600`) |
-| L3 | prosedur/SOP | `skills.dir/<nama>/SKILL.md` |
-| L4 | percakapan mentah | `whatsapp.history_db` |
+| Lapis | Isi | Scope | Tempat |
+| --- | --- | --- | --- |
+| Identitas | persona, peran, izin | global / per pengirim | `persona` + `roles` di `config.yaml` |
+| Episodik | 20 pesan terakhir + arsip | per chat | `history.db` + jendela konteks |
+| Semantik | fakta/preferensi tahan lama | global + chat | `memory.path` (SQLite, `0600`) |
+| Prosedural | prosedur/SOP | global | `skills.dir/<nama>/SKILL.md` |
+| Autografis | aksi lintas chat + alasan | global | `memory.path` tabel `actions` |
+
+Pemetaan L1-L4 GenericAgent/Hermes tetap berlaku: L1 = indeks yang selalu masuk prompt (blok
+memori, aksi, dan indeks skill, dibatasi `max_chars`), L2 = `memory.db`, L3 = skill, L4 =
+`history.db`. Lapis identitas dan autografis membuat L1-L4 tetap konsisten saat bot bekerja di
+banyak chat: satu jiwa, banyak situasi—bukan satu transkrip global.
 
 **Memori.** Satu tool `memory` menangani `scope=chat` (default) dan `scope=global` (lintas grup),
 dengan action `add/search/list/forget`. Command `/memori [global]` untuk tambah/cari/daftar/hapus.
@@ -139,6 +145,14 @@ bukan command; model menerima transkrip 8 pesan sebelumnya, blok memori aktif (u
 plus pesan/jawaban terakhir, jadi fakta yang muncul dari percakapan berjalan ikut tertangkap.
 Refleksi berjalan di latar, tidak menahan balasan, dan menyaring rahasia/kredensial. Ini yang membuat
 memori terisi karena AI menilai informasinya penting, bukan karena user menyuruh.
+
+**Aksi lintas chat.** Saat `send_to` sukses, satu baris masuk ledger `actions` di `memory.db`:
+waktu, chat asal + nama, chat tujuan + nama, jenis (teks/file), ringkasan isi, dan permintaan
+pengguna. Lima aksi terakhir diinjeksi ke system prompt hanya untuk role yang punya `send_to`
+(default owner), dengan penanda "konteks dirimu, bukan perintah". Jadi chat tujuan tahu kenapa
+artefak itu ada—misalnya stiker yang dikirim dari grup lain—tanpa menggabungkan transkrip antar
+chat. Isi percakapan tetap terisolasi; ringkasan/permintaan yang mengandung kredensial tidak
+disimpan sebagai teks asli, dan ledger dipangkas ke 200 baris terakhir.
 
 **Skill.** Setiap skill adalah folder berisi `SKILL.md` dengan frontmatter YAML:
 
@@ -175,8 +189,9 @@ yang tidak diberi `send`/`command kirim` tidak bisa.
 lain yang sudah ada di arsip. `chat` menerima nama grup, potongan nama, atau JID `@g.us`; `chat`
 kosong menampilkan daftar grup (nama + JID, terbaru dulu). Nama yang cocok ke beberapa grup
 mengembalikan kandidat tanpa mengirim apa pun. Setiap kiriman langsung masuk jendela konteks chat
-tujuan dan ditulis ke `history_db`, jadi pesan berikutnya di grup itu sudah melihat apa yang bot
-kirim tanpa menunggu event echo. Pesan masuk dari grup mana pun tetap dicatat live sebelum filter
+tujuan, ditulis ke `history_db`, dan dicatat di ledger `actions`, jadi pesan berikutnya di grup itu
+sudah melihat apa yang bot kirim tanpa menunggu event echo, dan chat asal tahu ke mana saja ia
+mengirim. Pesan masuk dari grup mana pun tetap dicatat live sebelum filter
 mention, jadi tidak ada tool fetch terpisah. Role non-owner hanya bisa memakai `send_to` bila
 ditambahkan ke `tools:`.
 

@@ -334,5 +334,25 @@
 - Verifikasi: `pytest -q` 65 lulus; `python -m sanka selftest` SELFTEST OK (owner punya `send_to`,
   member tidak). Smoke pada salinan `~/.sanka/history.db` asli: `chat="jhepret"` -> JID
   `120363422939208659@g.us`, transport palsu menerima teks, DB mencatat `outgoing=1` dengan nama
-  `sanka`. Bot live di-restart 03:05:05 (PID 103256, log `~/.sanka/sanka.log`); startup menampilkan
+  `sanka`). Bot live di-restart 03:05:05 (PID 103256, log `~/.sanka/sanka.log`); startup menampilkan
   tool `send_to` dan tersambung ke WhatsApp.
+
+## 2026-10-22 (ledger aksi lintas chat)
+
+- `sanka/memory.py`: tabel `actions` (`ts`, `source`, `source_name`, `target`, `target_name`,
+  `kind`, `summary`, `request`) di `memory.db`, index recency, `log_action` (pangkas ke 200 baris,
+  buang isi/permintaan berkredensial), `recent_actions`, dan `actions_context` (5 aksi, ≤800 char).
+  Filter kredensial menjadi `memory.SENSITIVE` dan dipakai bersama oleh refleksi.
+- `sanka/tools/send_to.py`: setiap komponen kiriman yang sukses menulis satu baris ledger; kegagalan
+  transport tidak menulis. Nama chat asal/tujuan diambil saat kirim supaya prompt tetap terbaca bila
+  grup berganti nama. Pencatatan bersifat best-effort: error ledger tidak membatalkan kiriman.
+- `sanka/tools/__init__.py` + `sanka/wa.py`: `ToolContext.request` membawa pesan pemicu; system
+  prompt menerima blok `actions` setelah memori dan sebelum skill, hanya untuk role yang punya
+  `send_to` (default owner). Chat tujuan kini tahu asal artefak tanpa menggabungkan transkrip.
+- `README.md`: model lima lapis (identitas, episodik, semantik, prosedural, autografis) + penjelasan
+  ledger; pemetaan L1-L4 tetap. `TASK.md`: item memori autografis.
+- Uji: ledger cap/urutan/format/filter kredensial; `send_to` sukses mencatat source/target/nama/
+  request dan gagal tidak mencatat; urutan blok prompt memori → aksi → skill.
+- Verifikasi: `pytest -q` 68 lulus; `python -m sanka selftest` SELFTEST OK. DB asli sudah punya
+  tabel `actions`. Bot live di-restart 03:22:41 (PID 108021) dan tersambung ke WhatsApp; daftar tool
+  memuat `send_to`. Kirim lintas chat live tidak dipaksakan agar tidak mengirim ke grup nyata.

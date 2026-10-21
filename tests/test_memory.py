@@ -49,6 +49,37 @@ def test_scopes_dedupe_and_context(tmp_path: Path) -> None:
     store.close()
 
 
+def test_action_ledger_is_capped_and_rendered_newest_first(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path / "memory.db")
+    assert store.actions_context() == ""
+
+    for index in range(7):
+        store.log_action(
+            "src@g.us",
+            f"{index}@g.us",
+            "teks",
+            f"pesan {index}",
+            source_name="Grup Sumber",
+            target_name=f"Tujuan {index}",
+            request=f"minta {index}",
+        )
+
+    context = store.actions_context()
+    assert context.startswith("Aksi lintas chat terakhir")
+    assert "Tujuan 6" in context and "Tujuan 1" not in context
+    assert context.index("Tujuan 6") < context.index("Tujuan 5")
+    assert 'permintaan: "minta 6"' in context
+    assert len(store.recent_actions()) == 5
+    newest = store.recent_actions(1)[0]
+    assert (newest["source"], newest["target"], newest["kind"]) == ("src@g.us", "6@g.us", "teks")
+
+    store.log_action("src@g.us", "dst@g.us", "teks", "token=rahasia", request="token=rahasia")
+    sensitive = store.recent_actions(1)[0]
+    assert sensitive["request"] == ""
+    assert sensitive["summary"] == "[isi sensitif tidak dicatat]"
+    store.close()
+
+
 def test_memory_tools_are_scope_separated(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path / "memory.db")
     config = make_config(tmp_path)

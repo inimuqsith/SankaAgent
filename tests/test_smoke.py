@@ -168,6 +168,26 @@ def test_system_prompt_includes_memory_and_skills() -> None:
     assert prompt.index("suka kopi") < prompt.index("deploy: Deploy aman.")
 
 
+def test_system_prompt_places_actions_between_memory_and_skills() -> None:
+    config = make_config()
+
+    prompt = system_prompt(
+        config,
+        "owner",
+        BOT,
+        memory="Memori tersimpan:\n- suka kopi",
+        actions="Aksi lintas chat terakhir:\n- kirim stiker",
+        skills="Skill lokal:\n- deploy: Deploy aman.",
+    )
+
+    assert "Aksi lintas chat terakhir" in prompt
+    assert (
+        prompt.index("suka kopi")
+        < prompt.index("Aksi lintas chat terakhir")
+        < prompt.index("deploy: Deploy aman.")
+    )
+
+
 def test_searx_hits_drop_entries_without_url() -> None:
     payload = {
         "results": [

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 from ..registry import Handler
 from . import OWNER_ONLY, ToolContext, _resolve
 
+log = logging.getLogger(__name__)
 LIST_LIMIT = 20
 
 
@@ -23,6 +25,25 @@ def _known(ctx: ToolContext) -> str:
         return "Belum ada grup di arsip."
     header = f"Grup di arsip ({len(groups)}, terbaru dulu):"
     return "\n".join([header, *[f"- {_label(chat_id, name)}" for chat_id, name in groups]])
+
+
+def _record(ctx: ToolContext, target: str, target_name: str, kind: str, summary: str) -> None:
+    """Tulis ledger aksi; kegagalan catat tidak boleh membatalkan kiriman."""
+    if ctx.memory is None or not ctx.chat_id or ctx.chat_id == target:
+        return
+    try:
+        source_name = ctx.history.chat_name(ctx.chat_id) if ctx.history is not None else ""
+        ctx.memory.log_action(
+            ctx.chat_id,
+            target,
+            kind,
+            summary,
+            source_name=source_name,
+            target_name=target_name,
+            request=ctx.request,
+        )
+    except Exception:  # ledger best-effort, kiriman sudah terjadi
+        log.exception("gagal mencatat aksi lintas chat ke %s", target)
 
 
 def _resolve_group(groups: list[tuple[str, str]], raw: str):
@@ -71,9 +92,16 @@ async def _send_to(args: dict, ctx: ToolContext) -> str:
     caption = str(args.get("caption") or "").strip()[:1024]
     results = []
     if text:
-        results.append(await ctx.send_message(chat_id, text))
+        result = await ctx.send_message(chat_id, text)
+        results.append(result)
+        if not result.startswith("error:"):
+            _record(ctx, chat_id, name, "teks", text)
     if path is not None:
-        results.append(await ctx.send_file(chat_id, path, caption))
+        result = await ctx.send_file(chat_id, path, caption)
+        results.append(result)
+        if not result.startswith("error:"):
+            summary = f"{path.name}{f' — {caption}' if caption else ''}"
+            _record(ctx, chat_id, name, "file", summary)
     label = f'"{name}" ({chat_id})' if name else chat_id
     if any(result.startswith("error:") for result in results):
         return "\n".join([f"error: pengiriman ke {label} gagal:", *results])

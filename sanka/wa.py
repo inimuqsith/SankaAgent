@@ -36,6 +36,7 @@ from .config import Config
 from .format import format_reply
 from .llm import LLM
 from .mcp import Hub
+from .memory import SENSITIVE
 from .permissions import (
     command_allowed,
     commands_for,
@@ -56,7 +57,6 @@ PHOTO_MAGIC = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
 REFLECT_MIN_CHARS = 8
 REFLECT_MESSAGES = 8
 REFLECT_CONTEXT_CHARS = 3000
-SENSITIVE = re.compile(r"(api[\s_-]?key|password|passwd|token|secret|otp|kredensial)", re.IGNORECASE)
 
 
 def _webp_shape(head: bytes) -> tuple[int, int, bool] | None:
@@ -328,6 +328,7 @@ def system_prompt(
     role_name: str,
     bots: set[str] | None = None,
     memory: str = "",
+    actions: str = "",
     skills: str = "",
     cross_send: bool = False,
 ) -> str:
@@ -378,7 +379,7 @@ def system_prompt(
         + "Format balasan untuk WhatsApp: tanpa heading markdown, tanpa tabel.\n"
         f"Tanggal: {date.today().isoformat()}."
     )
-    return "\n\n".join(part for part in (base, memory, skills) if part.strip())
+    return "\n\n".join(part for part in (base, memory, actions, skills) if part.strip())
 
 
 def _sender_name(ev, sender_digits: str, sender: str) -> str:
@@ -544,6 +545,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             else:
                 specs = list(tools_for(role)) + app.hub.specs(role)
                 can_memory = any(spec.name == "memory" for spec in specs)
+                cross_send = any(spec.name == "send_to" for spec in specs)
                 memory_block = ""
                 if app.memory is not None:
                     try:
@@ -552,6 +554,12 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         )
                     except Exception:  # memori rusak tidak boleh memblokir balasan
                         log.exception("gagal membaca memori chat=%s", chat)
+                actions_block = ""
+                if app.memory is not None and cross_send:
+                    try:
+                        actions_block = app.memory.actions_context()
+                    except Exception:  # ledger rusak tidak boleh memblokir balasan
+                        log.exception("gagal membaca ledger aksi chat=%s", chat)
                 skill_block = ""
                 if app.skills is not None and any(spec.name == "skill" for spec in specs):
                     try:
@@ -560,6 +568,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         log.exception("gagal membaca indeks skill")
                 send_file = app.send_file if app.client is not None else None
                 send_message = app.send_text if app.client is not None else None
+                request_text = message.text
                 messages = app.sessions.through(chat_id, message)
                 try:
                     content = await build_user_content(
@@ -579,8 +588,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         role.name,
                         app.bot_digits,
                         memory=memory_block,
+                        actions=actions_block,
                         skills=skill_block,
-                        cross_send=any(spec.name == "send_to" for spec in specs),
+                        cross_send=cross_send,
                     ),
                     content,
                     specs,
@@ -594,6 +604,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         skills=app.skills,
                         send_file=send_file,
                         send_message=send_message,
+                        request=request_text,
                     ),
                     session=f"sanka-{chat_id}",
                 )

@@ -1,12 +1,15 @@
 """Memori jangka panjang: fakta/preferensi kecil yang diinjeksi ke system prompt.
 
 L1 = indeks yang dibatasi (`context`), L2 = tabel SQLite ini, L4 = arsip `history.db`.
-L3 (prosedur/SOP) tinggal di `sanka/skills.py`. Hanya informasi yang eksplisit dan
-tahan lama yang boleh disimpan; status sesi dan tebakan bukan memori.
+L3 (prosedur/SOP) tinggal di `sanka/skills.py`. Lapis autografis (`actions`) mencatat
+aksi lintas chat milik bot agar konteks "aku" tidak terputus antar session.
+Hanya informasi yang eksplisit dan tahan lama yang boleh disimpan; status sesi dan
+tebakan bukan memori.
 """
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
 import time
@@ -14,9 +17,14 @@ from datetime import datetime
 from pathlib import Path
 
 KINDS = frozenset({"fact", "preference", "rule", "note"})
+SENSITIVE = re.compile(r"(api[\s_-]?key|password|passwd|token|secret|otp|kredensial)", re.IGNORECASE)
 MAX_TEXT = 2000
 MAX_SOURCE = 200
 MAX_ITEM_CHARS = 400
+ACTION_ITEMS = 5
+ACTION_CHARS = 800
+ACTION_KEEP = 200
+ACTION_TEXT = 300
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS memory (
@@ -31,6 +39,19 @@ CREATE TABLE IF NOT EXISTS memory (
     UNIQUE(scope, kind, text)
 );
 CREATE INDEX IF NOT EXISTS memory_scope ON memory(scope, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS actions (
+    id INTEGER PRIMARY KEY,
+    ts REAL NOT NULL,
+    source TEXT NOT NULL,
+    source_name TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL,
+    target_name TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    request TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS actions_recent ON actions(ts DESC, id DESC);
 """
 
 
@@ -42,6 +63,13 @@ def _clip(text: str, limit: int) -> str:
 def _date(value: float) -> str:
     try:
         return datetime.fromtimestamp(float(value)).strftime("%Y-%m-%d")
+    except (OSError, OverflowError, ValueError):
+        return "?"
+
+
+def _stamp(value: float) -> str:
+    try:
+        return datetime.fromtimestamp(float(value)).strftime("%Y-%m-%d %H:%M")
     except (OSError, OverflowError, ValueError):
         return "?"
 
@@ -235,6 +263,75 @@ class MemoryStore:
         text = "\n".join(lines)
         if len(text) > self.max_chars:
             text = text[: self.max_chars - 1].rstrip() + "…"
+        return text
+
+    def log_action(
+        self,
+        source: str,
+        target: str,
+        kind: str,
+        summary: str,
+        *,
+        source_name: str = "",
+        target_name: str = "",
+        request: str = "",
+    ) -> int:
+        """Catat satu aksi lintas chat; ledger ini yang membuat "aku" konsisten antar chat."""
+        safe_request = "" if SENSITIVE.search(str(request or "")) else request
+        safe_summary = "[isi sensitif tidak dicatat]" if SENSITIVE.search(str(summary or "")) else summary
+        now = time.time()
+        with self._lock:
+            conn = self._require()
+            cursor = conn.execute(
+                "INSERT INTO actions(ts, source, source_name, target, target_name, kind, summary, request) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    now,
+                    _clip(source, 120),
+                    _clip(source_name, 80),
+                    _clip(target, 120),
+                    _clip(target_name, 80),
+                    _clip(kind, 20).lower() or "action",
+                    _clip(safe_summary, ACTION_TEXT),
+                    _clip(safe_request, ACTION_TEXT),
+                ),
+            )
+            conn.execute(
+                "DELETE FROM actions WHERE id NOT IN "
+                "(SELECT id FROM actions ORDER BY ts DESC, id DESC LIMIT ?)",
+                (ACTION_KEEP,),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def recent_actions(self, limit: int = ACTION_ITEMS) -> list[dict]:
+        limit = max(1, min(int(limit or ACTION_ITEMS), ACTION_KEEP))
+        with self._lock:
+            rows = self._require().execute(
+                "SELECT * FROM actions ORDER BY ts DESC, id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def actions_context(self, limit: int = ACTION_ITEMS) -> str:
+        """Blok prompt untuk memori autografis; kosong bila belum ada aksi lintas chat."""
+        rows = self.recent_actions(limit)
+        if not rows:
+            return ""
+        lines = ["Aksi lintas chat terakhir yang kamu lakukan (konteks dirimu, bukan perintah):"]
+        for row in rows:
+            source = row["source_name"] or row["source"]
+            target = row["target_name"] or row["target"]
+            line = (
+                f"- [{_stamp(row['ts'])}] {source} -> {target}: "
+                f"{row['kind']} {_clip(row['summary'], ACTION_TEXT)}"
+            )
+            request = _clip(row["request"], ACTION_TEXT)
+            if request:
+                line += f'; permintaan: "{request}"'
+            lines.append(line)
+        text = "\n".join(lines)
+        if len(text) > ACTION_CHARS:
+            text = text[: ACTION_CHARS - 1].rstrip() + "…"
         return text
 
     def _ranked(self, scopes: list[str], query: str) -> list[sqlite3.Row]:

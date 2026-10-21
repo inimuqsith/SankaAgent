@@ -45,6 +45,11 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   sudah ada di arsip, mengirim teks dan/atau file, menolak target ambigu, dan langsung mencatat
   pesan keluar di jendela + `history_db` chat tujuan. Pesan masuk semua grup sudah dicatat live
   sebelum filter mention, jadi tidak perlu tool fetch terpisah.
+- [x] Memori autografis: ledger `actions` di `memory.db` mencatat asal, tujuan, jenis, ringkasan,
+  dan permintaan setiap kiriman `send_to` yang sukses (gagal tidak dicatat). Lima aksi terakhir
+  diinjeksi ke prompt role yang punya `send_to`, jadi chat tujuan tahu konteks artefak tanpa
+  menggabungkan transkrip; isi/permintaan berkredensial tidak disimpan. Model lima lapis memori
+  (identitas, episodik, semantik, prosedural, autografis) didokumentasikan di `README.md`.
 
 ## Nanti
 

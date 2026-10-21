@@ -14,6 +14,7 @@ from sanka.commands import CommandContext
 from sanka.commands.kirim import COMMAND as KIRIM
 from sanka.config import Config, LLMConfig, RoleConfig, SandboxConfig, WhatsAppConfig
 from sanka.history import HistoryStore
+from sanka.memory import MemoryStore
 from sanka.tools import REGISTRY as TOOLS
 from sanka.tools import ToolContext, execute
 from sanka.wa import App, Sessions
@@ -185,14 +186,17 @@ def test_send_to_resolves_group_and_logs_target_context(tmp_path: Path) -> None:
     client.send_message = send_message
     app = App(config, None, None, Sessions(store=store))
     app.client = client
+    memory = MemoryStore(tmp_path / "memory.db")
     ctx = ToolContext(
         config,
         RoleConfig("owner"),
         ("send_to",),
         chat_id="999@g.us",
         history=store,
+        memory=memory,
         send_file=app.send_file,
         send_message=app.send_text,
+        request="kirim rapat ke jhepret",
     )
 
     result = asyncio.run(
@@ -205,6 +209,48 @@ def test_send_to_resolves_group_and_logs_target_context(tmp_path: Path) -> None:
     assert stored.text == "rapat jam 7" and stored.outgoing is True
     assert store.recent("1203@g.us", 1)[-1].text == "rapat jam 7"  # realtime, bukan hanya cache
     assert not app.sessions.get("999@g.us")  # chat asal tidak ikut dicatat
+    action = memory.recent_actions(1)[0]
+    assert action["source"] == "999@g.us" and action["source_name"] == "Tester Sanka & MapHb"
+    assert action["target"] == "1203@g.us"
+    assert action["target_name"] == "ALD XXVII JHEPRET CLUB FOTOGRAFI"
+    assert action["kind"] == "teks" and "rapat jam 7" in action["summary"]
+    assert action["request"] == "kirim rapat ke jhepret"
+    memory.close()
+    store.close()
+
+
+def test_send_to_does_not_log_failed_send(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    store = HistoryStore(tmp_path / "history.db", tmp_path)
+    store.set_chat_name("1@g.us", "Grup Foto A")
+    memory = MemoryStore(tmp_path / "memory.db")
+    client = NewAClient.__new__(NewAClient)
+
+    async def fail(to, message, link_preview=False, add_msg_secret=False):
+        raise RuntimeError("transport mati")
+
+    client.send_message = fail
+    app = App(config, None, None, Sessions(store=store))
+    app.client = client
+    ctx = ToolContext(
+        config,
+        RoleConfig("owner"),
+        ("send_to",),
+        chat_id="9@g.us",
+        history=store,
+        memory=memory,
+        send_file=app.send_file,
+        send_message=app.send_text,
+        request="kirim ke grup",
+    )
+
+    result = asyncio.run(
+        execute(TOOLS.by_name, "send_to", {"chat": "Grup Foto A", "text": "halo"}, ctx)
+    )
+
+    assert result.startswith("error:") and "gagal" in result
+    assert memory.recent_actions() == []
+    memory.close()
     store.close()
 
 
