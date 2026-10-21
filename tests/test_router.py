@@ -83,3 +83,12 @@ def test_attachment_with_caption_mention_is_agent() -> None:
         attachments=(ATTACHMENT,),
     )
     assert route(incoming, bot_ids=(BOT_ID,)) is Route.AGENT
+
+
+def test_attachment_error_only_dm_reaches_agent() -> None:
+    incoming = message(
+        "",
+        is_group=False,
+        attachment_errors=("download_failed",),
+    )
+    assert route(incoming, bot_ids=(BOT_ID,)) is Route.AGENT

@@ -62,15 +62,21 @@ Server memakai stdlib `ThreadingHTTPServer`; tidak ada dependency server baru. M
 | `gateway/dispatcher.py` | pipeline sinkron cepat + `ThreadPoolExecutor`, jalur command/agent |
 | `gateway/outbound.py` | `HttpBridgeClient`, `OutboundQueue` (FIFO per chat, round-robin, batas laju, retry) |
 | `gateway/server.py` | handler HTTP, auth token, batas body, pemetaan status |
-| `gateway/app.py` | `build_app()` merakit config, secrets, registry, runtime, dispatcher, outbound |
+| `gateway/app.py` | `build_app()` merakit config, secrets, attachment store, registry, runtime, dispatcher, outbound |
+| `sanka/attachments.py` | `AttachmentStore`: validasi, simpan atomik, lookup chat-bound, retensi/kuota |
 | `gateway/__main__.py` | `python -m gateway`, SIGINT/SIGTERM shutdown |
 
 | Metode | Path | Auth | Catatan |
 |---|---|---|---|
 | `GET` | `/healthz` | tidak | `{"status","uptime_seconds","outbound_pending"}`, metadata saja |
 | `POST` | `/v1/inbound` | ya | push dari bridge, body ≤ 64 KiB, `Content-Type: application/json` |
+| `POST` | `/v1/attachments` | ya | upload binary lampiran, `Content-Type: application/octet-stream`, batas dari `attachments.max_bytes` |
 
-Respons inbound: `202 accepted`, `200 duplicate`, `200 ignored` + `reason`, `400 malformed_payload`, `401 unauthorized`, `411 length_required`, `413 payload_too_large`, `415 unsupported_media_type`, `429 overloaded`, `500 internal`. `reason` normalizer: `not_an_object`, `invalid_json`, `message_id_invalid`, `chat_id_invalid`, `sender_id_invalid`, `text_invalid`, `text_too_long`, `is_group_invalid`, `is_group_mismatch`, `mentions_invalid`, `reply_to_bot_invalid`, `timestamp_invalid`. `reason` gate/router: `blank_text`, `stale`, `dm_not_allowed`, `group_not_allowed`, `not_mentioned`, `rate_limited`.
+Respons inbound: `202 accepted`, `200 duplicate`, `200 ignored` + `reason`, `400 malformed_payload`, `401 unauthorized`, `411 length_required`, `413 payload_too_large`, `415 unsupported_media_type`, `429 overloaded`, `500 internal`. `reason` normalizer: `not_an_object`, `invalid_json`, `message_id_invalid`, `chat_id_invalid`, `sender_id_invalid`, `text_invalid`, `text_too_long`, `is_group_invalid`, `is_group_mismatch`, `mentions_invalid`, `reply_to_bot_invalid`, `sender_name_invalid`, `mention_names_invalid`, `quoted_text_invalid`, `quoted_sender_name_invalid`, `attachments_invalid`, `attachment_unknown`, `attachment_errors_invalid`, `timestamp_invalid`. `reason` gate/router: `blank_text`, `stale`, `dm_not_allowed`, `group_not_allowed`, `not_mentioned`, `rate_limited`.
+
+Lampiran (ADR-0026): bridge mengunggah byte lebih dulu ke `POST /v1/attachments` dan menerima `attachment_id`. Event `/v1/inbound` kemudian boleh membawa `attachments: [{attachment_id, kind, mime, name, size}]` dan `attachment_errors: ["download_failed"|"upload_failed"|"too_large"|"unsupported"]`. ID selalu 32 hex; normalizer mencocokkan metadata dengan store dan dengan `chat_id`/`sender_id`/`message_id`. Payload lama tanpa field ini tetap valid. Teks kosong dengan lampiran atau `attachment_errors` bukan `blank_text` di DM.
+
+Tool lampiran (ADR-0028): `attachment_read` membaca teks penuh dengan pagination `offset`/`next_offset`; `attachment_search` mencari substring di seluruh teks dan mengembalikan offset, label bagian, dan cuplikan; `attachment_outline` memetakan halaman PDF, judul Markdown, lembar Excel, atau rentang baris. Ketiganya memakai satu hasil ekstraksi yang di-cache di memori, sehingga offset konsisten. Batas ekstraksi: 300 halaman, 20 lembar × 5.000 baris, 2 juta karakter.
 
 Python → bridge: `POST /v1/send` (`chat_id`, `text`, `idempotency_key`; `409` = sudah terkirim = sukses), `/v1/typing` (`composing`/`paused`), `/v1/read` (`chat_id`, `message_id`). Retry hanya untuk error koneksi/timeout/`429`/`503`/`504`/`5xx`, maksimal 3 percobaan.
 
@@ -90,6 +96,7 @@ Keputusan yang perlu diingat:
 | browser | Browser asli (TMWebdriver) | Profil Chrome khusus Sanka |
 | sheet_read | Baca Google Sheets | Allowlist file |
 | doc_read | Baca PDF, Excel, dokumen lain | |
+| attachment_read / attachment_search / attachment_outline | Baca, cari, dan petakan bagian lampiran WhatsApp | Batas ekstraksi 300 halaman / 20 lembar / 2 juta karakter |
 | recap | Hitung dan susun rekap dari data | Hitung di kode, LLM hanya menarasikan |
 | sheet_write | Tulis terbatas ke Workspace | Hanya allowlist |
 | proposal_send | Kirim proposal ke owner | Butuh `/approve` |

@@ -50,6 +50,19 @@ _EXTENSION_MIMES = {
     ".markdown": "text/markdown",
     ".txt": "text/plain",
 }
+_IMAGE_EXTENSION_MIMES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+_MIME_ALIASES = {
+    "image/jpg": "image/jpeg",
+    "text/x-markdown": "text/markdown",
+    "text/md": "text/markdown",
+    "text/x-csv": "text/csv",
+    "application/csv": "text/csv",
+}
 _MAX_NAME_CHARS = 128
 _MAX_SIDECAR_BYTES = 16_384
 _TMP_PREFIX = ".tmp-"
@@ -99,13 +112,22 @@ def canonical_mime(kind: str, mime: str, name: str) -> str:
     """Validate MIME for ``kind`` and infer it from the filename if needed."""
 
     value = (mime or "").split(";", 1)[0].strip().lower()
+    value = _MIME_ALIASES.get(value, value)
+    if value == "application/vnd.ms-excel" and name.lower().endswith(".csv"):
+        value = "text/csv"
     allowed = _IMAGE_MIMES if kind == "image" else _DOCUMENT_MIMES
     if value in allowed:
         return value
-    if kind == "document" and value in ("", "application/octet-stream"):
-        inferred = _EXTENSION_MIMES.get(Path(name).suffix.lower())
-        if inferred is not None:
-            return inferred
+    if value in ("", "application/octet-stream"):
+        suffix = Path(name).suffix.lower()
+        if kind == "image":
+            inferred_image = _IMAGE_EXTENSION_MIMES.get(suffix)
+            if inferred_image is not None:
+                return inferred_image
+        else:
+            inferred = _EXTENSION_MIMES.get(suffix)
+            if inferred is not None:
+                return inferred
     raise AttachmentError("unsupported_media")
 
 
@@ -133,6 +155,7 @@ class AttachmentStore:
         max_bytes: int,
         retention_seconds: int,
         max_total_bytes: int,
+        max_per_message: int = 4,
         clock: Callable[[], float] = time.time,
         id_factory: Callable[[], str] | None = None,
     ) -> None:
@@ -144,11 +167,14 @@ class AttachmentStore:
             raise ValueError("retention_seconds must be positive")
         if max_total_bytes < max_bytes:
             raise ValueError("max_total_bytes must be at least max_bytes")
+        if not 1 <= max_per_message <= 10:
+            raise ValueError("max_per_message must be between 1 and 10")
 
         self._root = Path(directory)
         self._max_bytes = max_bytes
         self._retention_seconds = retention_seconds
         self._max_total_bytes = max_total_bytes
+        self._max_per_message = max_per_message
         self._clock = clock
         self._id_factory = id_factory or (lambda: secrets.token_hex(16))
         self._lock = threading.RLock()
@@ -173,12 +199,17 @@ class AttachmentStore:
             max_bytes=settings.max_bytes,
             retention_seconds=settings.retention_minutes * 60,
             max_total_bytes=settings.max_total_bytes,
+            max_per_message=settings.max_per_message,
             clock=clock,
         )
 
     @property
     def max_bytes(self) -> int:
         return self._max_bytes
+
+    @property
+    def max_per_message(self) -> int:
+        return self._max_per_message
 
     @property
     def directory(self) -> Path:

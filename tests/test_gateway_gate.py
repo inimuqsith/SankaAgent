@@ -38,6 +38,7 @@ def event(
     timestamp: float = 1000.0,
     is_group: bool | None = None,
     attachments: tuple[InboundAttachment, ...] = (),
+    attachment_errors: tuple[str, ...] = (),
 ) -> InboundEvent:
     group = chat_id.endswith("@g.us") if is_group is None else is_group
     return InboundEvent(
@@ -48,6 +49,7 @@ def event(
             text=text,
             is_group=group,
             attachments=attachments,
+            attachment_errors=attachment_errors,
         ),
         timestamp=timestamp,
     )
@@ -208,6 +210,19 @@ def test_blank_text_with_attachment_is_not_blank(config: SankaConfig) -> None:
     assert (
         check_gate(
             event("", attachments=(ATTACHMENT,)),
+            config,
+            Role.COMMITTEE,
+            now=clock,
+        )
+        is GateReason.ALLOWED
+    )
+
+
+def test_attachment_error_without_text_is_not_blank(config: SankaConfig) -> None:
+    clock = FakeClock()
+    assert (
+        check_gate(
+            event("", attachment_errors=("download_failed",)),
             config,
             Role.COMMITTEE,
             now=clock,

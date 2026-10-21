@@ -374,7 +374,7 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
   7. Tidak ada dependency baru. Baileys menyediakan API unduh; Node 22 menyediakan `fetch`; Python memakai `hashlib`/`base64` dan extractor yang ada.
 - Alternatif yang dipertimbangkan:
   - **Base64 di `/v1/inbound`**: ditolak; body JSON dibatasi 64 KiB, base64 membengkak, dan 25 MB harus ditahan di memori.
-  - **Bridge menulis langsung ke direktori bersama**: ditolak; menambah koppling filesystem dan melewati validasi gateway. Upload HTTP membuat gateway pemilik tunggal store.
+  - **Bridge menulis langsung ke direktori bersama**: ditolak; menambah keterkaitan filesystem dan melewati validasi gateway. Upload HTTP membuat gateway pemilik tunggal store.
   - **OCR lokal untuk gambar**: ditolak untuk plan ini; model sudah bisa melihat gambar, OCR menambah dependency dan kehilangan konteks visual.
   - **Menyimpan lampiran di dalam repo**: ditolak; risiko ter-commit dan bercampur dengan kode.
   - **Membaca gambar lewat tool**: ditolak; tool hanya mengembalikan teks, sehingga gambar harus masuk sebagai content part.
@@ -383,3 +383,49 @@ Status: `Proposed` (usulan, belum disetujui owner), `Accepted`, `Superseded`, `R
   - Bridge memproses unduhan secara berurutan agar urutan pesan tetap; unduhan besar memperlambat pesan berikutnya.
   - File yatim dari upload yang gagal di tengah jalan dibersihkan oleh retensi/kuota, bukan oleh transaksi lintas proses.
   - `attachments.dir` kosong mematikan fitur: upload menjawab `503`, `attachment_read` menjawab `not_configured`, dan pesan teks tetap berjalan.
+
+## ADR-0027 — Konteks balasan dan nama tampilan masuk payload; lampiran bisa dilanjutkan
+- Status: Accepted (2026-10-21, perbaikan atas laporan owner)
+- Tanggal: 2026-10-21
+- Konteks: Dua kekurangan muncul saat pemakaian nyata. Pertama, pesan yang dibalas tidak membawa isi atau nama pengirimnya; model hanya tahu `reply_to_bot`. Kedua, `attachment_read` memakai cap default 8.000 karakter sehingga dokumen 8 KB terpotong. Sanka juga meragukan `pushName` saat ditanya nama.
+- Keputusan:
+  1. Bridge menambahkan `quoted_text` (maks 500 karakter), `quoted_sender_name`, dan `mention_names` ke kontrak inbound. Nama quote diambil dari cache `pushName` per JID; pesan bot menjadi `Sanka`; fallback `Peserta <4 digit>`.
+  2. Gateway memvalidasi field baru, memasukkannya ke `InboundMessage`, dan meneruskannya ke prompt sebagai blok `<reply_context>` serta daftar nama yang disebut. Semua nilai di-escape dan tetap DATA, bukan instruksi.
+  3. `speaker_name` (nama tampilan pengirim) masuk system prompt. Prompt menyatakan nama itu sah untuk dipakai menyapa dengan yakin, tetapi bukan verifikasi identitas legal. `config/SOUL.md` memuat aturan yang sama.
+  4. `attachment_read` menerima `offset`/`limit` dan mengembalikan `next_offset`; default window `tools.docs.max_chars - 256`. Registry memakai `tools.docs.max_chars` untuk tool ini.
+- Alternatif yang dipertimbangkan:
+  - **Mengirim seluruh quotedMessage mentah**: ditolak; ukuran dan struktur WhatsApp tidak stabil. Hanya teks yang dipakai.
+  - **Menambah batas global tool menjadi 20.000**: ditolak; memperbesar semua tool. Pagination lebih aman dan eksplisit.
+  - **Mengandalkan model mengingat quote dari history**: ditolak; pesan yang dibalas mungkin berasal dari luar history sesi.
+  - **Melarang Sanka menyebut nama tampilan**: ditolak owner; nama tampilan adalah konteks yang cukup untuk menyapa.
+- Konsekuensi:
+  - Payload inbound bertambah tiga field; bridge lama tetap kompatibel karena field opsional.
+  - Nama tampilan bisa dipalsukan; hanya label data, bukan izin atau identitas resmi.
+  - Dokumen panjang membutuhkan beberapa panggilan tool; budget `max_calls_per_turn` tetap membatasi.
+  - Isi quote dan nama tetap tidak masuk log aplikasi.
+
+## ADR-0028 — Pencarian dan pembacaan per bagian lampiran
+- Status: Accepted (2026-10-21, permintaan owner)
+- Tanggal: 2026-10-21
+- Konteks: `attachment_read` sudah dipaginasi 50.000 karakter, tetapi dokumen besar tetap mahal dibaca utuh dan model bisa berhenti di window pertama. Owner memilih menambah pencarian/bacaan per bagian sebagai alternatif menaikkan batas karakter lagi. Pencarian juga harus menjangkau isi di luar window pertama, bukan hanya teks yang sudah dibaca.
+- Keputusan:
+  1. Tambah dua tool lampiran: `attachment_search` (substring case-insensitive, query di-escape, hasil berisi offset, label bagian, cuplikan) dan `attachment_outline` (halaman PDF, judul Markdown, lembar Excel, rentang baris CSV/teks, masing-masing dengan offset).
+  2. `attachment_read`, `attachment_search`, dan `attachment_outline` memakai satu hasil ekstraksi `build_document()` yang di-cache di memori (maksimal 4 dokumen, kunci path + ukuran + `mtime_ns`). Offset dari satu tool selalu valid untuk tool lain selama file dan ekstraksi tidak berubah.
+  3. Batas ekstraksi: 300 halaman PDF, 20 lembar × 5.000 baris Excel, 5.000 baris CSV, 2 juta karakter. `truncated`/`document_truncated` memberi tahu model bahwa masih ada isi yang tidak terindeks.
+  4. Excel dibaca dari stream binary, bukan path, karena file di store tidak berekstensi; semua lembar dibaca dan diberi penanda `### Lembar: <nama>` agar batas lembar terlihat di teks.
+  5. Izin dan validasi chat/pengirim ketiga tool sama dengan `attachment_read` (`COMMITTEE_ROLES`); cap teks hasil mengikuti `tools.docs.max_chars`.
+  6. Prompt mengarahkan dokumen panjang ke outline/search lebih dulu, lalu `attachment_read` pada offset bagian yang relevan. Aturan `next_offset` tetap berlaku.
+  7. `SankaHandler` mengulang pertanyaan pengguna (maks 1.000 karakter) pada setiap prompt hasil tool. Sesi OpenCode Go menyimpan konteks di sisi provider, tetapi turn yang hanya membawa hasil tool bisa kehilangan pertanyaan asli; pengulangan ini membuat setiap turn tetap mandiri.
+- Alternatif yang dipertimbangkan:
+  - **Embedding/vector search**: ditolak untuk sekarang; menambah dependency, biaya indeks, dan hasil yang sulit diprediksi. Substring deterministik cukup untuk dokumen kerja.
+  - **Menaikkan `tools.docs.max_chars` lagi**: ditolak; setiap hasil tool dikirim ulang pada turn berikutnya, jadi biaya token ikut naik.
+  - **Cursor persisten antar pesan pengguna**: ditolak; menambah state per chat/dokumen dan tidak diperlukan bila model bisa mencari bagian relevan.
+  - **Ekstraksi terpisah untuk search**: ditolak; offset tidak akan cocok dengan `attachment_read` dan file diekstrak berulang.
+  - **Map-reduce summarization oleh LLM**: ditolak; mahal dan rawan halusinasi untuk kebutuhan "cari bagian ini".
+- Konsekuensi:
+  - Ekstraksi penuh dibayar sekali per file per proses; panggilan berikutnya memakai cache.
+  - Dokumen melebihi batas ekstraksi hanya terindeks sebagian; model diberi flag, bukan diam-diam dipotong.
+  - Offset tidak stabil antar proses atau setelah file berubah; tidak ada kontrak lintas restart.
+  - `attachment_read` untuk Excel kini memuat semua lembar dengan penanda, bukan hanya sheet aktif. Ini sekaligus memperbaiki pembacaan XLSX dari store yang sebelumnya gagal karena file tidak berekstensi.
+  - Tidak ada dependency baru.
+  - Turn tool sedikit lebih panjang karena pertanyaan diulang; dibatasi 1.000 karakter dan jumlah panggilan tool tetap dibatasi `tools.max_calls_per_turn`.

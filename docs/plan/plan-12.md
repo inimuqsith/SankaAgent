@@ -1,6 +1,6 @@
 # Plan 12 — Attachment masuk: gambar dan dokumen
 
-- Status: In Progress
+- Status: Done
 - Tanggal: 2026-10-21
 - Pemilik: Abdul Muqsith
 
@@ -269,7 +269,31 @@ Direktori dibuat `0700`; setiap lampiran menjadi dua file `0600`:
 ## Catatan perubahan
 
 - 2026-10-21: draft awal. Keputusan model vision diambil setelah probe langsung ke OpenCode Go (`deepseek-v4.1-flash` menjawab warna dari PNG data URL), sehingga OCR tidak diperlukan dan tidak ada dependency baru.
+- 2026-10-21: implementasi mengikuti draft. `attachment_read` memakai extractor bersama dengan `doc_read`; `max_per_message` dari config dipakai normalizer. Tidak ada perubahan cakupan.
 
 ## Hasil
 
-Belum dijalankan. Plan masih `Draft` dan menunggu persetujuan owner.
+Implementasi dan smoke selesai; plan ditutup setelah lampiran WhatsApp nyata berhasil.
+
+- Smoke WhatsApp nyata (2026-10-21 04:03): owner mengirim `AGENTS.md` (8.369 byte) di grup. Bridge mengunggah `POST /v1/attachments` → `201`, event `/v1/inbound` → `202 accepted`, `agent_done`, dan bridge mengirim balasan grup 2.067 karakter. Store berisi satu record `kind=document`, `name=AGENTS.md`, `mime=text/markdown`. Log tidak memuat nama file/JID mentah; bukti ini diambil dari metadata store dan status HTTP.
+
+- Kode:
+  - `sanka/attachments.py`: `AttachmentStore` (simpan atomik, magic bytes, ID acak, ikatan chat/sender/message, retensi, kuota, mode `0700`/`0600`).
+  - `gateway/server.py`: `POST /v1/attachments` (streaming, token, batas ukuran, sha256).
+  - `gateway/normalizer.py`, `gateway/gate.py`, `sanka/models.py`, `sanka/router.py`: field lampiran, validasi store, blank-text, routing DM/grup.
+  - `sanka/tools/extract.py` + `sanka/tools/attachments.py`: `attachment_read`; `doc_read` memakai extractor yang sama.
+  - `sanka/agent/runtime.py`, `sanka/agent/prompt.py`, `core/agent_loop.py`: gambar menjadi part `image_url`; dokumen menjadi blok `<attachments>`; history tetap teks.
+  - Bridge: `media.js` (unduh/deskriptor), `upload.js` (binary upload), `socket.js`/`main.js`/`config.js`.
+  - Docs: ADR-0026, ARCHITECTURE, SECURITY, README, plan-3, LOG.
+- Tes yang benar-benar dijalankan:
+  - `.venv/bin/python -m pytest -q -o addopts=""` → **553 passed**.
+  - `cd gateway/bridge && npm test` → **135 passed**.
+  - `.venv/bin/python -m compileall -q sanka core gateway` → exit `0`.
+  - Smoke loopback dengan fake bridge + model OpenCode Go nyata: dokumen `proyek.md` berisi `MERPATI-77` dibaca lewat `attachment_read` (balasan menyebut kode itu); `assets/sanka.png` dikirim sebagai `image_url` dan model mendeskripsikan tupai + kamera. Keduanya `202 accepted` lalu balasan keluar.
+  - Upload nyata dari Node `uploadAttachment` ke gateway Python: `201`, `attachment_id` 32 hex, ukuran/hash cocok.
+  - `scripts/sanka restart`: gateway PID 186059 dan bridge PID 186115 hidup; bridge `connected:true`.
+- Temuan:
+  - Provider menolak PNG 2x2 saat ada history percakapan (`unsupported image`), tetapi menerima PNG normal 639x640. Gambar WhatsApp normal tidak terpengaruh; ini bukan bug Sanka. Tidak ada workaround resize karena tidak menambah dependency.
+  - `attachments.dir` lokal sudah `0700`; setelah smoke WhatsApp nyata ada satu record `AGENTS.md` (8.369 byte) dengan file `0600`.
+  - Isi lampiran dikirim ke OpenCode Go; ini sudah dicatat di ADR-0026/SECURITY.
+- Catatan penutup: bukti balasan WhatsApp tidak menyimpan teks balasan di log (sesuai aturan privasi); yang tercatat adalah ukuran balasan 2.067 karakter dan status `agent_done` setelah lampiran diterima. Owner dapat mengulang kapan saja untuk melihat teksnya langsung.

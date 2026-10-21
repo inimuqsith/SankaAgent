@@ -82,6 +82,9 @@ def normalize_inbound(
 
     mentions = _mentions(payload)
     sender_name = _sender_name(payload)
+    mention_names = _mention_names(payload)
+    quoted_text = _quoted_text(payload)
+    quoted_sender_name = _quoted_sender_name(payload)
 
     reply_to_bot = False
     if "reply_to_bot" in payload:
@@ -110,6 +113,9 @@ def normalize_inbound(
             mentions=mentions,
             reply_to_bot=reply_to_bot,
             sender_name=sender_name,
+            mention_names=mention_names,
+            quoted_text=quoted_text,
+            quoted_sender_name=quoted_sender_name,
             attachments=attachment_items,
             attachment_errors=attachment_errors,
         ),
@@ -128,7 +134,8 @@ def _attachments(
     if "attachments" not in payload:
         return ()
     raw = payload["attachments"]
-    if not isinstance(raw, list) or len(raw) > MAX_ATTACHMENTS:
+    limit = store.max_per_message if store is not None else MAX_ATTACHMENTS
+    if not isinstance(raw, list) or len(raw) > limit:
         raise MalformedPayload("attachments_invalid")
 
     result: list[InboundAttachment] = []
@@ -243,6 +250,38 @@ def _sender_name(payload: dict[object, object]) -> str:
         return ""
     if not isinstance(value, str):
         raise MalformedPayload("sender_name_invalid")
+    return " ".join(value.split())[:64]
+
+
+def _mention_names(payload: dict[object, object]) -> tuple[str, ...]:
+    value = payload.get("mention_names")
+    if value is None:
+        return ()
+    if not isinstance(value, list) or len(value) > MAX_MENTIONS:
+        raise MalformedPayload("mention_names_invalid")
+    names: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str):
+            raise MalformedPayload("mention_names_invalid")
+        names.append(" ".join(entry.split())[:64])
+    return tuple(names)
+
+
+def _quoted_text(payload: dict[object, object]) -> str:
+    value = payload.get("quoted_text")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise MalformedPayload("quoted_text_invalid")
+    return " ".join(value.split())[:500]
+
+
+def _quoted_sender_name(payload: dict[object, object]) -> str:
+    value = payload.get("quoted_sender_name")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise MalformedPayload("quoted_sender_name_invalid")
     return " ".join(value.split())[:64]
 
 

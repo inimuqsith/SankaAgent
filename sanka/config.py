@@ -30,6 +30,7 @@ _SCOPE_PATTERN = re.compile(r"^https://www\.googleapis\.com/auth/[a-z0-9._-]+$")
 _RECAP_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 _RECAP_METRIC_OPS = frozenset({"count", "sum", "mean", "min", "max"})
 _NUMERIC_METRIC_OPS = frozenset({"sum", "mean", "min", "max"})
+_MAX_DOCS_CHARS = 50_000
 DEFAULT_GOOGLE_SCOPES: tuple[str, ...] = (
     "https://www.googleapis.com/auth/spreadsheets",
 )
@@ -93,7 +94,7 @@ class SearchConfig:
 class DocsConfig:
     dir: str = ""
     max_bytes: int = 5_000_000
-    max_chars: int = 12_000
+    max_chars: int = _MAX_DOCS_CHARS
 
 
 @dataclass(frozen=True, slots=True)
@@ -830,9 +831,15 @@ def _docs_config(tools: Mapping[str, Any]) -> DocsConfig:
         max_bytes=_optional_int(
             section, "max_bytes", "tools.docs.max_bytes", 5_000_000
         ),
-        max_chars=_optional_int(
-            section, "max_chars", "tools.docs.max_chars", 12_000
-        ),
+        max_chars=_int_in_range(
+            section,
+            "max_chars",
+            "tools.docs.max_chars",
+            1,
+            _MAX_DOCS_CHARS,
+        )
+        if "max_chars" in section
+        else _MAX_DOCS_CHARS,
     )
 
 

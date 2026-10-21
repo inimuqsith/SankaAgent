@@ -27,6 +27,19 @@ const EXTENSION_MIMES = new Map([
   ['.markdown', 'text/markdown'],
   ['.txt', 'text/plain'],
 ]);
+const IMAGE_EXTENSION_MIMES = new Map([
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.webp', 'image/webp'],
+]);
+const MIME_ALIASES = new Map([
+  ['image/jpg', 'image/jpeg'],
+  ['text/x-markdown', 'text/markdown'],
+  ['text/md', 'text/markdown'],
+  ['text/x-csv', 'text/csv'],
+  ['application/csv', 'text/csv'],
+]);
 const MAX_NAME_CHARS = 128;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const ATTACHMENT_ID = /^[0-9a-f]{32}$/;
@@ -60,13 +73,17 @@ function sanitizeName(value, fallback) {
   return cleaned || fallback;
 }
 
-function canonicalDocumentMime(value, name) {
-  const mime = typeof value === 'string' ? value.split(';')[0].trim().toLowerCase() : '';
-  if (DOCUMENT_MIMES.has(mime)) return mime;
+function canonicalMediaMime(value, name) {
+  let mime = typeof value === 'string' ? value.split(';')[0].trim().toLowerCase() : '';
+  mime = MIME_ALIASES.get(mime) ?? mime;
+  if (mime === 'application/vnd.ms-excel' && name.toLowerCase().endsWith('.csv')) {
+    mime = 'text/csv';
+  }
+  if (DOCUMENT_MIMES.has(mime) || IMAGE_MIMES.has(mime)) return mime;
   if (mime === '' || mime === 'application/octet-stream') {
     const dot = name.lastIndexOf('.');
     const extension = dot === -1 ? '' : name.slice(dot).toLowerCase();
-    return EXTENSION_MIMES.get(extension) ?? null;
+    return EXTENSION_MIMES.get(extension) ?? IMAGE_EXTENSION_MIMES.get(extension) ?? null;
   }
   return null;
 }
@@ -90,9 +107,10 @@ export function describeMedia(msg) {
 
   if (isObject(content.imageMessage)) {
     const image = content.imageMessage;
-    const mime = typeof image.mimetype === 'string'
+    const rawMime = typeof image.mimetype === 'string'
       ? image.mimetype.split(';')[0].trim().toLowerCase()
       : '';
+    const mime = MIME_ALIASES.get(rawMime) ?? rawMime;
     const descriptor = {
       kind: IMAGE_MIMES.has(mime) ? 'image' : 'unsupported',
       mime,
@@ -105,9 +123,9 @@ export function describeMedia(msg) {
   if (isObject(content.documentMessage)) {
     const document = content.documentMessage;
     const name = sanitizeName(document.fileName, 'dokumen');
-    const mime = canonicalDocumentMime(document.mimetype, name);
+    const mime = canonicalMediaMime(document.mimetype, name);
     return {
-      kind: mime ? 'document' : 'unsupported',
+      kind: mime ? (IMAGE_MIMES.has(mime) ? 'image' : 'document') : 'unsupported',
       mime: mime ?? (typeof document.mimetype === 'string' ? document.mimetype : ''),
       name,
       size: numeric(document.fileLength),

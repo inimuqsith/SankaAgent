@@ -48,7 +48,7 @@ tools:
   docs:
     dir: ""                        # absolute path outside the repo
     max_bytes: 5000000
-    max_chars: 12000
+    max_chars: 50000
   sheets:
     timeout_seconds: 20
     max_cells: 20000

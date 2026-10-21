@@ -1,8 +1,10 @@
 """Native Sanka tool bundle.
 
-Registers the plan-5 read tools with explicit input/output schemas. The same
-``ToolRegistry`` gates every call through :mod:`sanka.policy`, so a role that
-cannot see a tool cannot execute it either.
+Registers the read tools with explicit input/output schemas, including
+``attachment_read``/``attachment_search``/``attachment_outline`` for inbound
+WhatsApp documents (plan-12/15). The same ``ToolRegistry`` gates every call
+through :mod:`sanka.policy`, so a role that cannot see a tool cannot execute
+it either.
 """
 
 from __future__ import annotations
@@ -14,7 +16,11 @@ from typing import Any
 from sanka.attachments import AttachmentStore
 from sanka.config import SankaConfig
 from sanka.google import TokenProvider, build_token_provider
-from sanka.tools.attachments import make_attachment_read_tool
+from sanka.tools.attachments import (
+    make_attachment_outline_tool,
+    make_attachment_read_tool,
+    make_attachment_search_tool,
+)
 from sanka.tools.docs import make_doc_read_tool
 from sanka.tools.recap import RecapService, make_recap_tool
 from sanka.tools.registry import ToolError, ToolRegistry, ToolSpec
@@ -81,6 +87,8 @@ def build_tools(
         make_web_search_tool(config, active_search),
         make_doc_read_tool(config),
         make_attachment_read_tool(attachments),
+        make_attachment_search_tool(attachments),
+        make_attachment_outline_tool(attachments),
         make_sheet_read_tool(active_sheets, config),
         make_recap_tool(recap_service),
     )

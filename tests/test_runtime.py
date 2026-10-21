@@ -42,6 +42,9 @@ def message(
     chat_id: str = "chat-1",
     is_group: bool = False,
     sender_name: str = "",
+    mention_names: tuple[str, ...] = (),
+    quoted_text: str = "",
+    quoted_sender_name: str = "",
 ) -> InboundMessage:
     return InboundMessage(
         chat_id=chat_id,
@@ -49,6 +52,9 @@ def message(
         text=text,
         is_group=is_group,
         sender_name=sender_name,
+        mention_names=mention_names,
+        quoted_text=quoted_text,
+        quoted_sender_name=quoted_sender_name,
     )
 
 
@@ -192,8 +198,30 @@ def test_dm_turn_does_not_read_group_context(config: SankaConfig) -> None:
     agent.handle(message("halo"), Role.COMMITTEE)
 
     system = client.calls[0][0]["content"]
-    assert "<group_context>" not in system
+    assert "Konteks obrolan grup terbaru" not in system
     assert provider.calls == []
+    agent.shutdown()
+
+
+def test_speaker_and_quote_reach_the_prompt(config: SankaConfig) -> None:
+    client = FakeClient()
+    agent = runtime(config, client)
+
+    agent.handle(
+        message(
+            "namaku siapa?",
+            sender_name="Muqsith",
+            quoted_text="Rapat jam 10 dipindah ke Jumat",
+            quoted_sender_name="Budi",
+        ),
+        Role.COMMITTEE,
+    )
+
+    system = client.calls[0][0]["content"]
+    assert "Nama tampilan pengirim pesan ini: Muqsith." in system
+    assert "Pakai nama itu dengan yakin" in system
+    assert "<reply_context>" in system
+    assert "Budi: Rapat jam 10 dipindah ke Jumat" in system
     agent.shutdown()
 
 
@@ -334,3 +362,39 @@ def test_attachment_errors_reach_the_model(config: SankaConfig) -> None:
     assert "download_failed" in content
     assert "Jangan mengaku" in content
     agent.shutdown()
+
+
+def test_attachment_error_without_caption_is_described(config: SankaConfig) -> None:
+    client = FakeClient(content="File gagal diterima.")
+    agent = runtime(config, client)
+
+    agent.handle(
+        InboundMessage(
+            chat_id="628111111111@s.whatsapp.net",
+            sender_id="628111111111@s.whatsapp.net",
+            text="",
+            attachment_errors=("download_failed",),
+        ),
+        Role.COMMITTEE,
+    )
+
+    content = client.calls[0][-1]["content"]
+    assert isinstance(content, str)
+    assert "gagal diterima" in content
+    assert "download_failed" in content
+    agent.shutdown()
+
+
+def test_tool_turn_repeats_the_current_question() -> None:
+    from sanka.agent.handler import SankaHandler
+
+    handler = SankaHandler(user_text="  Berapa anggaran rapat?  ")
+    prompt = handler.turn_end_callback(
+        None, [], [], 1, "Hasil tool attachment_search:\n<data/>", {}
+    )
+
+    assert prompt.startswith(
+        "Pertanyaan pengguna yang sedang diproses:\nBerapa anggaran rapat?"
+    )
+    assert prompt.endswith("Hasil tool attachment_search:\n<data/>")
+    assert handler.turn_end_callback(None, [], [], 2, "", {}) == ""

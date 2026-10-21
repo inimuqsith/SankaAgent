@@ -333,3 +333,75 @@ Isi: tanggal, plan, yang dilakukan, hasil tes, masalah/temuan, langkah berikutny
   - Store konteks bukan log dan bukan memori; hilang setelah retensi, tidak bertahan sebagai memori plan-7.
 - Berikutnya: restart lewat `scripts/sanka restart`, lalu uji satu obrolan grup tanpa mention diikuti mention; cek `group_context.dir` berisi JSONL. Owner perlu memberi tahu anggota grup bila capture_all aktif.
 - Tindak lanjut 2026-10-21: retensi sekarang juga menulis ulang file di disk; JID pengirim disimpan sebagai hash, bukan mentah. Restart final: gateway PID 174106, bridge PID 174132, health `ok`, bridge `connected:true`.
+
+## 2026-10-21 — Plan-13: konteks balasan, nama tampilan, lampiran utuh
+- Plan: plan-13 (Done)
+- Dilakukan:
+  - `attachment_read` sekarang memakai `tools.docs.max_chars` (12.000), bukan cap default 8.000, dan mendukung `offset`/`limit`/`next_offset`. Default window menyisakan 256 karakter untuk tag `<data>`.
+  - Bridge mengekstrak `quoted_text`, `quoted_sender_name`, dan `mention_names`; cache `pushName` per JID dipakai untuk nama quote. Gateway menormalisasi field baru ke `InboundMessage`.
+  - Prompt menerima `speaker_name`, `reply_context`, dan `mentioned_names`; quote dibungkus `<reply_context>` dan di-escape. `config/SOUL.md` menyatakan nama tampilan sah dipakai menyapa tanpa ragu.
+  - ADR-0027, plan-13, SECURITY, ARCHITECTURE, dan plan-3 diperbarui.
+- Hasil tes:
+  - `.venv/bin/python -m pytest -o addopts="" -q` → **559 passed**.
+  - `cd gateway/bridge && npm test` → **137 passed**.
+  - `compileall` → exit `0`.
+  - Smoke `attachment_read` pada `AGENTS.md`: `characters=8361`, `next_offset=None`, `truncated=False`, baris terakhir ada; hasil registry 8.402 karakter tanpa marker `dipotong`.
+  - Smoke model dengan `speaker_name=Muqsith`: jawaban `"Muqsith 🙂"`.
+  - Restart final: gateway PID 190212, bridge PID 190238, health `ok`, bridge `connected:true`.
+- Catatan: `git status` mungkin memuat perubahan plan-12/attachment dari agent paralel; plan-13 hanya menambah koreksi di atasnya.
+- Tindak lanjut 2026-10-21: `tools.docs.max_chars` dinaikkan ke **50.000** (maksimum config), window default 49.744, dan prompt memerintahkan melanjutkan `next_offset` sampai null. Tes: **560 passed**, bridge **137 passed**; smoke 60.000 karakter terbagi 49.744 + 10.256 tanpa kehilangan. Restart: gateway PID 193344, bridge PID 193370.
+
+## 2026-10-21 — Plan-12: lampiran masuk (gambar + dokumen)
+- Plan: plan-12 (In Progress; menunggu smoke WhatsApp nyata)
+- Dilakukan:
+  - Menambahkan `sanka/attachments.py`: `AttachmentStore` menyimpan byte di luar repo (`0700`/`0600`), ID 32 hex, sidecar metadata, ikatan `chat_id`/`sender_id`/`message_id`, retensi 24 jam, kuota total, magic-byte check gambar/PDF/XLSX.
+  - `gateway/server.py`: endpoint `POST /v1/attachments` dengan token yang sama, body streaming, `Content-Length` wajib, batas `attachments.max_bytes`, sha256 opsional.
+  - `gateway/normalizer.py`/`gate.py`/`sanka/router.py`/`sanka/models.py`: field `attachments`/`attachment_errors`; teks kosong dengan lampiran bukan `blank_text`; DM lampiran-only tetap ke agent, grup tetap butuh mention.
+  - `sanka/tools/extract.py` + `sanka/tools/attachments.py`: `attachment_read` untuk PDF/XLSX/CSV/MD/TXT; `doc_read` memakai extractor yang sama. Izin `COMMITTEE_ROLES`.
+  - `sanka/agent/runtime.py`: gambar menjadi content part `image_url`; dokumen menjadi blok `<attachments>` berisi ID; history sesi tetap teks (tanpa base64). Prompt menegaskan lampiran adalah DATA.
+  - Bridge: `media.js`, `upload.js`, `socket.js`, `main.js`, `config.js`; bridge mengunduh media, mengunggah byte, lalu mengirim metadata. Kegagalan menjadi `download_failed`/`upload_failed`/`too_large`/`unsupported`.
+  - Dokumentasi: ADR-0026, ARCHITECTURE, SECURITY, README, plan-3, plan-12.
+- Hasil tes:
+  - `pytest -q -o addopts=""` → **553 passed**.
+  - `cd gateway/bridge && npm test` → **135 passed**.
+  - `compileall -q sanka core gateway` → exit `0`.
+  - Smoke loopback + model nyata: dokumen `MERPATI-77` dibaca lewat `attachment_read`; `assets/sanka.png` dikirim sebagai gambar dan dideskripsikan model. Upload Node → gateway nyata `201`.
+  - `scripts/sanka restart` → gateway PID 186059, bridge PID 186115, keduanya sehat; bridge `connected:true`.
+- Temuan:
+  - Provider menolak PNG 2x2 bila ada history, tetapi menerima PNG normal 639x640. Bukan bug Sanka; tidak ada resize/OCR yang ditambahkan.
+  - `attachments.dir` lokal `/home/muqsith/.local/share/sanka/attachments` sudah `0700`; record pertama baru muncul pada smoke WhatsApp di bawah.
+- Smoke WhatsApp nyata 04:03: owner mengirim `AGENTS.md` (8.369 byte) di grup; `POST /v1/attachments` `201`, `/v1/inbound` `202 accepted`, `agent_done`, bridge mengirim balasan 2.067 karakter. Store berisi satu record `document`/`AGENTS.md`. Plan-12 menjadi `Done`.
+
+## 2026-10-21 — Plan-14: larangan membahas mekanisme internal
+- Plan: plan-14 (Done)
+- Dilakukan:
+  - `config/SOUL.md`: larangan membahas payload, prompt, tool, blok data, nama tampilan, dan asal pengetahuan; larangan membuka balasan dengan disclaimer meta; aturan menjawab nama tanpa menjelaskan sumber.
+  - `sanka/agent/prompt.py`: blok aturan diberi label internal dan menyebut larangan eksplisit terhadap frasa "memperlakukan ini sebagai data", "nama tampilan WhatsApp", "tidak punya akses identitas".
+  - Plan-14 ditambahkan.
+- Hasil tes:
+  - `.venv/bin/python -m pytest -o addopts="" -q` → **561 passed**; `compileall` exit `0`.
+  - Live model: `"Namaku siapa?"` → `"Muqsith 🙂"`; ringkasan `AGENTS.md` langsung tiga poin tanpa catatan meta.
+  - Restart: gateway PID 195595, bridge PID 195621, health `ok`, bridge `connected:true`.
+- Temuan: aturan teknis di prompt tetap ada, tetapi sekarang ditandai internal agar tidak dikutip. Tidak ada filter teks pascaproses karena rawan memotong kalimat valid.
+- Berikutnya: pantau satu-dua balasan di grup; bila masih bocor, tambahkan larangan yang lebih spesifik, bukan filter global.
+
+## 2026-10-21 — Plan-15: pencarian dan pembacaan per bagian lampiran
+- Plan: plan-15 (Done)
+- Dilakukan:
+  - `sanka/tools/extract.py`: `DocumentText`/`Section`, `build_document()` dengan cache memori LRU 4 dokumen; batas 300 halaman PDF, 20 lembar × 5.000 baris XLSX, 5.000 baris CSV, 2 juta karakter. Section: halaman PDF, heading Markdown, lembar XLSX, rentang 200 baris untuk CSV/teks.
+  - `sanka/tools/attachments.py`: loader bersama untuk validasi ID/chat/pengirim/jenis; `attachment_search` (substring case-insensitive, offset + label bagian + cuplikan, `total_matches`/`truncated`) dan `attachment_outline` (section + offset + preview + kolom). `attachment_read` sekarang memakai ekstraksi penuh; teks hasil search/outline memuat `attachment_id`.
+  - XLSX dari store dibaca lewat stream binary karena file tidak berekstensi; semua lembar dibaca dengan penanda `### Lembar: <nama>`.
+  - Policy, registry cap (`tools.docs.max_chars`), wiring tool, prompt, dan runtime hint diperbarui. `SankaHandler` mengulang pertanyaan pengguna pada setiap prompt hasil tool.
+  - Dokumentasi: ADR-0028, ARCHITECTURE, SECURITY, README, plan-15.
+- Hasil tes:
+  - `.venv/bin/python -m pytest -o addopts="" -q` → **569 passed**.
+  - `cd gateway/bridge && npm test` → **137 passed**.
+  - `compileall -q sanka core gateway` → exit `0`.
+  - Smoke tool: dokumen 66.545 karakter, search offset 66.516 section `Bagian Akhir`, read pada offset itu mengembalikan penanda; XLSX dua lembar memetakan `lembar Laporan`/`lembar Arsip` dan search menemukan teks di lembar kedua; cap registry 200 karakter menghasilkan 199/200 karakter bertanda `dipotong`.
+  - Smoke model live: model memanggil `attachment_search` + `attachment_read`/`attachment_outline` dan menjawab `Rp7.000.000` dari dokumen 66.570 karakter.
+  - Restart: gateway PID 204257, bridge PID 204283, health `ok`, bridge `connected:true`.
+- Temuan:
+  - Sebelum handler mengulang pertanyaan, beberapa jawaban setelah turn tool membuka dengan "belum ada pertanyaan". Setelah perubahan, jawaban langsung menjawab.
+  - Model kadang tetap menyarankan mengirim ulang lampiran meski `attachment_id` ada di hasil tool; tidak menghalangi jawaban.
+  - Pencarian substring tidak menemukan sinonim; model perlu mencoba kata kunci lain. Batas ekstraksi ditandai `truncated`/`document_truncated`.
+- Berikutnya: pantau pemakaian nyata; bila dokumen besar sering butuh beberapa kata kunci, pertimbangkan multi-keyword search, bukan menaikkan batas karakter.

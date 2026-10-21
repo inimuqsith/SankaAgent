@@ -38,7 +38,10 @@ function baseEvent(overrides = {}) {
     text: '',
     is_group: false,
     mentions: [],
+    mention_names: [],
     reply_to_bot: false,
+    quoted_text: '',
+    quoted_sender_name: '',
     timestamp: NOW_S,
     ...overrides,
   };
@@ -49,7 +52,7 @@ test('normalizes a DM conversation with all contract fields', () => {
   assert.deepEqual(normalizeMessage(msg, makeCtx()), baseEvent({ text: 'halo sanka' }));
 });
 
-test('only the nine contract fields are emitted', () => {
+test('only the documented contract fields are emitted', () => {
   const event = normalizeMessage(makeMessage({ message: { conversation: 'x' } }), makeCtx());
   assert.deepEqual(Object.keys(event), [
     'message_id',
@@ -59,7 +62,10 @@ test('only the nine contract fields are emitted', () => {
     'text',
     'is_group',
     'mentions',
+    'mention_names',
     'reply_to_bot',
+    'quoted_text',
+    'quoted_sender_name',
     'timestamp',
   ]);
 });
@@ -448,4 +454,53 @@ test('sanitizes sender_name from pushName', () => {
   });
 
   assert.equal(normalizeMessage(msg, makeCtx()).sender_name, 'Budi Santoso');
+});
+
+test('includes quoted text and display name', () => {
+  const msg = makeMessage({
+    key: {
+      remoteJid: '120363000000000000@g.us',
+      participant: '628123@s.whatsapp.net',
+    },
+    message: {
+      extendedTextMessage: {
+        text: 'iya, setuju',
+        contextInfo: {
+          participant: '628456@s.whatsapp.net',
+          quotedMessage: { conversation: 'rapat jam 10 ya' },
+        },
+      },
+    },
+  });
+
+  const event = normalizeMessage(
+    msg,
+    makeCtx({ resolveName: (jid) => (jid === '628456@s.whatsapp.net' ? 'Budi' : '') }),
+  );
+
+  assert.equal(event.quoted_text, 'rapat jam 10 ya');
+  assert.equal(event.quoted_sender_name, 'Budi');
+});
+
+test('includes mention display names', () => {
+  const msg = makeMessage({
+    key: {
+      remoteJid: '120363000000000000@g.us',
+      participant: '628123@s.whatsapp.net',
+    },
+    message: {
+      extendedTextMessage: {
+        text: '@Budi lihat ini',
+        contextInfo: { mentionedJid: ['628456@s.whatsapp.net'] },
+      },
+    },
+  });
+
+  const event = normalizeMessage(
+    msg,
+    makeCtx({ resolveName: () => 'Budi' }),
+  );
+
+  assert.deepEqual(event.mentions, ['628456@s.whatsapp.net']);
+  assert.deepEqual(event.mention_names, ['Budi']);
 });

@@ -254,3 +254,12 @@ def test_attachments_reject_invalid_limits(
 
     with pytest.raises(ConfigError, match=pattern):
         load_config(path)
+
+
+def test_docs_max_chars_is_capped_at_50k(tmp_path: Path) -> None:
+    data = valid_config_dict()
+    data["tools"]["docs"] = {"max_chars": 50_001}
+    path = write_config(tmp_path / "sanka.yaml", data)
+
+    with pytest.raises(ConfigError, match=r"tools\.docs\.max_chars"):
+        load_config(path)

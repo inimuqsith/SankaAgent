@@ -283,6 +283,48 @@ def test_text_is_wrapped_sanitized_and_truncated(
     assert result.data["row_count"] == 1
 
 
+def test_attachment_read_uses_docs_char_cap(config: SankaConfig) -> None:
+    limited = replace(
+        config,
+        tools=replace(
+            config.tools,
+            docs=replace(config.tools.docs, max_chars=160),
+        ),
+    )
+
+    def handler(
+        arguments: Mapping[str, Any], context: ToolContext
+    ) -> ToolResult:
+        return ToolResult(
+            tool="attachment_read",
+            ok=True,
+            data={"characters": 500},
+            text="y" * 500,
+        )
+
+    registry = ToolRegistry(limited)
+    spec, _ = make_spec(
+        "attachment_read",
+        handler,
+        input_schema={
+            "type": "object",
+            "properties": {"attachment_id": {"type": "string"}},
+            "required": ["attachment_id"],
+        },
+    )
+    registry.register(spec)
+
+    result = registry.execute(
+        "attachment_read",
+        {"attachment_id": "a" * 32},
+        context(limited, Role.COMMITTEE),
+    )
+
+    assert result.ok is True
+    assert len(result.text) <= 160
+    assert "\u2026 dipotong" in result.text
+
+
 def test_unpaired_tags_are_escaped(config: SankaConfig) -> None:
     def handler(
         arguments: Mapping[str, Any], context: ToolContext

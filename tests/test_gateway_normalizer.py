@@ -241,6 +241,8 @@ def attachment_payload(**overrides: object) -> dict[str, object]:
 
 
 class FakeAttachmentStore:
+    max_per_message = 4
+
     def __init__(self, record=None) -> None:
         self.record = record
 
@@ -347,3 +349,25 @@ def assert_reason_with_store(data: object, reason: str, store: object) -> None:
     with pytest.raises(MalformedPayload) as excinfo:
         normalize_inbound(data, attachments=store)  # type: ignore[arg-type]
     assert excinfo.value.reason == reason
+
+
+def test_reply_and_mention_names_are_mapped() -> None:
+    event = normalize_inbound(
+        payload(
+            text="iya",
+            quoted_text="rapat jam 10",
+            quoted_sender_name="Budi",
+            mentions=["628456@s.whatsapp.net"],
+            mention_names=["Budi"],
+        )
+    )
+
+    assert event.message.quoted_text == "rapat jam 10"
+    assert event.message.quoted_sender_name == "Budi"
+    assert event.message.mention_names == ("Budi",)
+
+
+def test_reply_and_mention_names_are_validated() -> None:
+    assert_reason(payload(quoted_text=3), "quoted_text_invalid")
+    assert_reason(payload(quoted_sender_name=[]), "quoted_sender_name_invalid")
+    assert_reason(payload(mention_names="Budi"), "mention_names_invalid")

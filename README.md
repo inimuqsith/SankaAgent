@@ -20,7 +20,8 @@ Sanka mengubah chat jadi ruang kerja: rekap spreadsheet, baca PDF/Excel, telusur
 ## Fitur
 
 - **Rekap data** — angka dihitung di kode, bukan oleh LLM.
-- **Dokumen** — PDF, Excel, dan Google Sheets.
+- **Dokumen** — PDF, Excel, CSV, MD, TXT, dan Google Sheets.
+- **Lampiran WhatsApp** — foto/PNG/WebP dibaca lewat model vision; dokumen dibaca lewat `attachment_read`, dicari dengan `attachment_search`, dan dipetakan per bagian dengan `attachment_outline`.
 - **Riset** — web search untuk referensi dan fakta.
 - **Proposal** — dikirim ke owner hanya setelah `/approve`.
 - **Output bersih** — teks final saja, tanpa reasoning atau trace tool.
@@ -42,9 +43,9 @@ Gateway hanya menangani I/O WhatsApp. Router memisahkan command dari percakapan 
 
 ## Status
 
-Tahap agent core + gateway Python + bridge WhatsApp. Plan-1 (config, router, policy, command dasar, formatter), plan-2 (sesi per chat, antrean, client OpenCode Go, `/new`, `/stop`), dan plan-3 (gateway Python loopback) selesai; plan-2 sudah diverifikasi live ke OpenCode Go. Plan-4 (bridge Node/Baileys) sudah dipasangkan ke nomor Sanka dan berhasil membalas mention grup; DM/no-mention/logout masih diuji. Plan-5 (tool baca + rekap) sudah terintegrasi; `web_search` via SearXNG dan `doc_read` sudah live, sedangkan `/rekap` dengan sheet Google nyata menunggu kredensial. Rencana kerja ada di [`docs/plan/`](docs/plan/), peta plan di [`docs/plan/ROADMAP.md`](docs/plan/ROADMAP.md).
+Tahap agent core + gateway Python + bridge WhatsApp. Plan-1 (config, router, policy, command dasar, formatter), plan-2 (sesi per chat, antrean, client OpenCode Go, `/new`, `/stop`), dan plan-3 (gateway Python loopback) selesai; plan-2 sudah diverifikasi live ke OpenCode Go. Plan-4 (bridge Node/Baileys) sudah dipasangkan ke nomor Sanka dan berhasil membalas mention grup; DM/no-mention/logout masih diuji. Plan-5 (tool baca + rekap) sudah terintegrasi; `web_search` via SearXNG dan `doc_read` sudah live, sedangkan `/rekap` dengan sheet Google nyata menunggu kredensial. Plan-12 (lampiran masuk: gambar + dokumen) sudah diimplementasikan dan lolos smoke loopback dengan model nyata; smoke WhatsApp nyata menunggu owner. Plan-15 menambahkan `attachment_search` dan `attachment_outline` untuk dokumen besar (ADR-0028). Rencana kerja ada di [`docs/plan/`](docs/plan/), peta plan di [`docs/plan/ROADMAP.md`](docs/plan/ROADMAP.md).
 
-Konfigurasi contoh: [`config/sanka.example.yaml`](config/sanka.example.yaml).
+Konfigurasi contoh: [`config/sanka.example.yaml`](config/sanka.example.yaml). Lampiran diatur di section `attachments`; `dir: ""` mematikan fitur, sedangkan direktori absolut di luar repo mengaktifkannya.
 Persona runtime: [`config/SOUL.md`](config/SOUL.md). Edit file itu untuk mengubah karakter Sanka; `prompt.py` memuatnya saat startup dan gagal cepat bila file hilang.
 
 ## Menjalankan

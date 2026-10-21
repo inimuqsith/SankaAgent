@@ -31,5 +31,8 @@ class InboundMessage:
     mentions: tuple[str, ...] = ()
     reply_to_bot: bool = False
     sender_name: str = ""
+    mention_names: tuple[str, ...] = ()
+    quoted_text: str = ""
+    quoted_sender_name: str = ""
     attachments: tuple[InboundAttachment, ...] = ()
     attachment_errors: tuple[str, ...] = ()

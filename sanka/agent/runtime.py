@@ -139,6 +139,7 @@ class AgentRuntime:
             tools=self._tools,
             context=context,
             max_calls_per_turn=self._config.tools.max_calls_per_turn,
+            user_text=job.message.text,
         )
 
     def reset(self, chat_id: str) -> None:
@@ -162,6 +163,10 @@ class AgentRuntime:
         group_context = None
         if job.message.is_group and self._group_context is not None:
             group_context = self._group_context.context(job.chat_id)
+        reply_context = ""
+        if job.message.quoted_text:
+            quoted_by = job.message.quoted_sender_name or "pengirim lain"
+            reply_context = f"{quoted_by}: {job.message.quoted_text}"
         client = self._client_factory(session.opencode_session_id)
         handler = self._build_handler(job)
         tools_schema = (
@@ -173,7 +178,12 @@ class AgentRuntime:
             exit_reason = exhaust(
                 agent_runner_loop(
                     client,
-                    build_system_prompt(group_context=group_context),
+                    build_system_prompt(
+                        group_context=group_context,
+                        speaker_name=job.message.sender_name,
+                        reply_context=reply_context,
+                        mentioned_names=job.message.mention_names,
+                    ),
                     job.message.text,
                     handler,
                     tools_schema,
@@ -225,11 +235,12 @@ class AgentRuntime:
 
         text = message.text.strip()
         if not text:
-            text = (
-                "Pengguna mengirim lampiran tanpa teks."
-                if message.attachments
-                else "Pengguna mengirim pesan kosong."
-            )
+            if message.attachments:
+                text = "Pengguna mengirim lampiran tanpa teks."
+            elif message.attachment_errors:
+                text = "Pengguna mengirim lampiran, tetapi gagal diterima."
+            else:
+                text = "Pengguna mengirim pesan kosong."
 
         if not message.attachments and not message.attachment_errors:
             return text, text
@@ -237,6 +248,10 @@ class AgentRuntime:
         lines: list[str] = [text, "", "<attachments>"]
         image_parts: list[dict[str, object]] = []
         notes: list[str] = []
+        can_read_documents = (
+            self._tools is not None
+            and "attachment_read" in self._tools.names()
+        )
         for attachment in message.attachments:
             name = html.escape(attachment.name, quote=True)
             lines.append(
@@ -257,10 +272,17 @@ class AgentRuntime:
                     )
                 else:
                     image_parts.append(part)
-            else:
+            elif can_read_documents:
                 lines.append(
                     "  Baca isinya dengan memanggil attachment_read memakai "
-                    "attachment_id di atas."
+                    "attachment_id di atas. Dokumen panjang: pakai "
+                    "attachment_outline atau attachment_search dulu, lalu "
+                    "attachment_read pada offset bagian yang relevan."
+                )
+            else:
+                notes.append(
+                    f'- Lampiran dokumen {attachment.attachment_id} tidak bisa '
+                    "dibaca karena tool attachment_read tidak tersedia."
                 )
         if message.attachment_errors:
             codes = ", ".join(message.attachment_errors)

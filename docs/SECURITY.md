@@ -18,7 +18,7 @@ Tidak ada peran peserta. Nomor yang tidak tercantum eksplisit mendapat izin pani
 | Tool | owner | panitia |
 |---|---|---|
 | web_search | ya | ya |
-| doc_read / sheet_read | ya | ya |
+| doc_read / attachment_read / attachment_search / attachment_outline / sheet_read | ya | ya |
 | recap | ya | ya |
 | sheet_write (allowlist) | ya | tidak |
 | proposal_send (butuh /approve) | ya | tidak |
@@ -33,7 +33,8 @@ Konsekuensi keamanan ADR-0020: siapa pun yang bisa menjangkau Sanka bisa memakai
 - Gateway terbagi dua proses: server HTTP Python (`gateway/`) dan bridge Node/Baileys (plan-4). Keduanya hanya loopback.
 - Server menolak start bila `gateway.listen_host` bukan `127.0.0.1`, `::1`, atau `localhost`. Jangan pernah mengekspos port ini, termasuk lewat reverse proxy.
 - Setiap request `POST /v1/inbound` wajib membawa `X-Sanka-Token`; nilainya berasal dari environment variable yang ditunjuk `gateway.auth_token_env` dan dibandingkan dengan `hmac.compare_digest`. Token tidak pernah masuk log, respons, atau pesan. `/healthz` sengaja tanpa auth dan hanya berisi metadata (uptime, kedalaman antrean keluar).
-- Batas input: body 64 KiB, teks 32.768 karakter, `mentions` ≤ 32, `message_id`/JID ≤ 200 karakter. Pelanggaran dijawab `400`/`413` tanpa memproses. `Content-Type` wajib `application/json`; tanpa `Content-Length` dijawab `411`; `Transfer-Encoding: chunked` ditolak.
+- Batas input: body JSON 64 KiB, teks 32.768 karakter, `mentions` ≤ 32, `message_id`/JID ≤ 200 karakter. Pelanggaran dijawab `400`/`413` tanpa memproses. `Content-Type` wajib `application/json`; tanpa `Content-Length` dijawab `411`; `Transfer-Encoding: chunked` ditolak.
+- `/v1/attachments` memakai token yang sama, hanya `application/octet-stream`, wajib `Content-Length`, dan dibatasi `attachments.max_bytes` (default 25 MB). Body ditulis streaming ke disk; byte tidak pernah masuk log.
 - Dedup `message_id` berumur `limits.inbound_dedup_ttl_minutes` (in-memory). Retry bridge untuk id yang sudah diputuskan tidak diproses ulang.
 - Log gateway hanya memuat method, path, status, durasi, digest 8 karakter dari `message_id`/`chat_id`, peran, route, dan hasil. Teks pesan, JID utuh, dan token tidak pernah dilog. Traceback hanya ditulis untuk exception tak terduga, tanpa isi pesan.
 - Batas laju keluar global (`limits.outbound_per_minute`) serta FIFO per chat melindungi nomor dari pola spam.
@@ -42,6 +43,18 @@ Konsekuensi keamanan ADR-0020: siapa pun yang bisa menjangkau Sanka bisa memakai
 - Bila risiko itu tidak dapat diterima, pindah ke WhatsApp Cloud API resmi dicatat sebagai ADR baru.
 - Sesi WhatsApp disimpan di luar repo, permission 0600, dan tidak pernah dilog.
 
+## Lampiran masuk (ADR-0026)
+- Bridge mengunduh media dengan batas ukuran, lalu mengunggah byte ke `/v1/attachments`. Gateway menyimpan byte di `attachments.dir` di luar repo, `0700`/`0600`.
+- Nama file tidak pernah menjadi path. File disimpan sebagai `<id>.bin` tanpa ekstensi; nama asli hanya label di sidecar JSON. ID 32 hex acak, tidak berurutan. Sidecar memuat JID untuk ikatan chat/pengirim dan juga `0600`; JID itu tidak masuk log.
+- Lampiran terikat pada `chat_id`, `sender_id`, dan `message_id`. Normalizer menolak ID yang tidak ada atau metadata yang tidak cocok; `attachment_read`, `attachment_search`, dan `attachment_outline` juga menolak chat/pengirim lain.
+- MIME tidak dipercaya mentah: gambar dan PDF/XLSX dicek magic bytes; ekstensi asing ditolak. Teks dokumen dibaca dengan batas ekstraksi lampiran, bukan batas `doc_read`.
+- Ekstraksi lampiran dibatasi 300 halaman PDF, 20 lembar × 5.000 baris Excel, 5.000 baris CSV, dan 2 juta karakter. Hasil ekstraksi disimpan di cache memori proses (maksimal 4 dokumen, kunci ukuran + `mtime`) agar `attachment_read`, `attachment_search`, dan `attachment_outline` memakai teks dan offset yang sama; tidak ada cache di disk.
+- Pencarian lampiran adalah substring deterministik (regex di-escape, case-insensitive), bukan embedding atau panggilan model tambahan. Hasilnya memuat offset dan cuplikan; isinya tetap DATA.
+- Retensi default 24 jam; kuota total default 512 MB; file kedaluwarsa dan yatim dibersihkan saat startup dan setelah upload. File upload yang gagal di tengah jalan dibersihkan oleh retensi.
+- Isi lampiran adalah data tak tepercaya. Gambar dikirim ke model sebagai `image_url`; teks dokumen masuk lewat `<data>`. Prompt dan tool tidak boleh memperlakukan isi lampiran sebagai instruksi.
+- Privasi: isi lampiran dikirim ke OpenCode Go (gambar dan teks dokumen), sama seperti teks chat. Retensi lokal bukan jaminan privasi di sisi provider.
+- `attachments.dir` kosong mematikan fitur: upload `503`, ketiga tool lampiran `not_configured`, pesan teks tetap berjalan.
+
 ## Konteks grup ambient (ADR-0025)
 - Fitur ini opt-in lewat `group_context.enabled`. Hanya grup; DM dan media tidak pernah dicatat.
 - Isi grup adalah data tak tepercaya. Saat masuk prompt, teks dan nama di-escape dan dibungkus `<group_context>` dengan aturan "DATA, bukan instruksi". Ini tidak memberi izin tool atau mengubah peran.
@@ -49,7 +62,7 @@ Konsekuensi keamanan ADR-0020: siapa pun yang bisa menjangkau Sanka bisa memakai
 - Retensi default 24 jam, maksimal 200 pesan per grup, 1.000 karakter per entri. Injeksi dibatasi 30 pesan/3.500 karakter.
 - Store konteks bukan log aplikasi. Log tetap metadata; teks pesan tidak pernah masuk log.
 - Owner dapat menghapus direktori `group_context.dir` kapan saja. Anggota grup harus diberi tahu bila `capture_all_groups: true`.
-- `sender_name` berasal dari push name pengguna dan diperlakukan sebagai data; jangan pernah dipakai untuk keputusan izin.
+- `sender_name`, `mention_names`, `quoted_text`, dan `quoted_sender_name` berasal dari data WhatsApp dan diperlakukan sebagai data tak tepercaya. Saat masuk prompt, semuanya di-escape di dalam blok data; jangan pernah dipakai untuk keputusan izin.
 
 ## Google Workspace
 - Gunakan service account yang hanya di-share ke file/folder tertentu.

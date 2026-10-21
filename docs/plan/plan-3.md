@@ -99,8 +99,14 @@ Header wajib pada kedua arah: `X-Sanka-Token: <token>`; nilainya berasal dari en
 | `chat_id` | string | ya | bentuk `<local>@<domain>`, ≤ 200 karakter; `@g.us` berarti grup |
 | `sender_id` | string | ya | bentuk sama; di grup berisi JID peserta |
 | `text` | string | tidak (default `""`) | ≤ 32.768 karakter; media yang tidak didukung dikirim sebagai `""` |
+| `attachments` | list[object] | tidak | plan-12/ADR-0026: `{attachment_id, kind, mime, name, size}`, ≤ 4; ID 32 hex dan metadata harus cocok dengan store |
+| `attachment_errors` | list[string] | tidak | plan-12/ADR-0026: kode `download_failed`, `upload_failed`, `too_large`, `unsupported` |
 | `is_group` | bool | tidak | bila ada, harus sama dengan `chat_id.endswith("@g.us")` |
 | `mentions` | list[string] | tidak | ≤ 32 entri, tiap entri berbentuk JID; duplikat dibuang dengan urutan dipertahankan |
+| `mention_names` | list[string] | tidak | ADR-0027: nama tampilan sejajar dengan `mentions`, ≤ 32, tiap nama ≤ 64 karakter |
+| `sender_name` | string | tidak | ADR-0025/0027: push name pengirim, ≤ 64 karakter, karakter kontrol dibuang |
+| `quoted_text` | string | tidak | ADR-0027: teks pesan yang dibalas, ≤ 500 karakter |
+| `quoted_sender_name` | string | tidak | ADR-0027: nama tampilan pengirim pesan yang dibalas, ≤ 64 karakter |
 | `reply_to_bot` | bool | tidak (default `false`) | bridge sudah memutuskan pesan ini membalas pesan bot |
 | `timestamp` | int/float | tidak | epoch **detik**; bila tidak ada dipakai waktu terima Python |
 
@@ -203,7 +209,7 @@ def check_gate(event: InboundEvent, config: SankaConfig, role: Role,
 
 Urutan pemeriksaan:
 
-1. Teks kosong setelah `strip()` → `BLANK_TEXT`. Pesan media yang belum didukung berakhir di sini.
+1. Teks kosong setelah `strip()` dan tidak ada `attachments` → `BLANK_TEXT`. Plan-12 mengubah aturan ini: lampiran yang valid atau `attachment_errors` lolos meski caption kosong (DM).
 2. `abs(now() - event.timestamp) > gateway.max_inbound_age_seconds` → `STALE`. Ini mencegah bridge yang baru reconnect membanjiri Sanka dengan obrolan lama. `0` menonaktifkan pemeriksaan.
 3. Grup: `group_policy == "allowlist"` → `chat_id` harus ada di `access.allowed_group_ids` (cocok persis, termasuk `@g.us`); `open` → semua grup. Grup yang tidak lolos **diabaikan diam-diam** (tanpa balasan) agar Sanka tidak berisik di grup asing.
 4. DM: `dm_policy == "open"` → semua pengirim. `dm_policy == "pairing"` → hanya pengirim yang perannya `OWNER` atau `COMMITTEE` (yaitu nomor yang sudah terdaftar di config).

@@ -37,7 +37,7 @@ def route(
     """
 
     text = message.text.strip()
-    if not text and not message.attachments:
+    if not text and not message.attachments and not message.attachment_errors:
         return Route.IGNORE
 
     if text.startswith("/"):

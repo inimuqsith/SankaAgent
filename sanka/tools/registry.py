@@ -373,6 +373,8 @@ def _max_chars(name: str, config: SankaConfig | None) -> int:
             return int(tools.web_search.max_chars)  # type: ignore[union-attr]
         if name == "doc_read":
             return int(tools.docs.max_chars)  # type: ignore[union-attr]
+        if name in ("attachment_read", "attachment_search", "attachment_outline"):
+            return int(tools.docs.max_chars)  # type: ignore[union-attr]
         if name == "sheet_read":
             return int(tools.sheets.max_chars)  # type: ignore[union-attr]
     except (AttributeError, TypeError, ValueError):

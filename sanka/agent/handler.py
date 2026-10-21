@@ -30,8 +30,10 @@ class SankaHandler(BaseHandler):
         tools: ToolRegistry | None = None,
         context: ToolContext | None = None,
         max_calls_per_turn: int = 6,
+        user_text: str = "",
     ) -> None:
         self.cancel_event = cancel_event or threading.Event()
+        self._user_text = user_text.strip()[:1000]
         self._done_hooks: list[str] = []
         self._tools = tools
         self._context = context
@@ -40,6 +42,29 @@ class SankaHandler(BaseHandler):
         if tools is not None and context is not None:
             for name in tools.names():
                 self._install_tool(name)
+
+    def turn_end_callback(
+        self,
+        response: Any,
+        tool_calls: list[dict[str, Any]],
+        tool_results: list[dict[str, Any]],
+        turn: int,
+        next_prompt: str,
+        exit_reason: dict[str, Any],
+    ) -> str:
+        """Re-attach the current question so tool turns stay self-contained.
+
+        OpenCode Go keeps session state server-side, but a later tool turn that
+        carries only tool results can lose the original question. Repeating it
+        is cheap and keeps the model answering the same request.
+        """
+
+        if not next_prompt or not self._user_text:
+            return next_prompt
+        return (
+            f"Pertanyaan pengguna yang sedang diproses:\n{self._user_text}\n\n"
+            f"{next_prompt}"
+        )
 
     def _install_tool(self, name: str) -> None:
         def run(

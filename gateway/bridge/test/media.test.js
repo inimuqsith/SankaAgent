@@ -62,6 +62,21 @@ test('unwraps documentWithCaptionMessage and rejects unsupported documents', () 
   assert.equal(descriptor.name, 'laporan.doc');
 });
 
+test('treats an image sent as a document as an image', () => {
+  assert.deepEqual(
+    describeMedia(
+      message({
+        documentMessage: {
+          mimetype: 'image/jpeg',
+          fileName: 'foto.jpg',
+          fileLength: 42,
+        },
+      }),
+    ),
+    { kind: 'image', mime: 'image/jpeg', name: 'foto.jpg', size: 42 },
+  );
+});
+
 test('ignores audio and non-media messages', () => {
   assert.equal(describeMedia(message({ audioMessage: { mimetype: 'audio/ogg' } })), null);
   assert.equal(describeMedia(message({ conversation: 'halo' })), null);

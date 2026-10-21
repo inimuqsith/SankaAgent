@@ -33,6 +33,8 @@ TOOL_PERMISSIONS: Mapping[str, frozenset[Role]] = MappingProxyType(
         "web_search": ALL_ROLES,
         "doc_read": COMMITTEE_ROLES,
         "attachment_read": COMMITTEE_ROLES,
+        "attachment_search": COMMITTEE_ROLES,
+        "attachment_outline": COMMITTEE_ROLES,
         "sheet_read": COMMITTEE_ROLES,
         "recap": COMMITTEE_ROLES,
         "sheet_write": frozenset({Role.OWNER}),

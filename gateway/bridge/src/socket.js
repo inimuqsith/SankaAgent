@@ -46,6 +46,11 @@ export function createSocketManager({ config, deliverer, logger, media = null })
     max: 2_000,
     clock: { now: () => Date.now() },
   });
+  const nameCache = createBoundedMap({
+    ttlMs: 24 * 60 * 60 * 1000,
+    max: 2_000,
+    clock: { now: () => Date.now() },
+  });
 
   let sock = null;
   let starting = false;
@@ -163,6 +168,7 @@ export function createSocketManager({ config, deliverer, logger, media = null })
         const event = normalizeMessage(msg, {
           botJids,
           resolvePn: (jid) => lidCache.get(jid) ?? null,
+          resolveName: (jid) => nameCache.get(jid) ?? '',
           nowMs: () => Date.now(),
         });
         if (!event) {
@@ -171,6 +177,9 @@ export function createSocketManager({ config, deliverer, logger, media = null })
             'inbound_skipped',
           );
           continue;
+        }
+        if (event.sender_name) {
+          nameCache.set(event.sender_id, event.sender_name);
         }
         logger.debug(
           {

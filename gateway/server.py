@@ -287,6 +287,10 @@ class _GatewayRequestHandler(BaseHTTPRequestHandler):
             LOGGER.exception("gateway_attachment_write_failed")
             self._send_json(500, _ERROR_INTERNAL, started, close=True)
             return
+        except Exception:  # noqa: BLE001 - upload must fail closed
+            LOGGER.exception("gateway_attachment_failed")
+            self._send_json(500, _ERROR_INTERNAL, started, close=True)
+            return
 
         self._send_json(
             201,

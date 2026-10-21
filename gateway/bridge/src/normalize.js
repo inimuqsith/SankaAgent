@@ -42,6 +42,19 @@ function sanitizeSenderName(value) {
   return cleaned.slice(0, 64);
 }
 
+function fallbackName(jid) {
+  const user = userPart(jid);
+  const digits = (user ?? '').replace(/\D/g, '');
+  return digits ? `Peserta ${digits.slice(-4)}` : 'Peserta';
+}
+
+function displayName(jid, ctx, botUsers) {
+  const user = userPart(jid);
+  if (user && botUsers.has(user)) return 'Sanka';
+  const resolved = ctx && typeof ctx.resolveName === 'function' ? ctx.resolveName(jid) : '';
+  return sanitizeSenderName(resolved) || fallbackName(jid);
+}
+
 /**
  * Normalize a WhatsApp JID: strip the device suffix (`:12`) and any duplicate
  * server part, and map the legacy `c.us` server to `s.whatsapp.net`.
@@ -203,6 +216,27 @@ function isReplyToBot(infos, botUsers) {
   return false;
 }
 
+function quotedContext(infos, botUsers, ctx) {
+  for (const info of infos) {
+    if (!isObject(info.quotedMessage)) continue;
+    const content = unwrapMessage(info.quotedMessage) ?? info.quotedMessage;
+    if (!isObject(content)) continue;
+    const text = extractText(content).replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (!text) continue;
+    const participant =
+      normalizeJid(info.participant) || normalizeJid(info.remoteJid);
+    return {
+      text,
+      name: participant ? displayName(participant, ctx, botUsers) : '',
+    };
+  }
+  return { text: '', name: '' };
+}
+
+function mentionDisplayNames(mentions, botUsers, ctx) {
+  return mentions.map((jid) => displayName(jid, ctx, botUsers));
+}
+
 function resolveSenderPn(resolvePn, jid) {
   if (typeof resolvePn !== 'function') return null;
   try {
@@ -261,7 +295,9 @@ function normalizeUnsafe(msg, ctx) {
 
   const infos = collectContextInfos(content, rootMessage);
   const mentions = collectMentions(infos);
-  const replyToBot = isReplyToBot(infos, toBotUsers(ctx && ctx.botJids));
+  const botUsers = toBotUsers(ctx && ctx.botJids);
+  const replyToBot = isReplyToBot(infos, botUsers);
+  const quote = quotedContext(infos, botUsers, ctx);
 
   const event = {
     message_id: messageId,
@@ -271,7 +307,10 @@ function normalizeUnsafe(msg, ctx) {
     text: extractText(content),
     is_group: isGroup,
     mentions,
+    mention_names: mentionDisplayNames(mentions, botUsers, ctx),
     reply_to_bot: replyToBot,
+    quoted_text: quote.text,
+    quoted_sender_name: quote.name,
   };
 
   const timestamp = readTimestamp(msg.messageTimestamp);

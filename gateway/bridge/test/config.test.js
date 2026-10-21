@@ -64,6 +64,8 @@ describe('loadConfig defaults', () => {
     assert.equal(config.host, '127.0.0.1');
     assert.equal(config.token, TOKEN);
     assert.equal(config.inboundUrl, DEFAULT_INBOUND_URL);
+    assert.equal(config.attachmentUrl, 'http://127.0.0.1:8099/v1/attachments');
+    assert.equal(config.attachmentMaxBytes, 25_000_000);
     assert.equal(config.sessionDir, fs.realpathSync.native(sessionDir));
     assert.equal(config.logLevel, 'info');
     assert.equal(config.outboundPerMinute, 20);
@@ -107,11 +109,14 @@ describe('loadConfig full environment', () => {
       SANKA_BRIDGE_READ_RECEIPTS: '1',
       SANKA_BRIDGE_LOG_LEVEL: 'debug',
       SANKA_BRIDGE_PAIR_ONLY: '1',
+      SANKA_ATTACHMENT_MAX_BYTES: '123456',
     });
 
     assert.equal(config.port, 4111);
     assert.equal(config.token, 'token-abcdefghijkl');
     assert.equal(config.inboundUrl, 'http://localhost:8099/v1/inbound');
+    assert.equal(config.attachmentUrl, 'http://localhost:8099/v1/attachments');
+    assert.equal(config.attachmentMaxBytes, 123456);
     assert.equal(config.sessionDir, fs.realpathSync.native(sessionDir));
     assert.equal(config.outboundPerMinute, 30);
     assert.equal(config.readReceipts, true);
