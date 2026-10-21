@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS messages (
     UNIQUE(chat_id, msg_id)
 );
 CREATE INDEX IF NOT EXISTS messages_chat_ts ON messages(chat_id, ts, id);
+CREATE INDEX IF NOT EXISTS messages_sender ON messages(sender_jid);
 CREATE TABLE IF NOT EXISTS chats (
     chat_id TEXT PRIMARY KEY,
     reset_ts REAL NOT NULL DEFAULT 0,
@@ -50,6 +51,16 @@ CREATE TABLE IF NOT EXISTS chats (
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS contacts (
+    jid TEXT PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT '',
+    push_name TEXT NOT NULL DEFAULT '',
+    updated_at REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS lid_map (
+    lid TEXT PRIMARY KEY,
+    pn TEXT NOT NULL
 );
 """
 UPSERT = """
@@ -231,9 +242,10 @@ def _like_terms(query: str) -> list[str]:
 class HistoryStore:
     """SQLite lokal: satu baris per (chat, message id), FTS5 untuk pencarian lama."""
 
-    def __init__(self, path: Path | str, workspace: Path):
+    def __init__(self, path: Path | str, workspace: Path, session_db: Path | str | None = None):
         self.path = Path(path).expanduser()
         self.workspace = Path(workspace)
+        self.session_db = Path(session_db).expanduser() if session_db else None
         self._lock = threading.RLock()
         self._conn: sqlite3.Connection | None = None
         self._fts = False
@@ -255,6 +267,8 @@ class HistoryStore:
             conn.execute("ALTER TABLE chats ADD COLUMN name TEXT NOT NULL DEFAULT ''")
         self._conn = conn
         self._setup_fts()
+        if self.session_db is not None:
+            self.import_contacts(self.session_db)
         with suppress(OSError):
             self.path.chmod(0o600)
 
@@ -367,6 +381,120 @@ class HistoryStore:
             row = self._require().execute("SELECT name FROM chats WHERE chat_id=?", (chat_id,)).fetchone()
             return str(row["name"]) if row else ""
 
+    def _set_contact(self, jid: str, name: str = "", push_name: str = "") -> None:
+        if not jid:
+            return
+        name = " ".join(str(name or "").split())[:200]
+        push_name = " ".join(str(push_name or "").split())[:200]
+        if not name and not push_name:
+            return
+        self._require().execute(
+            "INSERT INTO contacts(jid, name, push_name, updated_at) VALUES(?, ?, ?, ?) "
+            "ON CONFLICT(jid) DO UPDATE SET "
+            "name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE contacts.name END, "
+            "push_name=CASE WHEN excluded.push_name<>'' THEN excluded.push_name ELSE contacts.push_name END, "
+            "updated_at=excluded.updated_at",
+            (jid, name, push_name, time.time()),
+        )
+
+    def _set_lid(self, lid: str, pn: str) -> None:
+        if not lid or not pn:
+            return
+        lid = str(lid)
+        if "@" not in lid:
+            lid = f"{lid}@lid"
+        pn = str(pn)
+        if "@" not in pn:
+            pn = f"{pn}@s.whatsapp.net"
+        self._require().execute(
+            "INSERT INTO lid_map(lid, pn) VALUES(?, ?) "
+            "ON CONFLICT(lid) DO UPDATE SET pn=excluded.pn",
+            (lid, pn),
+        )
+
+    def set_contact(self, jid: str, name: str = "", push_name: str = "") -> None:
+        with self._lock:
+            self._set_contact(jid, name, push_name)
+            self._require().commit()
+
+    def set_lid(self, lid: str, pn: str) -> None:
+        with self._lock:
+            self._set_lid(lid, pn)
+            self._require().commit()
+
+    def contact_name(self, jid: str) -> str:
+        if not jid:
+            return ""
+        with self._lock:
+            direct = self._require().execute(
+                "SELECT name, push_name FROM contacts WHERE jid=?", (jid,)
+            ).fetchone()
+            if jid.endswith("@lid"):
+                mapped = self._require().execute(
+                    "SELECT c.name, c.push_name FROM lid_map l JOIN contacts c ON c.jid=l.pn WHERE l.lid=?",
+                    (jid,),
+                ).fetchone()
+            else:
+                mapped = self._require().execute(
+                    "SELECT c.name, c.push_name FROM lid_map l JOIN contacts c ON c.jid=l.lid WHERE l.pn=?",
+                    (jid,),
+                ).fetchone()
+            if direct is not None and direct["name"]:
+                return str(direct["name"])
+            if mapped is not None and mapped["name"]:
+                return str(mapped["name"])
+            if direct is not None and direct["push_name"]:
+                return str(direct["push_name"])
+            if mapped is not None and mapped["push_name"]:
+                return str(mapped["push_name"])
+            return ""
+
+    def _refresh_sender_names(self) -> None:
+        self._require().execute(
+            "UPDATE messages SET sender_name = COALESCE("
+            "(SELECT NULLIF(c.name, '') FROM contacts c WHERE c.jid=messages.sender_jid), "
+            "(SELECT NULLIF(c.name, '') FROM contacts c JOIN lid_map l ON l.pn=c.jid "
+            " WHERE l.lid=messages.sender_jid), "
+            "(SELECT NULLIF(c.push_name, '') FROM contacts c WHERE c.jid=messages.sender_jid), "
+            "(SELECT NULLIF(c.push_name, '') FROM contacts c JOIN lid_map l ON l.pn=c.jid "
+            " WHERE l.lid=messages.sender_jid), "
+            "messages.sender_name) "
+            "WHERE messages.sender_jid<>'' AND messages.outgoing=0 "
+            "AND (messages.sender_name='' OR messages.sender_name=messages.sender_id "
+            "OR messages.sender_name=(SELECT c.push_name FROM contacts c "
+            " WHERE c.jid=messages.sender_jid) "
+            "OR messages.sender_name=(SELECT c.push_name FROM contacts c JOIN lid_map l ON l.pn=c.jid "
+            " WHERE l.lid=messages.sender_jid))"
+        )
+
+    def import_contacts(self, session_db: Path | str) -> int:
+        """Salin kontak dari DB sesi Neonize (read-only) lalu rapikan nama pengirim lama."""
+        path = Path(session_db).expanduser()
+        if not path.is_file() or path == self.path:
+            return 0
+        try:
+            source = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+            source.row_factory = sqlite3.Row
+            contacts = source.execute(
+                "SELECT their_jid, first_name, full_name, push_name FROM whatsmeow_contacts"
+            ).fetchall()
+            mappings = source.execute("SELECT lid, pn FROM whatsmeow_lid_map").fetchall()
+            source.close()
+        except sqlite3.Error:
+            log.debug("kontak sesi tidak bisa dibaca: %s", path, exc_info=True)
+            return 0
+        with self._lock:
+            for row in mappings:
+                self._set_lid(str(row["lid"]), str(row["pn"]))
+            self._require().execute("DELETE FROM lid_map WHERE lid NOT LIKE '%@%'")
+            for row in contacts:
+                jid = str(row["their_jid"] or "")
+                name = str(row["full_name"] or row["first_name"] or "")
+                self._set_contact(jid, name, str(row["push_name"] or ""))
+            self._refresh_sender_names()
+            self._require().commit()
+        return len(contacts)
+
     def recent(self, chat_id: str, limit: int) -> list[ChatMessage]:
         with self._lock:
             reset = self._reset_ts(chat_id)
@@ -453,6 +581,19 @@ class HistoryStore:
             self._require().execute("INSERT OR REPLACE INTO meta(key, value) VALUES('full_sync_done', '1')")
             self._require().commit()
 
+    def _ingest_sync_contacts(self, sync: HistorySyncProto) -> None:
+        with self._lock:
+            for mapping in sync.phoneNumberToLidMappings:
+                self._set_lid(mapping.lidJID, mapping.pnJID)
+            for push in sync.pushnames:
+                self._set_contact(push.ID, push_name=push.pushname)
+            for contact in sync.inlineContacts:
+                name = contact.fullName or contact.firstName
+                self._set_contact(contact.pnJID, name)
+                self._set_contact(contact.lidJID, name)
+            self._refresh_sender_names()
+            self._require().commit()
+
     def _sync_item(
         self, web, fallback_chat: str, bot_name: str, fallback_ts: int = 0
     ) -> tuple[str, ChatMessage] | None:
@@ -474,7 +615,9 @@ class HistoryStore:
         else:
             sender_jid = chat_id
         sender_id = digits(sender_jid) if sender_jid else ""
-        sender_name = (web.pushName or "").strip() or (bot_name if from_me else sender_id)
+        sender_name = (
+            self.contact_name(sender_jid) if sender_jid else ""
+        ) or (web.pushName or "").strip() or (bot_name if from_me else sender_id)
         return (
             chat_id,
             ChatMessage(
@@ -492,6 +635,7 @@ class HistoryStore:
 
     def ingest_sync(self, sync: HistorySyncProto, bot_name: str) -> tuple[int, set[str], bool]:
         """Simpan seluruh WebMessageInfo dari satu event HistorySync; kembalikan (jumlah, chat, selesai)."""
+        self._ingest_sync_contacts(sync)
         chats: set[str] = set()
         total = 0
         batch: list[tuple[str, ChatMessage]] = []

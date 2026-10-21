@@ -187,6 +187,15 @@ class Sessions:
         except Exception:
             log.exception("gagal menyimpan nama chat=%s", chat_id)
 
+    def contact_name(self, jid: str) -> str:
+        if self.store is None or not jid:
+            return ""
+        try:
+            return self.store.contact_name(jid)
+        except Exception:
+            log.exception("gagal membaca kontak=%s", jid)
+            return ""
+
     def through(self, chat_id: str, message: ChatMessage) -> list[ChatMessage]:
         """Entri sampai `message` (identitas objek); pesan yang sedang dijawab selalu terakhir."""
         history = self.get(chat_id)

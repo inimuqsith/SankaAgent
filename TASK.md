@@ -18,6 +18,8 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   scan QR sekali, hasil sync masuk `history.db`, perangkat sementara logout otomatis.
 - [x] Nama chat di `chats.name` dari `HistorySync`/`GroupInfoEvent`; dipakai di header payload,
   `chat_history`, dan ringkasan, sehingga tidak menebak nama dari isi pesan.
+- [x] Nama pengirim di-resolve dari kontak WhatsApp (`whatsmeow_contacts` + `lid_map`) dan
+  `HistorySync.inlineContacts`; fallback push name lalu ID, termasuk untuk pesan lama.
 
 Di luar cakupan: transkripsi audio/video dan parsing PDF di dalam Sanka (lewat `sandbox`), Google
 Docs/Sheets, browser, gateway HTTP, bridge Node.

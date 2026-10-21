@@ -249,6 +249,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
         outgoing=bool(getattr(ev.Info.MessageSource, "IsFromMe", False)),
         sender_jid=sender,
     )
+    contact_name = app.sessions.contact_name(message.sender_jid)
+    if contact_name:
+        message.sender_name = contact_name
     app.sessions.append(chat_id, message)
     if not message.outgoing and not is_group(chat):
         app.sessions.remember_name(chat_id, message.sender_name)

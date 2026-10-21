@@ -218,3 +218,17 @@
   ALD XXVII JHEPRET CLUB FOTOGRAFI, dan DM Muqsith.
 - Verifikasi: `pytest -q` 37 lulus; migrasi DB lama diuji; tool langsung menampilkan
   `Arsip "Tester Sanka & MapHb"`; bot live sudah restart dengan skema baru.
+
+## 2026-10-22 (nama pengirim dari kontak)
+
+- `history.db`: tabel `contacts(jid, name, push_name)` dan `lid_map(lid, pn)`; LID/PN dinormalisasi
+  ke JID penuh. `import_contacts()` membaca `whatsmeow_contacts` + `whatsmeow_lid_map` dari session
+  DB secara read-only saat start/connect; `HistorySync` menambah `inlineContacts`/`pushnames`.
+- Resolusi nama: kontak `full_name`/`first_name` → nama kontak via mapping LID→PN → push name → ID.
+  `_refresh_sender_names()` memperbarui pesan lama yang masih berisi LID/angka atau push name,
+  dengan index `messages(sender_jid)`; nama bot/outgoing tidak diubah.
+- Live message memakai nama kontak bila tersedia; DM name hanya diisi jika belum ada.
+- Bukti pada arsip: `20289710768283@lid` → “Kak Fahri JC”, `130799689031758@lid` →
+  “Muqsith Utama”, grup ALD tetap 110 pesan.
+- Verifikasi: `pytest -q` 39 lulus; tes inline contact + refresh kontak lama; bot live sudah
+  restart dengan resolver kontak.

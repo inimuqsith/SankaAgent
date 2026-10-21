@@ -113,7 +113,7 @@ async def run_bot(config: Config) -> None:
     try:
         try:
             path = config.whatsapp.history_db or config.whatsapp.session_db.parent / "history.db"
-            store = HistoryStore(path, config.workspace)
+            store = HistoryStore(path, config.workspace, config.whatsapp.session_db)
         except Exception:  # arsip gagal dibuka tidak boleh mematikan bot
             log.exception("gagal membuka arsip riwayat; konteks hanya di RAM")
         app = App(config, LLM(config), hub, Sessions(store=store))
@@ -172,6 +172,11 @@ async def run_bot(config: Config) -> None:
             if accepted.me is not None:
                 app.bot_digits = bot_digits(accepted.me)
             secure_db(config.whatsapp.session_db)
+            if store is not None:
+                try:
+                    await asyncio.to_thread(store.import_contacts, config.whatsapp.session_db)
+                except Exception:
+                    log.exception("gagal menyegarkan kontak")
             log.info("Sanka tersambung ke WhatsApp")
 
         log.info("Sanka siap. Scan QR bila ini pairing pertama.")
@@ -190,7 +195,7 @@ BACKFILL_TIMEOUT = 900
 async def backfill(config: Config) -> int:
     """Pair perangkat sementara untuk menarik history sync, lalu logout tanpa mengganggu bot utama."""
     path = config.whatsapp.history_db or config.whatsapp.session_db.parent / "history.db"
-    store = HistoryStore(path, config.workspace)
+    store = HistoryStore(path, config.workspace, config.whatsapp.session_db)
     session = config.whatsapp.session_db.parent / "backfill.db"
     drop_session(session)
     client = NewAClient(str(session), props=history_props(True))

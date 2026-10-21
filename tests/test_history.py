@@ -10,7 +10,12 @@ from pathlib import Path
 
 from neonize.proto.waCommon.WACommon_pb2 import MessageKey
 from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import Message
-from neonize.proto.waHistorySync.WAWebProtobufsHistorySync_pb2 import Conversation, HistorySync, HistorySyncMsg
+from neonize.proto.waHistorySync.WAWebProtobufsHistorySync_pb2 import (
+    Conversation,
+    HistorySync,
+    HistorySyncMsg,
+    InlineContact,
+)
 from neonize.proto.waWeb.WAWebProtobufsWeb_pb2 import WebMessageInfo
 
 from sanka.chat import ChatMessage, Sessions
@@ -146,6 +151,71 @@ def test_history_tool_is_scoped_to_current_chat(tmp_path: Path) -> None:
     assert "fakta grup ini" in output
     assert "fakta grup lain" not in output
     store.close()
+
+
+def test_history_sync_inline_contact_names_senders(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    store = HistoryStore(config.whatsapp.history_db, config.workspace)
+    web = web_message("c1", "halo dari kontak", int(datetime.now().timestamp()))
+    web.key.participant = "999@lid"
+    web.pushName = ""
+    sync = HistorySync(
+        syncType=HistorySync.RECENT,
+        inlineContacts=[
+            InlineContact(
+                pnJID="628999999999@s.whatsapp.net",
+                lidJID="999@lid",
+                fullName="Budi Kontak",
+            )
+        ],
+        conversations=[Conversation(ID=CHAT, messages=[HistorySyncMsg(message=web)])],
+    )
+
+    store.ingest_sync(sync, "sanka")
+
+    stored = store.find(CHAT, "c1")
+    assert stored is not None and stored.sender_name == "Budi Kontak"
+    store.close()
+
+
+def test_session_contacts_refresh_old_senders(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    history = HistoryStore(config.whatsapp.history_db, config.workspace)
+    history.add(
+        CHAT,
+        ChatMessage(
+            id="old",
+            sender_name="999",
+            sender_id="999",
+            sender_jid="999@lid",
+            when=datetime.now(),
+            text="pesan lama",
+        ),
+    )
+    history.close()
+
+    session = tmp_path / "session.db"
+    source = sqlite3.connect(session)
+    source.execute(
+        "CREATE TABLE whatsmeow_contacts "
+        "(their_jid TEXT, first_name TEXT, full_name TEXT, push_name TEXT)"
+    )
+    source.execute("CREATE TABLE whatsmeow_lid_map (lid TEXT, pn TEXT)")
+    source.execute(
+        "INSERT INTO whatsmeow_contacts VALUES (?, ?, ?, ?)",
+        ("628999999999@s.whatsapp.net", "", "Budi Kontak", "Budi"),
+    )
+    source.execute(
+        "INSERT INTO whatsmeow_lid_map VALUES (?, ?)",
+        ("999@lid", "628999999999@s.whatsapp.net"),
+    )
+    source.commit()
+    source.close()
+
+    reopened = HistoryStore(config.whatsapp.history_db, config.workspace, session)
+    assert reopened.contact_name("999@lid") == "Budi Kontak"
+    assert reopened.find(CHAT, "old").sender_name == "Budi Kontak"
+    reopened.close()
 
 
 def test_existing_chats_table_migrates_name_column(tmp_path: Path) -> None:

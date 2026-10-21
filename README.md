@@ -61,6 +61,10 @@ bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
 - Nama chat disimpan di `chats.name` dari `HistorySync` (`Conversation.name`/`displayName`) dan
   `GroupInfoEvent`; DM memakai push name saat nama belum ada. Header payload, tool `chat_history`,
   dan ringkasan memakai nama asli, bukan menebak dari isi pesan.
+- Nama pengirim diutamakan dari kontak WhatsApp (`full_name`/`first_name`) lewat
+  `whatsmeow_contacts` + `lid_map`, lalu push name, lalu ID. Kontak diimpor read-only dari session
+  DB saat start/connect; `HistorySync` juga membawa `inlineContacts`/`pushnames`. Jadi LID
+  `20289710768283` tampil sebagai “Kak Fahri JC”, bukan angka.
 - Tool `chat_history` hanya mencari chat yang sedang dipakai (`query`, `before`, `after`, `limit`),
   jadi isi grup lain tidak bocor ke jawaban. Pesan yang lebih tua dari 20 entri payload tetap bisa
   dicari; gambar/teks lampiran lama diunduh ulang saat masuk jendela payload.
