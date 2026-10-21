@@ -16,8 +16,9 @@ whatsapp:
   bot_name: sanka
 
 roles:
-  # tools/commands boleh dikosongkan -> pakai default dari registry handler.
+  # tools/commands yang tidak ditulis -> pakai default dari registry handler.
   # Kalau ditulis, isi YAML ini yang menang (pola glob: "*", "mcp__*").
+  # `tools: []` atau `commands: []` berarti role itu tidak boleh memakai apa pun.
   owner:
     users: ["6280000000000"]      # isi nomor owner, international format tanpa +
     tools: ["*"]

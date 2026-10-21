@@ -32,8 +32,8 @@ class WhatsAppConfig:
 class RoleConfig:
     name: str
     users: tuple[str, ...] = ()
-    tools: tuple[str, ...] = ()
-    commands: tuple[str, ...] = ()
+    tools: tuple[str, ...] | None = None
+    commands: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +94,11 @@ def _str_tuple(value: object) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, (str, int)) and str(item))
 
 
+def _optional_str_tuple(value: object) -> tuple[str, ...] | None:
+    """Field tidak ditulis = None (pakai default handler); `[]` = () = tolak semua."""
+    return None if value is None else _str_tuple(value)
+
+
 def _roles(raw: object) -> dict[str, RoleConfig]:
     if not isinstance(raw, dict) or not raw:
         raise _fail("config: 'roles' wajib berisi minimal satu role")
@@ -103,8 +108,8 @@ def _roles(raw: object) -> dict[str, RoleConfig]:
         roles[str(name)] = RoleConfig(
             name=str(name),
             users=_str_tuple(body.get("users")),
-            tools=_str_tuple(body.get("tools")),
-            commands=_str_tuple(body.get("commands")),
+            tools=_optional_str_tuple(body.get("tools")),
+            commands=_optional_str_tuple(body.get("commands")),
         )
     return roles
 

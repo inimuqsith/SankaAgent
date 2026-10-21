@@ -2,6 +2,7 @@
 
 Bot WhatsApp pribadi: satu proses Python (Neonize) + model OpenAI-compatible + tool.
 DM selalu dilayani; grup hanya saat bot di-mention atau dibalas. Lampiran diabaikan.
+Pesan yang dilayani langsung ditandai "mengetik" sampai balasan terkirim (disentuh ulang tiap 8 detik).
 
 ## Pasang
 
@@ -29,8 +30,8 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Podman dipakai tool `sand
 | `sandbox` | `runtime` (podman), `image`, `timeout_seconds` |
 | `mcp.servers` | `command`, `args`, `env` per server stdio |
 
-`tools:` dan `commands:` boleh dikosongkan: pola default tiap handler yang dipakai (lihat di bawah).
-Kalau ditulis, isi YAML menang dan default diabaikan.
+`tools:` dan `commands:` yang tidak ditulis memakai pola default tiap handler (lihat di bawah);
+kalau ditulis, isi YAML menang. `tools: []` atau `commands: []` berarti role itu tidak boleh apa pun.
 
 Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `mcp__<server>__<tool>`.
 Command: `/ping`, `/help`, `/reset` (plus alias `/p`, `/h`, `/r`). `/help` membaca metadata registry.
@@ -55,8 +56,28 @@ COMMAND = Handler(
 )
 ```
 
-Tool baru = entri `Handler(...)` di `HANDLERS` (`sanka/tools.py`) dengan `parameters` skema JSON.
-`defaults` memetakan nama role ke bool; role tanpa daftar `tools:`/`commands:` memakai default itu.
+Tool baru = satu modul di `sanka/tools/`, registry meng-import otomatis dengan kontrak yang sama;
+`family` wajib salah satu dari `FAMILIES` dan nama file harus sama dengan `name`:
+
+```python
+from ..registry import Handler
+from . import OWNER_MEMBER, ToolContext, _resolve
+
+async def _stat(args: dict, ctx: ToolContext) -> str:
+    path = _resolve(ctx, args.get("path", ""))
+    return f"{path}: {path.stat().st_size} byte" if path.is_file() else "error: file tidak ditemukan"
+
+TOOL = Handler(
+    name="stat", family="read", description="Ukuran file di workspace.", fn=_stat,
+    parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+    defaults=OWNER_MEMBER,
+)
+```
+
+Handler tidak valid (nama, alias, `family`, skema `parameters`, atau `defaults` salah) menggagalkan
+start dengan satu pesan berisi semua modul bermasalah. Modul helper diberi awalan `_`.
+`defaults` memetakan nama role ke bool; role tanpa daftar `tools:`/`commands:` memakai default itu,
+sedangkan `tools: []` / `commands: []` berarti tolak semua.
 
 ## Jalankan
 

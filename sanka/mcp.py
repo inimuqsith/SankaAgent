@@ -55,6 +55,7 @@ class Hub:
                 exposed = f"mcp__{_slug(name)}__{_slug(tool.name)}"
                 self._handlers[exposed] = Handler(
                     name=exposed,
+                    family="mcp",
                     description=f"[{name}] {tool.description or tool.name}",
                     fn=partial(self.call, exposed),
                     parameters=tool.input_schema or {"type": "object", "properties": {}},

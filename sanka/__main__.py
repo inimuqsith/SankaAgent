@@ -10,12 +10,18 @@ import sys
 from neonize.aioze.client import NewAClient
 from neonize.aioze.events import ConnectedEv, MessageEv
 
-from .config import Config, RoleConfig, load_config, load_env
-from .llm import API_ERROR_TEXT, LLM
-from .mcp import Hub
-from .permissions import commands_for, tool_patterns, tools_for
-from .tools import REGISTRY, ToolContext, execute
-from .wa import App, Sessions, bot_digits, handle_message
+from .registry import RegistryError
+
+try:
+    from .commands import REGISTRY as COMMANDS
+    from .config import Config, RoleConfig, load_config, load_env
+    from .llm import API_ERROR_TEXT, LLM
+    from .mcp import Hub
+    from .permissions import commands_for, tool_patterns, tools_for
+    from .tools import REGISTRY, ToolContext, execute
+    from .wa import App, Sessions, bot_digits, handle_message
+except RegistryError as exc:  # plugin invalid menggagalkan start dengan satu pesan
+    sys.exit(f"sanka: {exc}")
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +32,7 @@ def setup_logging() -> None:
 
 def _role(config: Config) -> RoleConfig:
     for role in config.roles.values():
-        if "*" in role.tools:
+        if "*" in (role.tools or ()):
             return role
     return config.roles[config.default_role]
 
@@ -97,6 +103,11 @@ async def selftest(config: Config) -> int:
 async def run_bot(config: Config) -> None:
     hub = Hub(config.mcp)
     await hub.start()
+    log.info("command: %s", ", ".join(COMMANDS.names()) or "-")
+    log.info("tool: %s", ", ".join(REGISTRY.names()) or "-")
+    for role in config.roles.values():
+        if "*" in (role.tools or ()) or "*" in (role.commands or ()):
+            log.info("role %s memakai wildcard; handler baru otomatis diizinkan", role.name)
     try:
         app = App(config, LLM(config), hub, Sessions())
         client = NewAClient(str(config.whatsapp.session_db))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 from collections import defaultdict
@@ -11,6 +12,7 @@ from datetime import date
 from neonize.aioze.client import NewAClient
 from neonize.exc import SendMessageError
 from neonize.utils import extract_text
+from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 
 from .commands import REGISTRY as COMMANDS
 from .commands import CommandContext
@@ -32,6 +34,7 @@ log = logging.getLogger(__name__)
 
 HISTORY_LIMIT = 30
 CONTENT_FIELDS = ("extendedTextMessage", "imageMessage", "videoMessage", "documentMessage")
+TYPING_REFRESH = 8
 
 
 class Sessions:
@@ -131,6 +134,25 @@ def system_prompt(config: Config, role_name: str) -> str:
     )
 
 
+async def _chat_presence(client: NewAClient, jid, composing: bool) -> None:
+    """Status 'sedang mengetik' di chat asal; kegagalan presence tidak boleh menggagalkan balasan."""
+    try:
+        await client.send_chat_presence(
+            jid,
+            ChatPresence.CHAT_PRESENCE_COMPOSING if composing else ChatPresence.CHAT_PRESENCE_PAUSED,
+            ChatPresenceMedia.CHAT_PRESENCE_MEDIA_TEXT,
+        )
+    except Exception:  # presence bersifat kosmetik: cukup dicatat, jangan dilempar
+        log.debug("presence gagal", exc_info=True)
+
+
+async def _keep_typing(client: NewAClient, jid) -> None:
+    """Segarkan status mengetik selama proses panjang (tool/LLM) berjalan."""
+    while True:
+        await asyncio.sleep(TYPING_REFRESH)
+        await _chat_presence(client, jid, True)
+
+
 async def handle_message(client: NewAClient, ev, app: App) -> None:
     source = ev.Info.MessageSource
     chat_id = f"{source.Chat.User}@{source.Chat.Server}"
@@ -149,45 +171,54 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
     ):
         return
 
-    role = role_for(sender, app.config)
-    log.info("pesan chat=%s sender=%s role=%s", chat, sender, role.name)
+    jid = source.Chat
+    await _chat_presence(client, jid, True)
+    typing = asyncio.create_task(_keep_typing(client, jid))
+    try:
+        role = role_for(sender, app.config)
+        log.info("pesan chat=%s sender=%s role=%s", chat, sender, role.name)
 
-    async with app.locks[chat_id]:
-        reply: str | None = None
-        if text.startswith("/"):
-            head, _, rest = text[1:].partition(" ")
-            name = head.lower()
-            handler = COMMANDS.get(name) if name else None
-            if handler is None:
-                reply = f"Command /{name} tidak dikenal."
-            elif not command_allowed(role, handler.name):
-                reply = f"Command /{name} tidak diizinkan untuk role {role.name}."
+        async with app.locks[chat_id]:
+            reply: str | None = None
+            if text.startswith("/"):
+                head, _, rest = text[1:].partition(" ")
+                name = head.lower()
+                handler = COMMANDS.get(name) if name else None
+                if handler is None:
+                    reply = f"Command /{name} tidak dikenal."
+                elif not command_allowed(role, handler.name):
+                    reply = f"Command /{name} tidak diizinkan untuk role {role.name}."
+                else:
+                    ctx = CommandContext(
+                        app,
+                        chat_id,
+                        role,
+                        rest.strip(),
+                        tuple(commands_for(role)),
+                        tuple(tools_for(role)) + tuple(app.hub.specs(role)),
+                    )
+                    reply = await handler.fn(ctx)
             else:
-                ctx = CommandContext(
-                    app,
-                    chat_id,
-                    role,
-                    rest.strip(),
-                    tuple(commands_for(role)),
-                    tuple(tools_for(role)) + tuple(app.hub.specs(role)),
+                specs = list(tools_for(role)) + app.hub.specs(role)
+                answer = await app.llm.run(
+                    system_prompt(app.config, role.name),
+                    app.sessions.get(chat_id),
+                    text,
+                    specs,
+                    ToolContext(app.config, role, tool_patterns(role)),
+                    session=f"sanka-{chat_id}",
                 )
-                reply = await handler.fn(ctx)
-        else:
-            specs = list(tools_for(role)) + app.hub.specs(role)
-            answer = await app.llm.run(
-                system_prompt(app.config, role.name),
-                app.sessions.get(chat_id),
-                text,
-                specs,
-                ToolContext(app.config, role, tool_patterns(role)),
-                session=f"sanka-{chat_id}",
-            )
-            app.sessions.append(chat_id, {"role": "user", "content": text})
-            app.sessions.append(chat_id, {"role": "assistant", "content": answer})
-            reply = answer
+                app.sessions.append(chat_id, {"role": "user", "content": text})
+                app.sessions.append(chat_id, {"role": "assistant", "content": answer})
+                reply = answer
 
-        for chunk in format_reply(reply) or ["(kosong)"]:
-            try:
-                await client.reply_message(chunk, ev.Message)
-            except SendMessageError:
-                log.exception("gagal kirim balasan ke %s", chat)
+            for chunk in format_reply(reply) or ["(kosong)"]:
+                try:
+                    await client.reply_message(chunk, ev)
+                except SendMessageError:
+                    log.exception("gagal kirim balasan ke %s", chat)
+    finally:
+        typing.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await typing
+        await _chat_presence(client, jid, False)

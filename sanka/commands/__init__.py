@@ -19,4 +19,7 @@ class CommandContext:
     tools: tuple[Handler, ...]
 
 
-REGISTRY = Registry(discover(__name__, Path(__file__).parent, "COMMAND"), "command")
+REGISTRY = Registry(
+    discover(__name__, Path(__file__).parent, "COMMAND", "command"),
+    "command",
+)
