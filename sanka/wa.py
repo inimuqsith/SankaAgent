@@ -529,9 +529,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 name = head.lower()
                 handler = COMMANDS.get(name) if name else None
                 if handler is None:
-                    reply = f"Command /{name} tidak dikenal."
+                    reply = f"🤔 Command /{name} tidak dikenal. Ketik /help untuk daftar command."
                 elif not command_allowed(role, handler.name):
-                    reply = f"Command /{name} tidak diizinkan untuk role {role.name}."
+                    reply = f"🔒 Command /{name} tidak diizinkan untuk role {role.name}."
                 else:
                     ctx = CommandContext(
                         app,
