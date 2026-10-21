@@ -55,6 +55,10 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   di-ignore Git. Migrasi dari `~/.sanka` mempertahankan arsip dan memori; config yang masih
   menunjuk path lama ditolak saat start.
 
+- [x] Command observability tanpa LLM: `/whoami` (pengirim, role, chat, bot), `/status` (model,
+  arsip, memori, skill, tool), `/tools` (tool yang diizinkan role), `/cari` (arsip chat aktif),
+  `/help <command>` (usage/alias/izin), dan alias `/new` untuk `/reset`.
+
 ## Nanti
 
 - Integrasi penuh (fetch URL, parsing PDF/audio/OCR, calendar/email) — ditunda; sementara lewat

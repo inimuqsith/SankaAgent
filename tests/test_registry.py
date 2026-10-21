@@ -32,12 +32,16 @@ def clear_modules(prefix: str) -> None:
 def test_builtin_handlers_discovered() -> None:
     assert set(COMMANDS.names()) == {
         "backfill",
+        "cari",
         "help",
         "kirim",
         "memori",
         "ping",
         "reset",
         "skill",
+        "status",
+        "tools",
+        "whoami",
     }
     assert set(TOOLS.names()) == {
         "chat_history",
@@ -131,10 +135,14 @@ def test_explicit_empty_permissions_deny_all() -> None:
         "web_search",
     }
     assert set(COMMANDS.patterns("member", default.commands)) == {
+        "cari",
         "help",
         "kirim",
         "memori",
         "ping",
         "reset",
         "skill",
+        "status",
+        "tools",
+        "whoami",
     }

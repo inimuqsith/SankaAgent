@@ -408,3 +408,23 @@
   ekspektasi balasan command tak dikenal diperbarui.
 - Verifikasi: `pytest -q` 71 lulus; `python -m sanka selftest` SELFTEST OK; persona nyata 2354 char
   masuk system prompt; bot live di-restart (PID 113710) dan tersambung ke WhatsApp.
+
+## 2026-10-22 (command observability)
+
+- `sanka/commands/whoami.py`: sender JID, role, jenis/nama/JID chat, dan nomor bot; sender kini
+  ikut di `CommandContext` (field `sender`, diisi dari event Neonize).
+- `sanka/commands/status.py`: model, role, chat, jumlah arsip + jendela aktif, memori chat/global,
+  skill, dan jumlah tool/MCP. Semua pembacaan best-effort; store rusak tidak memblokir balasan.
+- `sanka/commands/tools.py`: daftar tool yang benar-benar diizinkan role, deskripsi dipotong 110 char.
+- `sanka/commands/cari.py`: pencarian arsip chat aktif tanpa LLM, 10 hasil terbaru dulu, waktu +
+  pengirim + teks 180 char.
+- `sanka/commands/help.py`: `/help <command>` menampilkan fungsi, usage, aliases, dan menolak command
+  yang tidak tersedia untuk role. Lookup registry dilakukan lazy agar discovery tidak sirkular.
+- `/reset` mendapat alias `/new`. `MemoryStore.count(scopes)` menghitung entri aktif tanpa membaca
+  seluruh isi.
+- `config.example.yaml` + `config.yaml`: command member ditambah `whoami`, `status`, `tools`, `cari`.
+- Uji: `tests/test_commands.py` mengunci output whoami/status/tools/cari/help detail; set registry
+  diperbarui; `MemoryStore.count` diuji.
+- Verifikasi: `pytest -q` 76 lulus; smoke handler nyata dengan store sementara menghasilkan semua
+  kartu command yang diharapkan; `python -m sanka selftest` SELFTEST OK; bot live di-restart
+  (PID 115972) dan tersambung ke WhatsApp.

@@ -43,8 +43,11 @@ def test_scopes_dedupe_and_context(tmp_path: Path) -> None:
     assert store.context("chat-a").count("suka kopi") == 1
     assert "rapat jam 3" in store.context("chat-a")
     assert "suka kopi" not in store.context("chat-a", include_global=False)
+    assert store.count(["global"]) == 1
+    assert store.count(["chat-a", "global"]) == 2
     assert store.search(["chat-a", "global"], "rapat")[0]["id"] == chat
     assert store.forget(["global"], item_id=first) == 1
+    assert store.count(["global"]) == 0
     assert "suka kopi" not in store.context("chat-a")
     store.close()
 

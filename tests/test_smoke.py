@@ -149,12 +149,12 @@ def test_format_reply() -> None:
 
 
 def test_help_renders_whatsapp_command_card() -> None:
-    ctx = SimpleNamespace(commands=(COMMANDS.get("help"), COMMANDS.get("ping")))
+    ctx = SimpleNamespace(commands=(COMMANDS.get("help"), COMMANDS.get("ping")), args="")
     lines = asyncio.run(help_command(ctx)).splitlines()
 
     assert lines[0] == "🧭 *Command Sanka*"
     assert "/ping (p) - 🏓 Cek Sanka hidup." in lines
-    assert lines[-1] == "Ketik command di atas, atau ngobrol biasa tanpa slash."
+    assert lines[-1] == "Ketik /help <command> untuk detail, atau ngobrol biasa tanpa slash."
     assert not any(line.startswith("Tool:") for line in lines)
 
 

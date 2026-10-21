@@ -540,6 +540,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         rest.strip(),
                         tuple(commands_for(role)),
                         tuple(tools_for(role)) + tuple(app.hub.specs(role)),
+                        sender=sender,
                     )
                     reply = await handler.fn(ctx)
             else:

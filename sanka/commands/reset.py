@@ -15,6 +15,6 @@ COMMAND = Handler(
     name="reset",
     description="🧹 Mulai percakapan baru di chat ini (arsip tetap).",
     fn=reset,
-    aliases=("r", "clear"),
+    aliases=("r", "clear", "new"),
     defaults={"owner": True, "member": True},
 )

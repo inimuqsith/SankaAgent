@@ -212,6 +212,18 @@ class MemoryStore:
             rows = self._select(scopes, query, limit or self.max_items)
         return [dict(row) for row in rows]
 
+    def count(self, scopes: list[str]) -> int:
+        """Jumlah entri aktif (belum di-supersede) pada scope yang diberikan."""
+        if not scopes:
+            return 0
+        with self._lock:
+            row = self._require().execute(
+                f"SELECT COUNT(*) FROM memory WHERE superseded_by IS NULL "
+                f"AND scope IN ({','.join('?' for _ in scopes)})",
+                scopes,
+            ).fetchone()
+        return int(row[0])
+
     def search(self, scopes: list[str], query: str, limit: int = 0) -> list[dict]:
         return self.entries(scopes, query, limit)
 

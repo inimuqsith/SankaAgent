@@ -55,9 +55,11 @@ Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `chat_his
 `skill`, `send`, `send_to`, `mcp__<server>__<tool>`.
 `web_search` memakai SearXNG (`web_search.base_url`, butuh `format: json` di `settings.yml`) dan
 jatuh ke backend `ddgs` (wikipedia/yahoo/startpage/brave) kalau instance itu mati atau kosong.
-Command: `/ping`, `/help`, `/reset`, plus `/backfill` (owner, DM; scan QR sekali), `/memori`,
-`/skill`, `/kirim` (owner + member), dan alias `/p`, `/h`, `/r`, `/ingat`, `/sop`, `/file`.
-`/help` membaca metadata registry.
+Command: `/ping`, `/help [command]`, `/reset` (alias `/new`), `/whoami`, `/status`, `/tools`, `/cari`,
+plus `/backfill` (owner, DM; scan QR sekali), `/memori`, `/skill`, `/kirim`, dan alias `/p`, `/h`,
+`/r`, `/ingat`, `/sop`, `/file`.
+`/help` membaca metadata registry dan menampilkan kartu command; `/help <command>` menampilkan
+usage, alias, dan izinnya untuk role pengirim.
 
 Kalau WhatsApp mengalamatkan pengirim lewat LID (`...@lid`), cocokkan role dengan digit LID itu,
 bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.

@@ -17,6 +17,7 @@ class CommandContext:
     args: str
     commands: tuple[Handler, ...]
     tools: tuple[Handler, ...]
+    sender: str = ""
 
 
 REGISTRY = Registry(
