@@ -255,3 +255,49 @@ Session WhatsApp disimpan di `whatsapp.session_db` (default `.sanka/whatsapp.db`
 muncul saat pairing pertama.
 `history.db` menyimpan arsip pesan dan dimuat ulang setelah restart.
 `shell` dan `sandbox` memberi akses host/container penuh: beri hanya ke role yang dipercaya.
+
+## Deploy (Docker/Dokploy)
+
+Image produksi ada di `Dockerfile`; `.sanka/`, `config.yaml`, dan `.env` sengaja tidak masuk build
+context. Container berjalan sebagai uid 1000, jadi bind mount data harus dimiliki uid itu.
+
+```bash
+podman build -t sanka-agent .
+podman run -d --name sanka --restart unless-stopped \
+  --userns=keep-id \
+  --env-file .env \
+  -v "$PWD/.sanka:/app/.sanka:Z" \
+  -v "$PWD/config.yaml:/app/config.yaml:ro,Z" \
+  sanka-agent
+```
+
+Di Docker rootful, buang `--userns=keep-id` dan sufiks `:Z` (SELinux) pada mount; uid container 1000
+harus sama dengan pemilik folder host.
+
+Dokploy (Application, bukan Compose):
+
+1. Hubungkan repo `inimuqsith/SankaAgent`, branch `main`, build type **Dockerfile**.
+2. Aktifkan **Auto Deploy** agar setiap push ke `main` memicu deploy ulang.
+3. Isi environment `OPENCODE_GO_API_KEY`; jangan taruh di repo.
+4. Bind mount `/opt/sanka/.sanka` -> `/app/.sanka` dan file `/opt/sanka/config.yaml` ->
+   `/app/config.yaml`. Path relatif di config resolve dari `/opt/sanka`, jadi data tetap di
+   `/opt/sanka/.sanka`.
+5. Replicas **1**, update order **stop-first**, tanpa domain/port: bot hanya membuka koneksi keluar.
+
+Cutover data:
+
+```bash
+# di mesin lama: hentikan bot dulu agar snapshot final dan tidak ada dua client
+python scripts/backup.py            # arsip di ~/backups/*.tar.gz, DB via sqlite backup API
+# kirim arsip ke server, lalu di server:
+mkdir -p /opt/sanka && tar -xzf sanka-*.tar.gz -C /opt/sanka
+chown -R 1000:1000 /opt/sanka && chmod 700 /opt/sanka/.sanka && chmod 600 /opt/sanka/.env /opt/sanka/.sanka/*.db
+```
+
+Satu session WhatsApp hanya boleh dipakai satu proses. Jangan jalankan bot server sebelum bot lokal
+berhenti; kalau `whatsapp.db` tidak terbawa, server akan meminta pairing QR baru.
+
+Di dalam container `sandbox` (Podman) tidak tersedia: hapus dari `roles` atau terima balasan error.
+`web_search.base_url` yang menunjuk `127.0.0.1:8080` tidak bisa dijangkau dari container; kosongkan
+untuk fallback `ddgs`, atau arahkan ke SearXNG yang satu network. Docker mengirim `SIGINT` saat stop
+(`STOPSIGNAL`) supaya SQLite ditutup rapi sebelum container diganti.

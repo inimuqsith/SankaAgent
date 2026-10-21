@@ -1,0 +1,15 @@
+.git
+.github
+.gitignore
+.venv
+.sanka
+.env
+config.yaml
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+*.egg-info
+tests
+*.db
+*.log

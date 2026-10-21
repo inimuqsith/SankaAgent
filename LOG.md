@@ -1,5 +1,23 @@
 # LOG
 
+## 2026-10-22 (deploy + arsip)
+
+- `Dockerfile` produksi: `python:3.12-slim`, ffmpeg + libmagic + tzdata, install package, user uid
+  1000, `STOPSIGNAL SIGINT` agar Docker stop menutup SQLite rapi. `.dockerignore` membuang `.sanka/`,
+  `config.yaml`, `.env`, venv, cache, dan tests dari build context.
+- `scripts/backup.py`: arsip `.sanka` + `config.yaml` + `.env`; DB disalin lewat sqlite backup API
+  (aman saat bot hidup), `integrity_check`, checkpoint WAL, tar.gz 0600 + sha256 + MANIFEST.
+- README: jalur Dokploy Application (GitHub auto deploy, bind mount `/opt/sanka/.sanka` dan
+  `config.yaml`, replica 1/stop-first), cutover data, dan batasan container (`sandbox` Podman,
+  SearXNG loopback, uid bind mount).
+- Verifikasi: `pytest -q` 76 lulus. Image `sanka-agent:test` (781 MB) dibangun dalam 287 dtk;
+  build pertama mengunduh ffmpeg (207 paket, 477 MB), layer berikutnya cache. Di dalam image:
+  import neonize/magic ok, ffmpeg/ffprobe 7.1.5, uid 1000; start container mencapai
+  "Sanka siap. Scan QR..." dan hanya gagal karena `--network none`.
+- Arsip data/session dibuat dari bot yang sedang hidup: integrity_check ok, session berisi 1 device
+  + 494 kontak, history 386 pesan / 3 chat. Untuk cutover final, hentikan bot lalu jalankan
+  `python scripts/backup.py` lagi supaya snapshot benar-benar final.
+
 ## 2026-10-21
 
 - Rewrite sederhana: satu proses Python (Neonize 0.5.2), tanpa gateway, tanpa bridge Node.
