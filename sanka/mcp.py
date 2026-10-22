@@ -1,4 +1,4 @@
-"""Klien MCP: satu Hub untuk semua server stdio, tool diekspos cepat gagal-toleran."""
+"""Klien MCP: satu Hub untuk semua server stdio/HTTP, tool diekspos cepat gagal-toleran."""
 
 from __future__ import annotations
 
@@ -25,6 +25,17 @@ def _slug(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", value)
 
 
+def _target(server: MCPServerConfig) -> str | StdioServerParameters:
+    """url = Streamable HTTP (SDK v2 menerima URL langsung), selain itu subprocess stdio."""
+    if server.url:
+        return server.url
+    return StdioServerParameters(
+        command=server.command or "",
+        args=list(server.args),
+        env=server.env or None,
+    )
+
+
 class Hub:
     def __init__(self, servers: dict[str, MCPServerConfig]):
         self.servers = servers
@@ -36,15 +47,7 @@ class Hub:
         for name, server in self.servers.items():
             try:
                 client = await asyncio.wait_for(
-                    self._stack.enter_async_context(
-                        Client(
-                            StdioServerParameters(
-                                command=server.command,
-                                args=list(server.args),
-                                env=server.env or None,
-                            )
-                        )
-                    ),
+                    self._stack.enter_async_context(Client(_target(server))),
                     START_TIMEOUT,
                 )
                 listed = await asyncio.wait_for(client.list_tools(), START_TIMEOUT)

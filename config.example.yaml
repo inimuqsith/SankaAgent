@@ -93,3 +93,5 @@ mcp:
   #   command: uvx
   #   args: ["mcp-server-time"]
   #   env: {}
+  # gworkspace:
+  #   url: http://google-workspace-mcp:8080/mcp

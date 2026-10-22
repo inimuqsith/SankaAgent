@@ -37,7 +37,7 @@ atau Docker CLI di container (lihat [Sandbox](#sandbox)).
 | `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
 | `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
-| `mcp.servers` | `command`, `args`, `env` per server stdio |
+| `mcp.servers` | per server: `command` + `args` + `env` (stdio) atau `url` (Streamable HTTP); tool diekspos sebagai `mcp__<server>__<tool>` |
 
 Path relatif (`workspace`, `session_db`, `history_db`, `memory.path`, `skills.dir`) di-resolve dari
 folder `config.yaml`, bukan CWD. Default contoh memakai `.sanka/...`, jadi semua data runtime

@@ -212,6 +212,84 @@ default_role: owner
         load_config(str(target))
 
 
+def load_mcp_config(tmp_path: Path, monkeypatch, block: str) -> Config:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    target = tmp_path / "config.yaml"
+    target.write_text(
+        f"""
+persona: p
+llm:
+  base_url: "http://x"
+  model: m
+  api_key_env: SANKA_TEST_KEY
+workspace: ".sanka/workspace"
+roles:
+  owner:
+    tools: ["*"]
+default_role: owner
+mcp:
+  servers:
+{block}
+""",
+        encoding="utf-8",
+    )
+    return load_config(str(target))
+
+
+def test_mcp_server_accepts_stdio_and_url(tmp_path: Path, monkeypatch) -> None:
+    config = load_mcp_config(
+        tmp_path,
+        monkeypatch,
+        """    time:
+      command: uvx
+      args: ["mcp-server-time"]
+    gworkspace:
+      url: http://google-workspace-mcp:8080/mcp
+      args: ["diabaikan"]
+""",
+    )
+
+    assert config.mcp["time"].command == "uvx"
+    assert config.mcp["time"].url is None
+    assert config.mcp["gworkspace"].command is None
+    assert config.mcp["gworkspace"].url == "http://google-workspace-mcp:8080/mcp"
+    assert config.mcp["gworkspace"].args == ()
+
+
+def test_mcp_server_rejects_url_without_http_scheme(tmp_path: Path, monkeypatch) -> None:
+    with pytest.raises(SystemExit, match="gworkspace.*http:// atau https://"):
+        load_mcp_config(
+            tmp_path,
+            monkeypatch,
+            """    gworkspace:
+      url: google-workspace-mcp:8080/mcp
+""",
+        )
+
+
+def test_mcp_server_rejects_command_and_url_together(tmp_path: Path, monkeypatch) -> None:
+    with pytest.raises(SystemExit, match="gworkspace.*jangan keduanya"):
+        load_mcp_config(
+            tmp_path,
+            monkeypatch,
+            """    gworkspace:
+      command: uvx
+      url: http://google-workspace-mcp:8080/mcp
+""",
+        )
+
+
+def test_mcp_server_requires_command_or_url(tmp_path: Path, monkeypatch) -> None:
+    with pytest.raises(SystemExit, match="gworkspace.*butuh 'command' atau 'url'"):
+        load_mcp_config(
+            tmp_path,
+            monkeypatch,
+            """    gworkspace:
+      args: []
+""",
+        )
+
+
 def test_system_prompt_lists_bot_numbers() -> None:
     config = make_config()
 

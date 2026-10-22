@@ -70,9 +70,10 @@ class SkillsConfig:
 @dataclass(frozen=True)
 class MCPServerConfig:
     name: str
-    command: str
+    command: str | None = None  # stdio; None bila server memakai url
     args: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
+    url: str | None = None  # Streamable HTTP
 
 
 @dataclass(frozen=True)
@@ -186,14 +187,25 @@ def _mcp_servers(raw: object) -> dict[str, MCPServerConfig]:
     for name, body in servers.items():
         body = body if isinstance(body, dict) else {}
         command = body.get("command")
-        if not isinstance(command, str) or not command:
+        url = body.get("url")
+        if command is None and url is None:
+            raise _fail(f"config: mcp server '{name}' butuh 'command' atau 'url'")
+        if command is not None and url is not None:
+            raise _fail(f"config: mcp server '{name}' pilih 'command' atau 'url', jangan keduanya")
+        if url is not None:
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                raise _fail(f"config: mcp server '{name}' url harus diawali http:// atau https://")
+        elif not isinstance(command, str) or not command:
             raise _fail(f"config: mcp server '{name}' butuh 'command'")
-        env = body.get("env") if isinstance(body.get("env"), dict) else {}
+        # args/env hanya bermakna untuk stdio; mode url membuangnya agar tidak menyesatkan.
+        stdio = url is None
+        env = body.get("env") if stdio and isinstance(body.get("env"), dict) else {}
         result[str(name)] = MCPServerConfig(
             name=str(name),
-            command=command,
-            args=_str_tuple(body.get("args")),
+            command=command if stdio else None,
+            args=_str_tuple(body.get("args")) if stdio else (),
             env={str(k): str(v) for k, v in env.items()},
+            url=url,
         )
     return result
 
