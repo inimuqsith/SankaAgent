@@ -294,3 +294,19 @@ def test_gate_context_includes_sticker_quote_and_direction() -> None:
     assert "membalas Ilham" in llm.user
     assert "Arah pesan: membalas pesan orang lain, bukan pesanmu" in llm.user
     assert decision.act == "ignore"
+
+
+def test_dm_context_says_every_message_is_for_bot() -> None:
+    llm = FakeLLM('{"act":"reply","bubbles":1}')
+
+    decide(gate_of(llm, llm_decide=True), text="lagi apa", is_dm=True)
+
+    assert "Chat: pesan pribadi (DM), semua pesan di sini untukmu." in llm.user
+
+
+def test_group_context_is_marked_group() -> None:
+    llm = FakeLLM('{"act":"ignore","why":"bukan buat aku"}')
+
+    decide(gate_of(llm, llm_decide=True), text="halo semua")
+
+    assert "Chat: grup." in llm.user

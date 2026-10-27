@@ -1,5 +1,21 @@
 # LOG
 
+## 2026-10-27 (DM tidak butuh tag/nama; chat kind di konteks)
+
+- `sanka/wa.py` `system_prompt(is_dm=...)`: di chat pribadi persona menyatakan semua pesan
+  untuknya — tag, mention, atau namanya tidak diperlukan, dan aturan arah untuk grup tidak
+  berlaku. `handle_message` meneruskan `is_dm`.
+- `sanka/gate.py`: `decide` meneruskan `is_dm` ke `_ask`/`_review`/`_context`, dan `_context`
+  membuka dengan `Chat: pesan pribadi (DM), semua pesan di sini untukmu.` atau `Chat: grup.`
+  supaya model tahu jenis chat tanpa menebak dari nama chat. Aturan yang sama ditambahkan ke
+  `DECIDE_PROMPT`/`JUDGE_PROMPT`.
+- `sanka/llm.py`: `APPRAISE_PROMPT` menyatakan DM selalu `directed=true` (kecuali pesan jelas
+  membicarakan orang lain); `_appraisal_context` menulis `— grup` / `— pesan pribadi (DM)`.
+  `_read_appraisal` sudah memaksa `directed=True` untuk DM bila intent valid.
+- Uji: gate context DM/grup, `system_prompt(is_dm=True)`, dan satu turn DM tanpa tag/nama yang
+  tetap dijawab (`tests/test_gate.py`, `tests/test_smoke.py`, `tests/test_reply.py`).
+  `pytest -q` 188 lulus, `python -m sanka selftest` SELFTEST OK.
+
 ## 2026-10-28 (arah pesan, /mood, dan kirim ke CP)
 
 - `sanka/chat.py`: `MEDIA_LABELS` + `prompt_entry(entry, bot_name, limit)` — satu baris konteks

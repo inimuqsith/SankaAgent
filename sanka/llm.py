@@ -75,7 +75,9 @@ Balas HANYA JSON:
 - "pantes bego", ledekan, atau sindiran yang objeknya orang lain -> directed=false, hurt=0.
 - Stiker/emoji/gambar tanpa kata bukan bukti ngambek. Stiker bisa berarti tunduk, malu,
   minta maaf, atau bercanda; jangan mengarang isi visual yang tidak diberikan.
-- Jangan mengarang kondisi fisik Sanka (kaki pegal, badan capek, sakit)."""
+- Jangan mengarang kondisi fisik Sanka (kaki pegal, badan capek, sakit).
+- Di chat pribadi (DM) semua pesan untuk Sanka: directed=true tanpa perlu tag atau namanya,
+  kecuali pesan itu jelas membicarakan orang lain."""
 
 
 def _json_object(text: str) -> dict | None:

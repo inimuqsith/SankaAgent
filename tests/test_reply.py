@@ -1099,3 +1099,19 @@ def test_mentioned_mood_returns_card_not_persona_reply(tmp_path) -> None:
     assert text.splitlines()[0] == "💭 *Mood Sanka*"
     assert any(line.startswith("• Status:") for line in text.splitlines())
     store.close()
+
+
+def test_dm_without_mention_or_name_is_answered(tmp_path) -> None:
+    llm = AppraiseLLM(CASUAL)
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("lagi apa kamu"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert llm.calls  # DM tidak butuh tag atau namamu disebut
+    assert payload_text(sent[0]) == "iya aku dengar"

@@ -504,3 +504,13 @@ def test_elongated_name_is_detected() -> None:
     assert named("SANNNKAAAAAA") is True
     assert named("sankaaaaaa") is True
     assert named("sankas") is False
+
+
+def test_system_prompt_marks_dm_as_always_for_bot() -> None:
+    config = make_config()
+
+    dm = system_prompt(config, "member", BOT, is_dm=True)
+    group = system_prompt(config, "member", BOT)
+
+    assert "Chat ini pesan pribadi (DM): semua pesan di sini untukmu." in dm
+    assert "Chat ini pesan pribadi (DM)" not in group

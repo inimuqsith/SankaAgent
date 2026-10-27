@@ -45,6 +45,7 @@ Balas HANYA JSON: {"act":"reply|react|ignore","bubbles":1,"why":"<=80 char"}
   tanpa kata-kata.
 - Kamu tidak punya tubuh fisik. Jangan mengarang kondisi tubuh (kaki pegal, badan capek,
   sakit).
+- Di chat pribadi (DM) semua pesan untukmu; tag, kutipan, atau namamu tidak diperlukan.
 Pertimbangkan mood, drive (gabut/kesepian/energi), hubungan, dan siapa yang aktif.
 Jangan menjelaskan proses, jangan menyebut AI."""
 
@@ -61,7 +62,8 @@ Aturan:
   melanjutkan percakapan dengannya.
 - Sindiran/ledekan yang objeknya orang lain bukan untuk Sanka.
 - Stiker/emoji tanpa kata bukan bukti ngambek atau marah; jangan mengarang isi visual atau kondisi
-  tubuh yang tidak diberikan."""
+  tubuh yang tidak diberikan.
+- Di chat pribadi (DM) semua pesan untuk Sanka; tag atau namanya tidak diperlukan."""
 
 ACTS = frozenset({"reply", "react", "ignore"})
 SECOND_PERSON = re.compile(r"\b(kamu|lu|lo|kau|km|kmu|sanka|san)\b", re.IGNORECASE)
@@ -321,6 +323,7 @@ class ReplyGate:
                 named,
                 moment,
                 current=current,
+                is_dm=is_dm,
                 mentioned=mentioned,
                 replied_to_bot=replied_to_bot,
                 has_quote=has_quote,
@@ -359,6 +362,7 @@ class ReplyGate:
                 named,
                 moment,
                 current=current,
+                is_dm=is_dm,
                 mentioned=mentioned,
                 replied_to_bot=replied_to_bot,
                 has_quote=has_quote,
@@ -385,6 +389,7 @@ class ReplyGate:
         moment: float,
         *,
         current: ChatMessage | None = None,
+        is_dm: bool = False,
         mentioned: bool = False,
         replied_to_bot: bool = False,
         has_quote: bool = False,
@@ -404,6 +409,7 @@ class ReplyGate:
             named,
             moment,
             current=current,
+            is_dm=is_dm,
             mentioned=mentioned,
             replied_to_bot=replied_to_bot,
             has_quote=has_quote,
@@ -431,6 +437,7 @@ class ReplyGate:
         moment: float,
         *,
         current: ChatMessage | None = None,
+        is_dm: bool = False,
         mentioned: bool = False,
         replied_to_bot: bool = False,
         has_quote: bool = False,
@@ -454,6 +461,7 @@ class ReplyGate:
                         named,
                         moment,
                         current=current,
+                        is_dm=is_dm,
                         mentioned=mentioned,
                         replied_to_bot=replied_to_bot,
                         has_quote=has_quote,
@@ -480,13 +488,18 @@ class ReplyGate:
         moment: float,
         *,
         current: ChatMessage | None = None,
+        is_dm: bool = False,
         mentioned: bool = False,
         replied_to_bot: bool = False,
         has_quote: bool = False,
         quote_sender_is_bot: bool = False,
     ) -> str:
         """Konteks keputusan: siapa, mood/drive/hubungan, dan percakapan yang sudah ada."""
-        parts: list[str] = []
+        parts: list[str] = [
+            "Chat: pesan pribadi (DM), semua pesan di sini untukmu."
+            if is_dm
+            else "Chat: grup."
+        ]
         if self.affect is not None:
             try:
                 prompt = self.affect.prompt(chat_id, sender_id)
