@@ -88,6 +88,10 @@ humanize:
   max_bubbles: 3
   reaction_stickers: ["stickers/aku-punya-ide.webp"]
 
+prompt:
+  salience: true      # blok opsional bersaing saat prompt balasan > max_chars
+  max_chars: 9000     # anggaran karakter system prompt
+
 style:
   enabled: true
   path: ".sanka/style.json"

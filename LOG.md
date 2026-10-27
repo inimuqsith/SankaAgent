@@ -1,5 +1,32 @@
 # LOG
 
+## 2026-10-28 (anggaran prompt + harness ablasi)
+
+- `sanka/salience.py`: kompetisi blok ala global workspace. `MANDATORY` (`base`, `safety`, `away`,
+  `thread`, `emotion`, `vibe`) selalu masuk; `COMPETING` (`topic`, `style`, `person_style`,
+  `memory`, `actions`, `skills`) dibuang satu per satu dengan skor terendah
+  (`0.7 * irisan_kata_kunci/3 + bonus`, seri = paling belakang di `ORDER`) sampai prompt muat.
+- `sanka/config.py`: `PromptConfig` (`salience: true`, `max_chars: 9000`) + loader `prompt:`.
+  `config.yaml`/`config.example.yaml` mendokumentasikan bagian baru.
+- `sanka/wa.py::system_prompt`: blok prompt dirakit sebagai dict lalu dipilih `salience.select`;
+  parameter baru `query`/`bonuses` (pemanggil lama tetap valid). `handle_message` mengisi bonus dari
+  topik pending (+0.3), ≥15 interaksi (+0.25 person_style), familiaritas ≥0.3 (+0.15 style), dan
+  mode professional (+0.2 skills); kegagalan baca affect = bonus kosong, bukan error.
+- `sanka/chat.py` + `sanka/thread.py`: `STOPWORDS`, `FOLLOWUP_CUES`, `keyword_set`,
+  `followup_utterance` pindah ke chat; aturan situasi (`open_thread`, `continues`) jadi fungsi murni
+  berjam `now`, dipakai `App.note_thread`/`App.continues_thread` dan harness.
+- `sanka/ablate.py` + `scripts/ablate.py`: harness read-only. `classify` me-replay gerbang dari
+  arsip (jendela balasan 1 pesan, situasi memakai `message.when`), `replay_metrics` menghitung
+  `called`/`thread_allowed`/`replied`/`false_positive`/`missed`/`unprompted_rate`, `prompt_budget`
+  mengukur prompt sebelum/sesudah kompetisi, `decision_shift` memanggil `decide` dua kali per sampel
+  (penuh vs blok `--ablate`) tanpa tool/kirim/state. Tanpa API key, bagian keputusan dilewati.
+- Uji: `tests/test_salience.py`, `tests/test_thread.py`, `tests/test_ablate.py`, dan
+  `test_prompt_budget_drops_optional_blocks` di `tests/test_reply.py`.
+- Verifikasi: `pytest -q` 240 lulus; `python -m sanka selftest` SELFTEST OK (sandbox SKIP);
+  `scripts/ablate.py --last 100` pada arsip nyata: 54 pesan masuk, `unprompted_rate=0.259`,
+  `before_mean=7744` sehingga tidak ada blok dibuang; `--llm-sample 3` menghasilkan
+  `tone_changed=1` dengan contoh sebelum/sesudah.
+
 ## 2026-10-28 (gate temporal, /stop, atensi, AFT-lite, vibe ruangan)
 
 - `sanka/config.py`: `WhatsAppConfig.backlog_seconds` (600) dan `quiet_seconds` (600) + loader;

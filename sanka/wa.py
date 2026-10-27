@@ -18,7 +18,7 @@ from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import ContextInfo, ExtendedTextM
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 from neonize.utils.jid import build_jid
 
-from . import guard
+from . import guard, salience, thread
 from .chat import (
     ChatMessage,
     Quote,
@@ -162,31 +162,28 @@ class App:
 
     def note_thread(self, chat_id: str, message: ChatMessage, reply: str) -> None:
         """Catat situasi yang dibuka balasan ini: siapa, tentang apa, sampai kapan berlaku."""
-        seconds = int(self.config.whatsapp.thread_seconds or 0)
-        if seconds <= 0 or not message.sender_id:
-            return
-        keys = _keywords(message.text) | _keywords(reply)
-        self.threads[chat_id] = {
-            "person": message.sender_id,
-            "name": message.sender_name,
-            "until": time.time() + seconds,
-            "keywords": set(sorted(keys)[:THREAD_KEYWORDS]),
-        }
+        state = thread.open_thread(
+            message.sender_id,
+            message.sender_name,
+            message.text,
+            reply,
+            seconds=int(self.config.whatsapp.thread_seconds or 0),
+            now=time.time(),
+        )
+        if state:
+            self.threads[chat_id] = state
 
     def continues_thread(self, chat_id: str, message: ChatMessage) -> bool:
         """Pesan ini melanjutkan situasi yang sama, bukan konteks baru yang butuh panggilan."""
-        state = self.threads.get(chat_id)
-        if not state:
-            return False
-        if time.time() > float(state["until"]) or message.sender_id != state["person"]:
-            self.threads.pop(chat_id, None)  # situasi selesai: beda orang atau sudah lama
-            return False
-        body = str(message.text or "").strip()
-        if not body:
-            return False
-        if _keywords(body) & state["keywords"]:
-            return True
-        return _followup_utterance(body)
+        ok = thread.continues(
+            self.threads.get(chat_id),
+            person=message.sender_id,
+            text=message.text,
+            now=time.time(),
+        )
+        if not ok:
+            self.threads.pop(chat_id, None)  # situasi selesai: beda orang, kosong, atau sudah lama
+        return ok
 
     def close_thread(self, chat_id: str) -> None:
         self.threads.pop(chat_id, None)
@@ -465,6 +462,8 @@ def system_prompt(
     mode: str = "daily",
     tone: str = "neutral",
     decision_reason: str = "",
+    query: str = "",
+    bonuses: dict[str, float] | None = None,
 ) -> str:
     # Tanpa identitas ini model membaca mention @<LID bot> sebagai nomor orang lain.
     identity = (
@@ -541,24 +540,30 @@ def system_prompt(
         + "Format balasan untuk WhatsApp: tanpa heading markdown, tanpa tabel.\n"
         f"Tanggal: {date.today().isoformat()}."
     )
-    return "\n\n".join(
-        part
-        for part in (
-            base,
-            topic,
-            away,
-            thread,
-            emotion,
-            vibe,
-            style,
-            person_style,
-            safety,
-            memory,
-            actions,
-            skills,
-        )
-        if part.strip()
+    blocks = {
+        "base": base,
+        "topic": topic,
+        "away": away,
+        "thread": thread,
+        "emotion": emotion,
+        "vibe": vibe,
+        "style": style,
+        "person_style": person_style,
+        "safety": safety,
+        "memory": memory,
+        "actions": actions,
+        "skills": skills,
+    }
+    kept, dropped = salience.select(
+        blocks,
+        query,
+        bonuses=bonuses,
+        max_chars=config.prompt.max_chars,
+        enabled=config.prompt.salience,
     )
+    if dropped:
+        log.debug("salience: buang %s", ",".join(dropped))
+    return salience.JOIN.join(text for _, text in kept)
 
 
 def _sender_name(ev, sender_digits: str, sender: str) -> str:
@@ -622,37 +627,6 @@ def bot_named(text: str, name: str) -> bool:
     if not body or not clean:
         return False
     return _name_regex(clean).search(body) is not None
-
-
-THREAD_KEYWORDS = 10
-STOPWORDS = frozenset(
-    {
-        "yang", "sama", "untuk", "dari", "kamu", "aku", "ini", "itu", "apa", "gimana",
-        "kalau", "jadi", "sudah", "udah", "belum", "bisa", "aja", "saja", "juga", "kok",
-        "sih", "deh", "loh", "kan", "nya", "dan", "atau", "tapi", "atau", "the", "and",
-        "for", "with", "that", "this", "dengan", "karena", "biar", "gak", "nggak", "ngga",
-    }
-)
-FOLLOWUP_CUES = frozenset(
-    {
-        "iya", "iyaa", "iyaaa", "hah", "apaan", "maksudnya", "kenapa", "kok", "terus",
-        "lanjut", "gimana", "emang", "bener", "beneran", "serius", "trus", "ya", "yaa",
-        "maksud", "kok", "lah", "loh", "mau", "jadi",
-    }
-)
-
-
-def _keywords(text: str) -> set[str]:
-    words = re.findall(r"[a-z0-9]{4,}", str(text or "").lower())
-    return {word for word in words if word not in STOPWORDS}
-
-
-def _followup_utterance(text: str) -> bool:
-    """Pendek dan berpola menyambung ("iya?", "maksudnya?", "gimana dong")."""
-    words = re.findall(r"[a-z]+", str(text or "").lower())
-    if not words or len(words) > 4:
-        return False
-    return bool(set(words) & FOLLOWUP_CUES) or str(text).strip().endswith("?")
 
 
 def _resolve_mentions(text: str, app: App, chat_id: str) -> tuple[str, list[str]]:
@@ -1171,6 +1145,34 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     request=request_text,
                     affect=app.affect,
                 )
+                bonuses: dict[str, float] = {}
+                if app.affect is not None:
+                    try:
+                        person_row = next(
+                            (
+                                row
+                                for row in app.affect.known_people(chat_id, 20)
+                                if row["person_id"] == person_id
+                            ),
+                            None,
+                        )
+                        bonuses = {
+                            "topic": 0.3 if app.affect.pending(chat_id) > 0 else 0.0,
+                            "person_style": (
+                                0.25
+                                if person_row and int(person_row["interactions"]) >= 15
+                                else 0.0
+                            ),
+                            "style": (
+                                0.15
+                                if person_row and float(person_row["familiarity"]) >= 0.3
+                                else 0.0
+                            ),
+                            "skills": 0.2 if decision.mode == "professional" else 0.0,
+                        }
+                    except Exception:
+                        log.debug("gagal menghitung bonus salience chat=%s", chat, exc_info=True)
+                        bonuses = {}
                 answer = await app.llm.run(
                     system_prompt(
                         app.config,
@@ -1193,6 +1195,8 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         mode=decision.mode,
                         tone=decision.tone,
                         decision_reason=decision.reason,
+                        query=message.text,
+                        bonuses=bonuses,
                     ),
                     content,
                     specs,

@@ -1041,6 +1041,24 @@ def test_system_prompt_places_emotion_style_topic_and_safety() -> None:
     assert "Keputusanmu: dihina. Nada: curt." in prompt
 
 
+def test_prompt_budget_drops_optional_blocks() -> None:
+    from dataclasses import replace
+
+    from sanka.wa import system_prompt
+
+    config = make_config()
+    blocks = {"memory": "x" * 6000, "topic": "topik" * 240}
+    tight = replace(config, prompt=replace(config.prompt, max_chars=5500))
+
+    prompt = system_prompt(tight, "member", None, query="kopi", bonuses={"topic": 0.3}, **blocks)
+
+    assert "x" * 6000 not in prompt  # memori tanpa irisan kata kunci dibuang
+    assert "topik" * 240 in prompt
+    roomy = replace(config, prompt=replace(config.prompt, max_chars=50000))
+    full = system_prompt(roomy, "member", None, query="kopi", bonuses={"topic": 0.3}, **blocks)
+    assert "x" * 6000 in full and "topik" * 240 in full
+
+
 def test_system_prompt_does_not_claim_bot_assistant() -> None:
     from sanka.wa import system_prompt
 

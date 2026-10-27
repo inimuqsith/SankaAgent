@@ -6,6 +6,7 @@ import base64
 import contextlib
 import logging
 import mimetypes
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -246,6 +247,36 @@ INVISIBLE = dict.fromkeys(map(ord, "\u2068\u2069\u200e\u200f\u202a\u202b\u202c\u
 def clean(text: str) -> str:
     """Buang karakter isolasi bidi yang membungkus mention WhatsApp, normalisasi NBSP."""
     return (text or "").translate(INVISIBLE).replace("\u00a0", " ")
+
+
+STOPWORDS = frozenset(
+    {
+        "yang", "sama", "untuk", "dari", "kamu", "aku", "ini", "itu", "apa", "gimana",
+        "kalau", "jadi", "sudah", "udah", "belum", "bisa", "aja", "saja", "juga", "kok",
+        "sih", "deh", "loh", "kan", "nya", "dan", "atau", "tapi", "the", "and", "for",
+        "with", "that", "this", "dengan", "karena", "biar", "gak", "nggak", "ngga",
+    }
+)
+FOLLOWUP_CUES = frozenset(
+    {
+        "iya", "iyaa", "iyaaa", "hah", "apaan", "maksudnya", "kenapa", "kok", "terus",
+        "lanjut", "gimana", "emang", "bener", "beneran", "serius", "trus", "ya", "yaa",
+        "maksud", "lah", "loh", "mau", "jadi",
+    }
+)
+
+
+def keyword_set(text: str) -> set[str]:
+    """Kata >=4 huruf tanpa stopword: dipakai salience, situasi, dan harness ablasi."""
+    return {w for w in re.findall(r"[a-z0-9]{4,}", str(text or "").lower()) if w not in STOPWORDS}
+
+
+def followup_utterance(text: str) -> bool:
+    """Pendek dan berpola menyambung ("iya?", "maksudnya?", "gimana dong")."""
+    words = re.findall(r"[a-z]+", str(text or "").lower())
+    if not words or len(words) > 4:
+        return False
+    return bool(set(words) & FOLLOWUP_CUES) or str(text).strip().endswith("?")
 
 
 def digits(value: str) -> str:

@@ -54,6 +54,7 @@ menulis peringatan `SOUL.md tidak ada di <folder>`. Saat start, loader mencatat 
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
 | `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine, satu `sanka.json` untuk semua chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `grudge_half_life_hours` (kesal reda sendiri, lebih lama untuk yang dekat), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
 | `humanize` | bubble & jeda: `enabled`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles` (batas atas jumlah pesan), `reaction_stickers` |
+| `prompt` | anggaran system prompt: `salience` (blok opsional bersaing saat prompt melewati anggaran), `max_chars` (default 9000; blok wajib tidak pernah dibuang) |
 | `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
 | `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_urge`, `chime_gap_seconds`, `chime_cooldown`, `chime_per_day`, `chime_per_day_global`, `research_cooldown`, `research_per_day`, `research_results` |
 | `mcp.servers` | per server: `command` + `args` + `env` (stdio) atau `url` (Streamable HTTP); tool diekspos sebagai `mcp__<server>__<tool>` |
@@ -489,7 +490,14 @@ sedangkan `tools: []` / `commands: []` berarti tolak semua.
 python -m sanka               # pairing: scan QR di terminal
 python -m sanka selftest      # cek tool + LLM tanpa WhatsApp
 python -m sanka backfill      # perangkat sementara: tarik history lama, lalu logout
+python scripts/ablate.py --last 100 --json /tmp/ablate.json   # replay gerbang + anggaran prompt
+python scripts/ablate.py --last 60 --llm-sample 3             # apakah blok gate mengubah keputusan
 ```
+
+`scripts/ablate.py` hanya membaca arsip: replay aturan balasan (`called`/`thread_allowed`/
+`false_positive`/`missed`), ukuran system prompt sebelum/sesudah kompetisi blok, dan (dengan
+`--llm-sample`) pergeseran `addressed`/`act`/`tone` saat `emotion`, `vibe`, `thread`, atau `away`
+diabsi. Tanpa API key, bagian keputusan dilewati; metrik replay dan prompt tetap dicetak.
 
 Session WhatsApp disimpan di `whatsapp.session_db` (default `.sanka/whatsapp.db`), jadi QR hanya
 muncul saat pairing pertama.

@@ -95,6 +95,12 @@ class AffectConfig:
 
 
 @dataclass(frozen=True)
+class PromptConfig:
+    salience: bool = True  # blok opsional bersaing saat prompt melewati max_chars
+    max_chars: int = 9000  # anggaran total system prompt balasan
+
+
+@dataclass(frozen=True)
 class HumanizeConfig:
     enabled: bool = False
     cpms: float = 25.0
@@ -157,6 +163,7 @@ class Config:
     humanize: HumanizeConfig = field(default_factory=HumanizeConfig)
     style: StyleConfig = field(default_factory=StyleConfig)
     ambient: AmbientConfig = field(default_factory=AmbientConfig)
+    prompt: PromptConfig = field(default_factory=PromptConfig)
 
     def api_key(self) -> str:
         return os.environ[self.llm.api_key_env]
@@ -304,7 +311,7 @@ def _mcp_servers(raw: object) -> dict[str, MCPServerConfig]:
     return result
 
 
-def load_config(path: str | None = None) -> Config:
+def load_config(path: str | None = None, *, require_key: bool = True) -> Config:
     target = Path(path or os.environ.get("SANKA_CONFIG") or "config.yaml")
     if not target.is_file():
         raise _fail(f"config tidak ditemukan: {target} (salin dari config.example.yaml)")
@@ -317,7 +324,7 @@ def load_config(path: str | None = None) -> Config:
 
     llm_raw = raw.get("llm") if isinstance(raw.get("llm"), dict) else {}
     api_key_env = str(llm_raw.get("api_key_env") or "OPENCODE_GO_API_KEY")
-    if not os.environ.get(api_key_env):
+    if require_key and not os.environ.get(api_key_env):
         raise _fail(f"env {api_key_env} belum diisi (taruh di .env)")
 
     roles = _roles(raw.get("roles"))
@@ -332,6 +339,7 @@ def load_config(path: str | None = None) -> Config:
     skills_raw = raw.get("skills") if isinstance(raw.get("skills"), dict) else {}
     affect_raw = _section(raw, "affect")
     humanize_raw = _section(raw, "humanize")
+    prompt_raw = _section(raw, "prompt")
     style_raw = _section(raw, "style")
     ambient_raw = _section(raw, "ambient")
 
@@ -493,5 +501,9 @@ def load_config(path: str | None = None) -> Config:
             research_cooldown=int(_num(ambient_raw.get("research_cooldown"), 21600)),
             research_per_day=int(_num(ambient_raw.get("research_per_day"), 6)),
             research_results=int(_num(ambient_raw.get("research_results"), 5)),
+        ),
+        prompt=PromptConfig(
+            salience=_bool(prompt_raw.get("salience"), True),
+            max_chars=int(_num(prompt_raw.get("max_chars"), 9000)),
         ),
     )

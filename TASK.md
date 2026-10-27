@@ -96,6 +96,15 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   tidak pernah DM.
 - [x] Persona laki-laki dengan ekspresi emosional feminin, bukan asisten; balasan pendek dan tidak
   mengaku AI. Command baru `/calmdown` (owner).
+- [x] Anggaran prompt (`prompt.max_chars`, default 9000): blok opsional (topik, gaya, person style,
+  memori, aksi, skill) bersaing lewat `sanka/salience.py` saat prompt melewati anggaran; blok wajib
+  (base, safety, away, thread, emosi, vibe) tidak pernah dibuang. Bonus relevansi dari topik
+  pending, interaksi orang, familiaritas, dan mode professional.
+- [x] Harness ablasi read-only `sanka/ablate.py` + `scripts/ablate.py`: replay gerbang balasan dari
+  arsip (`called`, `thread_allowed`, `false_positive`, `missed`), ukuran prompt sebelum/sesudah
+  kompetisi, dan pergeseran `addressed`/`act`/`tone` saat `emotion`/`vibe`/`thread`/`away` diabsi.
+- [x] Aturan situasi percakapan menjadi fungsi murni `sanka/thread.py` (dengan `keyword_set` dan
+  `followup_utterance` di `sanka/chat.py`), dipakai runtime dan harness ablasi.
 
 ## Nanti
 
