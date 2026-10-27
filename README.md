@@ -388,6 +388,14 @@ Dokploy (Application, bukan Compose):
    `/app/config.yaml`. Path relatif di config resolve dari folder config di container (`/app`), jadi
    `.sanka/...` menjadi `/app/.sanka` dan dipetakan ke `/opt/sanka/.sanka`.
 5. Replicas **1**, update order **stop-first**, tanpa domain/port: bot hanya membuka koneksi keluar.
+6. `config.yaml` dan `.env` tidak ikut image (lihat `.dockerignore`), jadi push/Deploy hanya
+   mengganti kode. Setelah mengedit config di host, tekan **Reload** (restart container, tanpa
+   rebuild); tombol **Deploy** baru perlu saat kode di repo berubah. DB baru (`affect.db`,
+   `style.json`) dibuat di dalam `.sanka` yang dimount, jadi direktori itu harus writable oleh
+   uid 1000.
+7. Stiker reaksi dibaca dari `<workspace>/stickers/...` di dalam mount; salin file WebP-nya ke
+   mis. `/opt/sanka/.sanka/workspace/stickers/`. Tanpa file itu, `react` otomatis menjadi
+   `ignore` (log info), bukan error.
 
 Cutover data:
 
