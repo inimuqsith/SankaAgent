@@ -51,6 +51,7 @@ class Ambient:
         sessions=None,
         send_text=None,
         quiet=None,
+        turn_busy=None,
     ):
         self.config = config
         self.settings = config.ambient
@@ -62,6 +63,7 @@ class Ambient:
         self.sessions = sessions
         self.send_text = send_text
         self.quiet = quiet or (lambda _chat_id: False)
+        self.turn_busy = turn_busy or (lambda: False)
         self.known_chats: set[str] = set()
         self.busy: set[str] = set()
         self.tasks: set[asyncio.Task] = set()
@@ -183,6 +185,8 @@ class Ambient:
         """
         settings = self.settings
         if self.affect is None or not chat_id.endswith("@g.us"):
+            return False
+        if self.turn_busy():  # sedang membalas chat lain: jangan menyela antrean
             return False
         try:
             topic = self.affect.topic(chat_id)

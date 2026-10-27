@@ -80,6 +80,11 @@
   `detail_chars`/`detail_parts` dihapus karena sudah mati; `max_bubbles` jadi batas atas.
 - `decision.ground_tone`: nada `curt`/`hurt`/`angry` diturunkan ke `neutral` bila PAD netral/positif
   dan annoyance orangnya < 0.3, supaya balasan tidak "ikut suasana" saat hatinya tenang.
+- Antrean turn: `App.locks` per chat diganti satu `App.turn` global, jadi pesan diproses berurutan
+  lintas chat (state hati/drive/vibe/memori tidak tertukar). Command memakai `contextlib.nullcontext`
+  supaya `/stop` tetap bisa memotong antrean. `App.reflect` ikut mengambil lock yang sama, dan
+  `Ambient` menerima `turn_busy=lambda: app.turn.locked()` supaya chime tidak menyelituk saat ada
+  balasan berjalan.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

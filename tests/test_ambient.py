@@ -472,3 +472,15 @@ def test_chime_prompt_names_place_and_single_identity(tmp_path) -> None:
     assert "Doronganmu sekarang:" in prompt
     assert sent == [(CHAT, "eh masih pada di sini?")]
     assert ambient._chime_log  # percobaan dihitung untuk jatah 24 jam
+
+
+def test_chime_waits_for_the_turn_queue(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
+    busy = {"now": True}
+    ambient = chime_ambient(tmp_path, LonelyAffect())
+    ambient.turn_busy = lambda: busy["now"]
+
+    assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is False  # antrean sibuk
+
+    busy["now"] = False
+    assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is True

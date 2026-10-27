@@ -8,7 +8,6 @@ import logging
 import random
 import re
 import time
-from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
@@ -149,7 +148,7 @@ class App:
         self.style = style
         self.ambient = ambient
         self.anima = anima  # vibe ruangan; None = fitur mati
-        self.locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self.turn = asyncio.Lock()  # satu turn sekaligus: chat tidak saling menimpa
         self.bot_digits: set[str] = set()
         self.client: NewAClient | None = None
         self.backfill: asyncio.Task | None = None
@@ -186,6 +185,10 @@ class App:
         method = getattr(self.llm, "reflect", None)
         if not callable(method):
             return
+        async with self.turn:  # antre bersama turn lain: memori tidak ditulis di tengah balasan
+            await self._reflect_items(chat_id, user_text, answer, context, memory, method)
+
+    async def _reflect_items(self, chat_id, user_text, answer, context, memory, method) -> None:
         try:
             items = await method(user_text, answer, context=context, memory=memory)
         except Exception:  # refleksi tidak boleh mengganggu percakapan
@@ -812,7 +815,10 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
     direct = is_dm or is_mention or is_reply
 
     jid = source.Chat
-    async with app.locks[chat_id]:
+    # Satu turn sekaligus di semua chat supaya hati, memori, dan konteks tidak tertukar.
+    # Command tidak mengantre: `/stop` harus tetap bisa memotong antrean.
+    queue = contextlib.nullcontext() if is_command else app.turn
+    async with queue:
         if not is_command and _stale(app, chat_id, message):
             log.info("pesan basi chat=%s: sudah terwakili burst sebelumnya", chat)
             return

@@ -294,6 +294,7 @@ async def run_bot(config: Config) -> None:
                 app.sessions,
                 app.send_text,
                 quiet=lambda chat_id: app.quiet.get(chat_id, 0.0) > time.time(),
+                turn_busy=lambda: app.turn.locked(),
             )
             app.ambient = ambient
             ambient.start()

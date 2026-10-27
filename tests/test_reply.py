@@ -1468,3 +1468,83 @@ def test_cold_tone_survives_when_emotion_is_negative(tmp_path) -> None:
 
     assert "Nada: hurt." in llm.system  # perasaannya memang negatif
     store.close()
+
+
+def test_turns_are_queued_across_chats(tmp_path) -> None:
+    class GateLLM(DecisionLLM):
+        def __init__(self) -> None:
+            super().__init__(answer="siap")
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+            self.runs = 0
+
+        async def run(self, system, user_content, specs, ctx, session="") -> str:
+            self.runs += 1
+            self.started.set()
+            await self.release.wait()
+            return await super().run(system, user_content, specs, ctx, session)
+
+    async def flow():
+        client, sent, _ = transport()
+        llm = GateLLM()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        first = asyncio.create_task(handle_message(client, dm_event("halo sanka"), app))
+        await asyncio.wait_for(llm.started.wait(), 5)
+        second_ev = group_event("@sanka tolong cek", event_id="3EB0QUEUE1")
+        second = asyncio.create_task(handle_message(client, second_ev, app))
+        await asyncio.sleep(0.05)
+        queued_sends = list(sent)
+        queued_runs = llm.runs
+        llm.release.set()
+        await asyncio.gather(first, second)
+        return sent, queued_sends, queued_runs
+
+    sent, queued_sends, queued_runs = asyncio.run(flow())
+
+    assert queued_sends == []  # chat kedua menunggu, bukan jalan bersamaan
+    assert queued_runs == 1  # turn kedua belum sampai LLM
+    assert len(sent) == 2
+    assert Jid2String(sent[0][0]) == "628999999999@s.whatsapp.net"
+    assert Jid2String(sent[1][0]) == "1234567890@g.us"
+
+
+def test_command_does_not_wait_in_the_queue(tmp_path) -> None:
+    class GateLLM(DecisionLLM):
+        def __init__(self) -> None:
+            super().__init__(answer="siap")
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run(self, system, user_content, specs, ctx, session="") -> str:
+            self.started.set()
+            await self.release.wait()
+            return await super().run(system, user_content, specs, ctx, session)
+
+    async def flow():
+        client, sent, _ = transport()
+        llm = GateLLM()
+        app = App(
+            rich_config(
+                tmp_path,
+                roles={"owner": RoleConfig("owner", commands=("*",))},
+                default_role="owner",
+            ),
+            llm,
+            FakeHub(),
+            Sessions(),
+        )
+        app.bot_digits = {"628567770837"}
+        busy = asyncio.create_task(handle_message(client, dm_event("halo sanka"), app))
+        await asyncio.wait_for(llm.started.wait(), 5)
+        stop_ev = dm_event("/stop")
+        stop_ev.Info.ID = "3EB0STOPQ"
+        await asyncio.wait_for(handle_message(client, stop_ev, app), 5)  # tidak ikut antre
+        llm.release.set()
+        await busy
+        return sent, app
+
+    sent, app = asyncio.run(flow())
+
+    assert "aku diam" in payload_text(sent[0])  # /stop langsung dijawab
+    assert app.quiet

@@ -190,6 +190,14 @@ satu pesan (`format_reply`). Chunk pertama mengutip pesan asal, sisanya pesan bi
 sesaat sebelum burst terakhir terkirim dianggap sudah terwakili, jadi tag beruntun dijawab sekali.
 Kalau `humanize.enabled: false`, semua balasan memakai jalur mengutip tanpa jeda.
 
+**Satu turn sekaligus (antrean).** `App.turn` adalah satu lock global: pesan dari chat mana pun
+diproses berurutan sesuai kedatangan, jadi hati (PAD), drive, vibe, dan memori tidak tertukar antar
+chat — grup yang masuk lebih dulu selesai dulu, baru DM berikutnya. Refleksi memori ikut antre
+supaya tulisan memori tidak jatuh di tengah balasan, dan chime menunggu antrean kosong (tidak
+menyelituk saat Sanka sedang membalas). Command tidak ikut antre, supaya `/stop` tetap bisa memotong
+antrean burst. Konsekuensi yang disengaja: satu tugas `professional` yang panjang menahan balasan
+chat lain sampai selesai.
+
 **Satu keputusan per pesan.** `sanka/decision.py` mengirim soul dari `SOUL.md`, fakta transport
 (DM / mention asli / balasan ke pesan Sanka), ringkasan state emosi (PAD, trust tier, pulse, 3 log
 terakhir), hubungan dengan orang di chat, 30 pesan terakhir, dan pesan baru ke satu panggilan
