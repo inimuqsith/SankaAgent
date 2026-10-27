@@ -41,9 +41,15 @@ async def _memory(args: dict, ctx: ToolContext) -> str:
             supersedes = int(raw) if raw not in (None, "") else None
         except (TypeError, ValueError):
             return "error: supersedes harus ID memori"
+        pad = ctx.affect.pad(ctx.chat_id) if ctx.affect is not None and ctx.chat_id else None
+        mood = (
+            {"valence": pad["pleasure"], "arousal": pad["arousal"]}
+            if pad is not None
+            else {"valence": None, "arousal": None}
+        )
         try:
             item_id, created = ctx.memory.add(
-                scopes[0], kind, text, source="tool", supersedes=supersedes
+                scopes[0], kind, text, source="tool", supersedes=supersedes, **mood
             )
         except ValueError as exc:
             return f"error: {exc}"

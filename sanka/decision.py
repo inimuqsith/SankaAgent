@@ -244,6 +244,8 @@ def build_context(
     is_dm: bool = False,
     is_mention: bool = False,
     is_reply: bool = False,
+    away: str = "",
+    vibe: str = "",
 ) -> str:
     """Konteks keputusan: fakta transport, state emosi, hubungan, transkrip, pesan terakhir."""
     kind = "pesan pribadi (DM)" if is_dm else "grup"
@@ -260,6 +262,10 @@ def build_context(
         f"Chat: {chat_name or chat_id or '-'} — {kind}",
         "Fakta transport: " + (", ".join(facts) if facts else "tidak ada tag/reply langsung"),
     ]
+    if away.strip():
+        parts.append("Catatan kehadiran:\n" + away.strip())
+    if vibe.strip():
+        parts.append(vibe.strip())
     block = _emotion_block(emotion)
     if block:
         parts.append("Keadaan emosimu:\n" + block)
@@ -283,6 +289,8 @@ async def decide(
     is_dm: bool = False,
     is_mention: bool = False,
     is_reply: bool = False,
+    away: str = "",
+    vibe: str = "",
     soul: str = "",
 ) -> Decision | None:
     """Satu keputusan LLM; kosong setelah satu retry = None (tanpa fallback regex)."""
@@ -297,6 +305,8 @@ async def decide(
         is_dm=is_dm,
         is_mention=is_mention,
         is_reply=is_reply,
+        away=away,
+        vibe=vibe,
     )
     session = f"sanka-decision-{chat_id}"
     raw = await llm.complete(system, user, max_tokens=4000, temperature=0.3, session=session)

@@ -263,3 +263,64 @@ def test_context_prefers_query_match_and_shows_date(tmp_path: Path) -> None:
     assert block.index("kopi") < block.index("rapat")
     assert re.search(r"\d{4}-\d{2}-\d{2}: suka kopi", block)
     store.close()
+
+
+def test_mood_congruent_recall_orders_matching_memories(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path / "memory.db")
+    store.add("chat-a", "note", "kopi bikin sedih", valence=-0.8, arousal=0.3)
+    store.add("chat-a", "note", "kopi bikin senang", valence=0.9, arousal=0.7)
+
+    neg = store.context("chat-a", query="kopi", mood=(0.05, 0.3))
+    pos = store.context("chat-a", query="kopi", mood=(0.95, 0.7))
+
+    assert neg.index("kopi bikin sedih") < neg.index("kopi bikin senang")
+    assert pos.index("kopi bikin senang") < pos.index("kopi bikin sedih")
+    store.close()
+
+
+def test_mood_is_optional_and_does_not_break_recency(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path / "memory.db")
+    store.add("chat-a", "note", "kopi pertama", valence=-0.8, arousal=0.3)
+    store.add("chat-a", "note", "kopi kedua", valence=0.9, arousal=0.7)
+
+    plain = store.context("chat-a", query="kopi")
+
+    assert "kopi pertama" in plain and "kopi kedua" in plain
+    assert plain.index("kopi kedua") < plain.index("kopi pertama")  # terbaru dulu
+    store.close()
+
+
+def test_entries_without_mood_still_ranked(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path / "memory.db")
+    store.add("chat-a", "note", "kopi tanpa mood")
+    assert "kopi tanpa mood" in store.context("chat-a", query="kopi", mood=(0.2, 0.8))
+    store.close()
+
+
+def test_tool_add_tags_memory_with_current_pad(tmp_path: Path) -> None:
+    from sanka.affect import AffectStore
+    from sanka.config import AffectConfig
+
+    config = make_config(tmp_path)
+    store = MemoryStore(tmp_path / "memory.db")
+    affect = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
+    affect.turn_start("chat", "MSG-TOOL")
+    pad = affect.pad("chat")
+    ctx = ToolContext(
+        config,
+        RoleConfig("owner"),
+        ("memory",),
+        chat_id="chat",
+        memory=store,
+        affect=affect,
+    )
+
+    async def call() -> str:
+        return await execute(TOOLS.by_name, "memory", {"action": "add", "text": "kopi pahit"}, ctx)
+
+    assert "disimpan" in asyncio.run(call())
+    row = store.entries(["chat"])[0]
+    assert row["valence"] == pytest.approx(pad["pleasure"])
+    assert row["arousal"] == pytest.approx(pad["arousal"])
+    affect.close()
+    store.close()

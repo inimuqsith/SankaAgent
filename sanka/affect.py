@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import sqlite3
 import threading
 import time
@@ -30,6 +31,9 @@ TOPIC_CHARS = 400
 LOG_LINES = 3
 PULSE_MINUTES = 5.0  # pre_turn_decay lebih rapat dari ini tidak mengubah apa pun
 PULSE_MAX_HOURS = 24.0  # batas pertumbuhan drive setelah lama mati/clock skew
+PAD_WEIGHT = {"me": 1.0, "group": 0.6, "other": 0.2, "unknown": 0.2}
+WINDOW_SECONDS = 600.0  # jendela pembatas gerak hubungan per orang
+WINDOW_LIMIT = 0.20  # delta maksimum per arah per jendela
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS people (
@@ -46,6 +50,11 @@ CREATE TABLE IF NOT EXISTS people (
   interactions INTEGER NOT NULL DEFAULT 0,
   appease INTEGER NOT NULL DEFAULT 0,
   last_seen REAL NOT NULL DEFAULT 0,
+  window_start REAL NOT NULL DEFAULT 0,
+  window_trust REAL NOT NULL DEFAULT 0,
+  window_affection REAL NOT NULL DEFAULT 0,
+  window_respect REAL NOT NULL DEFAULT 0,
+  window_annoyance REAL NOT NULL DEFAULT 0,
   notes TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS topics (
@@ -93,6 +102,11 @@ PERSON_DEFAULTS: dict = {
     "interactions": 0,
     "appease": 0,
     "last_seen": 0.0,
+    "window_start": 0.0,
+    "window_trust": 0.0,
+    "window_affection": 0.0,
+    "window_respect": 0.0,
+    "window_annoyance": 0.0,
     "notes": "[]",
 }
 DRIVE_DEFAULTS: dict = {
@@ -105,6 +119,11 @@ DRIVE_DEFAULTS: dict = {
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, float(value)))
+
+
+def _inertia(delta: float, current: float) -> float:
+    """Hasil makin kecil saat nilai sudah ekstrem: orang yang sudah kesal tidak makin kesal linear."""
+    return delta * (1.0 - current) if delta >= 0 else delta * current
 
 
 def _ago(stamp: float, moment: float) -> str:
@@ -183,11 +202,27 @@ class AffectStore:
         self._conn.execute("PRAGMA secure_delete=ON")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
         try:
             self.path.chmod(0o600)
         except OSError:
             pass
+
+    def _migrate(self) -> None:
+        """DB lama belum punya kolom jendela hubungan; tambahkan tanpa menyentuh baris."""
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(people)")}
+        for name in (
+            "window_start",
+            "window_trust",
+            "window_affection",
+            "window_respect",
+            "window_annoyance",
+        ):
+            if name not in columns:
+                self._conn.execute(
+                    f"ALTER TABLE people ADD COLUMN {name} REAL NOT NULL DEFAULT 0"
+                )
 
     def _require(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -277,17 +312,27 @@ class AffectStore:
             if message_id and engine.event_already_processed(state, message_id):
                 return  # event yang sama tidak boleh menggerakkan emosi dua kali
             state, session_id = self._session(state, chat_id)
+            addressed = ""
+            act = ""
             if decision is not None:
+                addressed = str(getattr(decision, "addressed", "") or "")
+                act = str(getattr(decision, "act", "") or "")
+                weight = PAD_WEIGHT.get(addressed, 0.2)
+                if act == "ignore":
+                    weight = min(weight, 0.2)
                 appraisal = decision.appraisal
                 emotion = state["emotion"]
+                dP = float(appraisal.dP) * weight
+                dA = float(appraisal.dA) * weight
+                dD = float(appraisal.dD) * weight
                 pleasure = engine.clamp_dimension(
-                    "pleasure", float(emotion["pleasure"]) + float(appraisal.dP)
+                    "pleasure", float(emotion["pleasure"]) + dP
                 )
                 arousal = engine.clamp_dimension(
-                    "arousal", float(emotion["arousal"]) + float(appraisal.dA)
+                    "arousal", float(emotion["arousal"]) + dA
                 )
                 dominance = engine.clamp_dimension(
-                    "dominance", float(emotion["dominance"]) + float(appraisal.dD)
+                    "dominance", float(emotion["dominance"]) + dD
                 )
                 meaning = str(self._meaning(decision)).strip()[:240]
                 state, _ = engine.record_turn(
@@ -311,8 +356,8 @@ class AffectStore:
             self._touch_chat_person(conn, chat_id, person_id, moment)
             self._touch_drives(conn, chat_id, moment, activity=True)
             self._bump_topic(conn, chat_id, moment)
-            if decision is not None:
-                self._apply_relationship(conn, person_id, person, decision.relationship)
+            if decision is not None and addressed == "me" and act != "ignore":
+                self._apply_relationship(conn, person_id, person, decision.relationship, moment)
             conn.commit()
 
     @staticmethod
@@ -322,17 +367,51 @@ class AffectStore:
         return note or reason
 
     def _apply_relationship(
-        self, conn: sqlite3.Connection, person_id: str, person: dict, delta
+        self, conn: sqlite3.Connection, person_id: str, person: dict, delta, moment: float
     ) -> None:
-        trust = _clamp(float(person["trust"]) + float(getattr(delta, "trust", 0.0)))
-        affection = _clamp(float(person["affection"]) + float(getattr(delta, "affection", 0.0)))
-        respect = _clamp(float(person["respect"]) + float(getattr(delta, "respect", 0.0)))
-        annoyance = _clamp(float(person["annoyance"]) + float(getattr(delta, "annoyance", 0.0)))
-        stage = stage_for(int(person["interactions"]), trust, affection)
+        """Delta hubungan dengan diminishing returns dan cap per jendela 10 menit."""
+        start = float(person.get("window_start") or 0.0)
+        if moment - start >= WINDOW_SECONDS:
+            start = moment
+            for name in ("trust", "affection", "respect", "annoyance"):
+                person[f"window_{name}"] = 0.0
+        values: dict[str, float] = {}
+        for name in ("trust", "affection", "respect", "annoyance"):
+            raw = float(getattr(delta, name, 0.0))
+            current = float(person[name])
+            applied = _inertia(raw, current) if raw else 0.0
+            used = float(person.get(f"window_{name}") or 0.0)
+            remaining = (
+                WINDOW_LIMIT - max(0.0, used)
+                if applied >= 0
+                else WINDOW_LIMIT + min(0.0, used)
+            )
+            if remaining <= 0:
+                applied = 0.0
+            elif abs(applied) > remaining:
+                applied = math.copysign(remaining, applied)
+            new = _clamp(current + applied)
+            applied = new - current
+            values[name] = new
+            person[f"window_{name}"] = used + applied
+        stage = stage_for(int(person["interactions"]), values["trust"], values["affection"])
         conn.execute(
-            "UPDATE people SET trust=?, affection=?, respect=?, annoyance=?, stage=? "
+            "UPDATE people SET trust=?, affection=?, respect=?, annoyance=?, stage=?, "
+            "window_start=?, window_trust=?, window_affection=?, window_respect=?, window_annoyance=? "
             "WHERE person_id=?",
-            (trust, affection, respect, annoyance, stage, person_id),
+            (
+                values["trust"],
+                values["affection"],
+                values["respect"],
+                values["annoyance"],
+                stage,
+                start,
+                person["window_trust"],
+                person["window_affection"],
+                person["window_respect"],
+                person["window_annoyance"],
+                person_id,
+            ),
         )
 
     def _person(self, conn: sqlite3.Connection, person_id: str) -> dict:
@@ -749,6 +828,17 @@ class AffectStore:
             _, state = self._state(chat_id)
             drives = self._drives(self._require(), chat_id)
         return self._payload(state, drives, person_id)
+
+    def pad(self, chat_id: str) -> dict:
+        """PAD saat ini: dipakai untuk menandai valence/arousal memori yang ditulis."""
+        with self._lock:
+            _, state = self._state(chat_id)
+        emotion = state["emotion"]
+        return {
+            "pleasure": float(emotion["pleasure"]),
+            "arousal": float(emotion["arousal"]),
+            "dominance": float(emotion["dominance"]),
+        }
 
     def prompt(self, chat_id: str, person_id: str = "") -> str:
         """Blok prompt: ringkasan state, pulse, PAD, log terakhir, dan sikap ke orang di chat."""

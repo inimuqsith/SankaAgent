@@ -136,6 +136,7 @@ class App:
         affect=None,
         style=None,
         ambient=None,
+        anima=None,
     ):
         self.config = config
         self.llm = llm
@@ -146,6 +147,7 @@ class App:
         self.affect = affect
         self.style = style
         self.ambient = ambient
+        self.anima = anima  # vibe ruangan; None = fitur mati
         self.locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self.bot_digits: set[str] = set()
         self.client: NewAClient | None = None
@@ -153,6 +155,8 @@ class App:
         self.tasks: set[asyncio.Task] = set()
         self.reactions: dict[str, float] = {}
         self.answered: dict[str, frozenset[str]] = {}
+        self.backlog: dict[str, int] = {}  # pesan lama per chat: arsip, bukan antrean
+        self.quiet: dict[str, float] = {}  # chat_id -> sampai kapan diam (epoch detik)
 
     def spawn(self, coro) -> None:
         """Jalankan tugas latar (mis. refleksi memori) tanpa menahan balasan."""
@@ -167,6 +171,8 @@ class App:
             task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
+        if self.anima is not None:
+            await self.anima.close()
 
     async def reflect(
         self, chat_id: str, user_text: str, answer: str, context: str = "", memory: str = ""
@@ -185,6 +191,17 @@ class App:
             log.exception("refleksi memori gagal chat=%s", chat_id)
             return
         saved = 0
+        pad = None
+        if self.affect is not None:
+            try:  # mood saat menulis ikut disimpan untuk recall mood-congruent
+                pad = self.affect.pad(chat_id)
+            except Exception:
+                log.debug("gagal membaca PAD untuk refleksi chat=%s", chat_id, exc_info=True)
+        mood = (
+            {"valence": pad["pleasure"], "arousal": pad["arousal"]}
+            if pad is not None
+            else {"valence": None, "arousal": None}
+        )
         for item in items:
             text = str(item.get("text") or "").strip()
             if not text or SENSITIVE.search(text):
@@ -195,10 +212,17 @@ class App:
             kind = str(item.get("kind") or "fact")
             source = f"reflect:{chat_id}"
             try:
-                self.memory.add(scope, kind, text, source=source, supersedes=item.get("supersedes"))
+                self.memory.add(
+                    scope,
+                    kind,
+                    text,
+                    source=source,
+                    supersedes=item.get("supersedes"),
+                    **mood,
+                )
             except ValueError:
                 try:  # supersede ditolak tidak boleh membuang faktanya
-                    self.memory.add(scope, kind, text, source=source)
+                    self.memory.add(scope, kind, text, source=source, **mood)
                 except ValueError:
                     continue
             saved += 1
@@ -378,7 +402,9 @@ def system_prompt(
     skills: str = "",
     cross_send: bool = False,
     topic: str = "",
+    away: str = "",
     emotion: str = "",
+    vibe: str = "",
     style: str = "",
     person_style: str = "",
     safety: str = "",
@@ -465,7 +491,19 @@ def system_prompt(
     )
     return "\n\n".join(
         part
-        for part in (base, topic, emotion, style, person_style, safety, memory, actions, skills)
+        for part in (
+            base,
+            topic,
+            away,
+            emotion,
+            vibe,
+            style,
+            person_style,
+            safety,
+            memory,
+            actions,
+            skills,
+        )
         if part.strip()
     )
 
@@ -609,6 +647,17 @@ async def _send_reaction(client: NewAClient, app: App, chat_id: str) -> bool:
     return True
 
 
+def _away_block(missed: int) -> str:
+    """Catatan kehadiran setelah bot mati: arsip yang tidak boleh dijawab satu per satu."""
+    if missed <= 0:
+        return ""
+    return (
+        f"Kamu baru aktif lagi; {missed} pesan masuk saat kamu tidak aktif dan tidak dibalas. "
+        "Itu arsip, bukan antrean. Jangan menjawabnya satu per satu, jangan mengulang topik lama, "
+        "dan jangan mengaku sudah membalas. Lanjutkan dari pesan terakhir."
+    )
+
+
 def _stale(app: App, chat_id: str, message: ChatMessage) -> bool:
     """Pesan ini sudah menunggu saat burst terakhir disusun, jadi tidak perlu balasan kedua."""
     return bool(message.id) and message.id in app.answered.get(chat_id, frozenset())
@@ -719,6 +768,15 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
     if sender_digits and sender_digits in app.bot_digits:
         return
 
+    # Pesan yang menumpuk saat bot mati bukan antrean: masuk arsip, tanpa LLM dan tanpa emosi.
+    backlog = int(app.config.whatsapp.backlog_seconds or 0)
+    if backlog > 0:
+        age = time.time() - message.when.timestamp()
+        if age > backlog:
+            app.backlog[chat_id] = app.backlog.get(chat_id, 0) + 1
+            log.info("pesan lama chat=%s umur=%.0fs: arsip saja", chat, age)
+            return
+
     is_dm = not is_group(chat)
     is_reply = replies_to_bot(ev, app.bot_digits)
     is_mention = mentioned(ev, app.bot_digits)
@@ -732,6 +790,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             log.debug("gagal resolve person chat=%s", chat, exc_info=True)
     body = command_body(text, app.config.whatsapp.bot_name, app.bot_digits)
     is_command = body.startswith("/")
+    if not is_command and not crisis and app.quiet.get(chat_id, 0.0) > time.time():
+        log.info("quiet chat=%s: pesan dicatat tanpa dibalas", chat)
+        return
     if not is_command and not crisis and app.llm is None:
         return  # tanpa LLM tidak ada yang bisa memutuskan; command tetap jalan
     head_word, _, rest = body[1:].partition(" ") if is_command else ("", "", "")
@@ -743,6 +804,14 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
         if not is_command and _stale(app, chat_id, message):
             log.info("pesan basi chat=%s: sudah terwakili burst sebelumnya", chat)
             return
+        missed = app.backlog.pop(chat_id, 0) if not is_command else 0
+        away = _away_block(missed)
+        vibe = ""
+        if app.anima is not None and not is_command and not crisis and message.text.strip():
+            try:  # mood ruangan ikut bergerak sebelum keputusan dibuat
+                vibe = await app.anima.observe(chat_id, message.text)
+            except Exception:
+                log.exception("gagal memperbarui vibe chat=%s", chat)
         emotion_block = ""
         turn = None
         if not is_command and app.affect is not None:
@@ -784,6 +853,8 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 is_dm=is_dm,
                 is_mention=is_mention,
                 is_reply=is_reply,
+                away=away,
+                vibe=vibe,
                 soul=app.config.persona,
             )
             if decision is None:
@@ -841,7 +912,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 getattr(decision, "mode", "-"),
                 getattr(decision, "tone", "-"),
             )
-            covered = frozenset(entry.id for entry in app.sessions.get(chat_id))
+            covered = frozenset({message.id})  # hanya pesan yang benar-benar dijawab turn ini
             reply: str | None = None
             can_memory = False
             memory_block = style_block = topic_block = person_style = ""
@@ -868,10 +939,16 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 specs = list(tools_for(role)) + app.hub.specs(role)
                 can_memory = any(spec.name == "memory" for spec in specs)
                 cross_send = any(spec.name == "send_to" for spec in specs)
+                mood = None
+                if turn is not None:
+                    mood = ((float(turn["pleasure"]) + 1.0) / 2.0, float(turn["arousal"]))
                 if app.memory is not None:
                     try:
                         memory_block = app.memory.context(
-                            chat_id, include_global=can_memory, query=message.text
+                            chat_id,
+                            include_global=can_memory,
+                            query=message.text,
+                            mood=mood,
                         )
                     except Exception:  # memori rusak tidak boleh memblokir balasan
                         log.exception("gagal membaca memori chat=%s", chat)
@@ -902,6 +979,12 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 send_message = app.send_text if app.client is not None else None
                 request_text = message.text
                 messages = app.sessions.through(chat_id, message)
+                window = app.sessions.get(chat_id)
+                if any(entry is message for entry in window):
+                    # Pesan yang menyusul sebelum payload dirakit ikut masuk payload, jadi ikut
+                    # ditandai terjawab; pesan yang datang setelahnya dapat turn sendiri.
+                    messages = window
+                covered = frozenset(entry.id for entry in messages if entry.id)
                 try:
                     content = await build_user_content(
                         app.config,
@@ -925,6 +1008,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     send_file=send_file,
                     send_message=send_message,
                     request=request_text,
+                    affect=app.affect,
                 )
                 answer = await app.llm.run(
                     system_prompt(
@@ -936,6 +1020,8 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         skills=skill_block,
                         cross_send=cross_send,
                         topic=topic_block,
+                        away=away,
+                        vibe=vibe,
                         emotion=emotion_block,
                         style=style_block,
                         person_style=person_style,

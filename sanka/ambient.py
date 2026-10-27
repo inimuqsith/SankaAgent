@@ -46,6 +46,7 @@ class Ambient:
         history=None,
         sessions=None,
         send_text=None,
+        quiet=None,
     ):
         self.config = config
         self.settings = config.ambient
@@ -56,6 +57,7 @@ class Ambient:
         self.history = history
         self.sessions = sessions
         self.send_text = send_text
+        self.quiet = quiet or (lambda _chat_id: False)
         self.known_chats: set[str] = set()
         self.busy: set[str] = set()
         self.tasks: set[asyncio.Task] = set()
@@ -304,6 +306,8 @@ class Ambient:
         if self.affect is None or self.llm is None or self.send_text is None:
             return
         if not chat_id.endswith("@g.us") or chat_id not in self.known_chats:
+            return
+        if self.quiet(chat_id):
             return
         rows = self._recent(chat_id, 8)
         if not rows or getattr(rows[-1], "outgoing", False):

@@ -1,5 +1,49 @@
 # LOG
 
+## 2026-10-28 (gate temporal, /stop, atensi, AFT-lite, vibe ruangan)
+
+- `sanka/config.py`: `WhatsAppConfig.backlog_seconds` (600) dan `quiet_seconds` (600) + loader;
+  `VibeConfig` baru dan `AffectConfig.vibe` (default `enabled: false`), path di-resolve seperti
+  path lain dan parent-nya dibuat saat load config. `config.example.yaml` mendokumentasikan semuanya.
+- `sanka/wa.py::handle_message`: pesan dengan `when` lebih tua dari `backlog_seconds` hanya masuk
+  arsip (`App.backlog[chat]`, tanpa LLM/`turn_end`); command lama juga tidak dieksekusi. Turn
+  berikutnya menerima `_away_block(missed)` sekali ke `decide`+`system_prompt` (`Catatan kehadiran`).
+  Gate `App.quiet` menahan balasan non-command dan krisis tetap jalan.
+- `sanka/commands/stop.py` (owner, alias `/diam`): `/stop [menit]` (default `quiet_seconds/60`,
+  maks 1440) menulis `App.quiet[chat]`, `/stop 0` melepasnya. `sanka/ambient.py::_chime` menerima
+  predikat `quiet` dari `run_bot`, jadi chime ambient ikut diam.
+- `sanka/affect.py`: `PAD_WEIGHT` (me 1.0 / group 0.6 / other,unknown 0.2 / ignore max 0.2)
+  menimbang dP/dA/dD; delta hubungan hanya untuk `addressed=me` dan `act != ignore`, lewat
+  `_inertia` (diminishing returns) dan cap `WINDOW_LIMIT` 0.20 per arah per `WINDOW_SECONDS` 600
+  (kolom `window_start`/`window_trust`/`window_affection`/`window_respect`/`window_annoyance`,
+  dimigrasi `_migrate`). `pad(chat_id)` membaca PAD untuk penandaan memori.
+- `sanka/memory.py`: kolom `valence`/`arousal` (migrasi tanpa menyentuh baris), `add(...)` menormalkan
+  dan menyimpan mood (`COALESCE` saat upsert), `_ranked`/`context(mood=...)` memakai skor
+  cocok-query + kebaruan + kongruensi mood (AFT-lite); tanpa mood urutan tetap kebaruan.
+  Refleksi (`App.reflect`) dan tool `memory` mengisi valence/arousal dari `affect.pad`
+  (`ToolContext.affect` baru di ujung signature).
+- `sanka/vibe.py` baru (clean-room, tanpa dependency anima): `VAD` dari 8 label EmoSense-ID,
+  `advance` (current→baseline, baseline→netral, hold), `VibeRunner` (heartbeat, classifier HF lazy
+  di thread, state JSON `0600` per chat, fail-open). `sanka/wa.py` memanggil `anima.observe` sebelum
+  keputusan dan menyisipkan blok vibe ke konteks keputusan + system prompt; `App.close` menutupnya.
+  `pyproject.toml` extra `vibe` (torch, transformers<6), `Dockerfile` memakai torch CPU + cache
+  model di `/app/.sanka/hf`.
+- Burst yang jujur: `covered` tidak lagi "semua pesan di sesi" tapi isi payload; pesan yang menyusul
+  sebelum payload dirakit ikut masuk payload (jadi ikut terjawab), pesan yang datang setelahnya
+  dapat turn sendiri.
+- Verifikasi: `pytest -q` 189 lulus; `python -m sanka selftest` SELFTEST OK (sandbox SKIP: docker
+  tidak ada). Jalur fail-open diuji di venv Python 3.15 (tanpa torch): log
+  `vibe: model ... gagal dimuat; vibe nonaktif`, `observe` -> "".
+- Model asli diuji di container `python:3.12-slim` (torch CPU + transformers 5.21, cache HF):
+  muat 4-5 detik, "kesel/marah" -> `anger` 0.97 dan "senang" -> `joy` 0.99. Probe menemukan
+  `_describe` membaca `baseline` sehingga blok selalu "netral"; sekarang band dibaca dari
+  `current`, hasil probe: pesan kesal ke-2 -> "negatif", pesan senang ke-2 -> "positif"
+  (`baseline` tetap bergerak lambat sesuai desain). Satu pesan belum menggeser band karena
+  `attack` 0.35 (ekspektasi "satu pesan langsung negatif" di plan tidak konsisten dengan
+  `attack` 0.35 dan band 0.35/0.6).
+- Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
+  `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
+  jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).
 ## 2026-10-28 (engine emosi + keputusan otonom v2)
 
 - `SOUL.md` baru di root: persona lama dipindah apa adanya + bagian otonomi, emosi, grounding, dan

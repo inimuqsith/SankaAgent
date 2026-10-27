@@ -15,6 +15,8 @@ whatsapp:
   session_db: ".sanka/whatsapp.db"
   history_db: ".sanka/history.db"
   bot_name: sanka
+  backlog_seconds: 600   # pesan lebih tua dari ini hanya diarsipkan, tidak dibalas
+  quiet_seconds: 600     # durasi default /stop
 
 roles:
   # tools/commands yang tidak ditulis -> pakai default dari registry handler.
@@ -63,6 +65,15 @@ affect:
   path: ".sanka/affect.db"     # hubungan, orang, topik, drives
   state_dir: ".sanka/emotions"  # satu file state emotion-engine per chat
   volatility: expressive        # steady | expressive | dramatic_test
+  vibe:
+    enabled: true               # default aktif; butuh torch + transformers (extra "vibe")
+    model: "Aardiiiiy/EmoSense-ID-Indonesian-Emotion-Classifier"
+    state_path: ".sanka/vibe.json"
+    attack: 0.35                # seberapa cepat pesan baru menarik mood
+    baseline_influence: 0.05    # seberapa cepat mood dasar ikut bergeser
+    hold_seconds: 1.2           # jeda sebelum decay mulai setelah satu pesan
+    neutral_floor: 0.35         # keyakinan minimum; di bawah ini dianggap netral
+    tick_seconds: 1.0           # detak decay
 
 humanize:
   enabled: true

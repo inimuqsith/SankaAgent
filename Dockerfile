@@ -23,7 +23,9 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY SOUL.md ./SOUL.md
 COPY sanka ./sanka
-RUN pip install --no-cache-dir .
+# torch CPU dulu: index CPU jauh lebih kecil dari default CUDA wheels.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+RUN pip install --no-cache-dir ".[vibe]"
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin sanka \
     && mkdir -p /app/.sanka \
@@ -37,5 +39,9 @@ RUN groupadd -g "${DOCKER_GID}" docker || true \
     && usermod -aG docker sanka
 
 USER sanka
+# Model vibe diunduh sekali saat build ke cache milik user sanka (bukan root).
+ENV HF_HOME=/app/.sanka/hf
+RUN python -c "from transformers import AutoTokenizer, AutoModelForSequenceClassification; m='Aardiiiiy/EmoSense-ID-Indonesian-Emotion-Classifier'; AutoTokenizer.from_pretrained(m); AutoModelForSequenceClassification.from_pretrained(m)"
+
 STOPSIGNAL SIGINT
 CMD ["python", "-m", "sanka"]

@@ -41,14 +41,14 @@ dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.
 | `SOUL.md` | soul/karakter Sanka (root repo, di samping `config.yaml`); `persona` di YAML hanya fallback |
 | `llm` | `base_url`, `model`, `api_key_env`, `max_turns`, `timeout_seconds`, `temperature` (balasan; keputusan memakai 0.3) |
 | `workspace` | direktori kerja tool `read`/`write`/`shell`/`sandbox`; `read`/`write` menolak path di luarnya |
-| `whatsapp` | `session_db`, `history_db`, `bot_name` |
+| `whatsapp` | `session_db`, `history_db`, `bot_name`, `backlog_seconds` (pesan lebih tua = arsip), `quiet_seconds` (durasi default `/stop`) |
 | `roles` | `users` (nomor), `tools`, `commands`; pola glob (`*`, `mcp__*`) |
 | `default_role` | role untuk nomor tak dikenal |
 | `sandbox` | `runtime` (`podman`/`docker`/kosong = autodetect), `image`, `timeout_seconds`, `network`, `host_workspace`, `env` |
 | `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
 | `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
-| `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine per chat), `volatility` (`steady`/`expressive`/`dramatic_test`) |
+| `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine per chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
 | `humanize` | bubble & jeda: `enabled`, `normal_chars`, `normal_parts`, `detail_chars`, `detail_parts`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles`, `reaction_stickers` |
 | `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
 | `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_cooldown`, `chime_per_day`, `research_cooldown`, `research_per_day`, `research_results` |
@@ -73,8 +73,9 @@ Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `chat_his
 jatuh ke backend `ddgs` (wikipedia/yahoo/startpage/brave) kalau instance itu mati atau kosong.
 Command: `/ping`, `/help [command]`, `/reset` (alias `/new`), `/whoami`, `/status`, `/tools`, `/cari`,
 `/mood` (ringkasan emosi, PAD, trust, pulse, dan hubungan Sanka dengan pengirim),
-plus `/backfill` (owner, DM; scan QR sekali), `/calmdown` (owner: repair turn setelah Sanka kesal), `/memori`, `/skill`, `/kirim`, dan alias `/p`, `/h`, `/r`, `/ingat`, `/sop`, `/file`,
-`/tenang`.
+plus `/backfill` (owner, DM; scan QR sekali), `/calmdown` (owner: repair turn setelah Sanka kesal),
+`/stop [menit]` (owner: hentikan balasan otomatis di chat itu, `0` = aktif lagi), `/memori`,
+`/skill`, `/kirim`, dan alias `/p`, `/h`, `/r`, `/ingat`, `/sop`, `/file`, `/tenang`, `/diam`.
 `/help` membaca metadata registry dan menampilkan kartu command; `/help <command>` menampilkan
 usage, alias, dan izinnya untuk role pengirim.
 
@@ -220,13 +221,35 @@ idempotensi (`event_id` = id pesan, jadi event yang sama tidak pernah menggerakk
 interaksi, stage), `chat_people` (siapa yang benar-benar bicara di chat itu), `topics` (ringkasan,
 pertanyaan menggantung, pending, cooldown digest/riset/chime), dan `drives` (energi, kebosanan,
 kesepian). Delta hubungan dari keputusan dijumlahkan ke kolom itu dengan clamp 0..1, lalu `stage`
-dihitung ulang dari interaksi + trust + afeksi. Tabel `moods`/`sulks`/`events` tidak dipakai lagi
+dihitung ulang dari interaksi + trust + afeksi.
+
+**Atensi, bukan ratchet.** Obrolan yang bukan untuk Sanka tidak menggerakkan hubungan: delta hanya
+diterapkan bila keputusan `addressed=me` dan `act` bukan `ignore`. Appraisal PAD ditimbang atensi
+(`me` 1.0, `group` 0.6, `other`/`unknown` 0.2, `ignore` maksimal 0.2), dan tiap delta hubungan
+melewati diminishing returns (`delta * (1 - nilai)` untuk arah naik, `delta * nilai` untuk turun)
+plus cap 0.20 per arah per jendela 10 menit (kolom `window_*`). Tabel `moods`/`sulks`/`events` tidak dipakai lagi
 dan tidak dibuat untuk DB baru; DB lama tetap terbuka tanpa migrasi destruktif.
+
+**Kehadiran dan backlog.** Pesan yang lebih tua dari `whatsapp.backlog_seconds` (default 600)
+hanya masuk arsip: tanpa keputusan LLM, tanpa `turn_end`, tanpa balasan. Turn berikutnya membawa
+catatan kehadiran ("N pesan masuk saat kamu tidak aktif; itu arsip, bukan antrean") sekali saja.
+`/stop [menit]` menahan balasan non-command dan chime ambient di chat itu sampai waktunya habis
+(command dan pesan krisis tetap jalan); state-nya di proses, jadi restart mengaktifkannya lagi.
 
 **Heartbeat 24/7.** `AffectStore.pulse` berjalan tiap `ambient.tick_seconds` untuk setiap chat
 yang dikenal (diisi dari pesan live dan `history.recent_chats` saat start): satu langkah
 `pre_turn_decay` per 5 menit, drive berubah (energi turun, kebosanan dan kesepian naik), dan tidak
 ada pesan yang dikirim. Pesan masuk memuaskan drive (kebosanan/kesepian turun, energi naik).
+
+**Vibe ruangan (ala anima).** `sanka/vibe.py` meniru dinamika anima-engine dengan classifier emosi
+Indonesia EmoSense-ID (`affect.vibe.model`) dan tanpa memakai dependency anima (paket itu tanpa
+lisensi): distribusi label dipetakan ke VAD, `attack` menarik mood satu langkah, `hold_seconds`
+menahan decay, lalu `current` meluruh ke `baseline` dan `baseline` ke netral dengan heartbeat
+`tick_seconds`. State per chat di `affect.vibe.state_path` (JSON `0600`), dan hasilnya masuk prompt
+sebagai "Vibe ruangan" (band dibaca dari `current`, mood cepat; `baseline` hanya penarik lambat, jadi
+satu pesan belum tentu menggeser band)—konteks ruangan, bukan pengganti emosi pribadi. Aktif
+secara default (`affect.vibe.enabled` default `true`, butuh extra `.[vibe]`: torch + transformers);
+kalau model gagal dimuat, vibe nonaktif dan bot tetap jalan.
 
 **Tanpa state diam.** Tidak ada sulk/nangis yang dipaksakan harness, tidak ada kuota diam, dan
 tidak ada parsing balasan untuk janji diam. Sanka boleh memilih `ignore` untuk pesan yang bukan
@@ -290,7 +313,9 @@ yang memutuskan kapan menyimpan atau melupakan; tidak perlu command user. Hanya 
 dan tahan lama yang boleh disimpan—bukan rahasia, tebakan, atau status sesi. Blok memori diinjeksi
 ke system prompt dengan batas `memory.max_items` per scope dan `memory.max_chars`; setiap baris
 memuat tanggal update, entri yang cocok dengan pesan terakhir didahulukan, sisanya diisi yang
-terbaru. Kalau fakta baru menggantikan fakta lama, AI mengisi `supersedes=<id>` saat `add`; baris
+terbaru. Saat menulis, memori menyimpan valence/arousal (PAD saat itu, dari `affect.pad`), dan saat
+PAD tersedia urutan akhirnya memakai rerank mood-congruent AFT-lite (cocok query, kebaruan,
+kemiripan mood); tanpa PAD urutannya tetap kebaruan. Kalau fakta baru menggantikan fakta lama, AI mengisi `supersedes=<id>` saat `add`; baris
 lama ditandai `superseded_by` (tidak dihapus, masih bisa dipulihkan—menambah ulang teksnya
 mengaktifkannya kembali) dan hilang dari prompt/pencarian.
 Validasi: id harus aktif, satu scope, dan satu kind; supersede yang ditolak tidak membuang fakta

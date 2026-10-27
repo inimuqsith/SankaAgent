@@ -1135,3 +1135,207 @@ def test_dm_without_mention_or_name_is_answered(tmp_path) -> None:
 
     assert llm.calls  # DM tidak butuh tag atau namamu disebut
     assert payload_text(sent[0]) == "lagi rebahan"
+
+
+def test_backlog_is_archived_not_answered(tmp_path) -> None:
+    import time as time_module
+
+    llm = DecisionLLM()
+    old = int(time_module.time()) - 3600
+
+    async def flow():
+        client, sent, presence = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        for index in range(2):
+            ev = dm_event(f"pesan lama {index}")
+            ev.Info.ID = f"3EB0OLD{index}"
+            ev.Info.Timestamp = old + index
+            await handle_message(client, ev, app)
+        return sent, presence, app
+
+    sent, presence, app = asyncio.run(flow())
+
+    assert sent == [] and presence == []
+    assert llm.decisions == []  # arsip: tanpa keputusan LLM
+    assert len(app.sessions.get("628999999999@s.whatsapp.net")) == 2  # tetap jadi konteks
+    assert app.backlog["628999999999@s.whatsapp.net"] == 2
+
+
+def test_backlog_gap_is_named_once(tmp_path) -> None:
+    import time as time_module
+
+    llm = DecisionLLM(answer="halo juga")
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        old = dm_event("ketinggalan satu jam")
+        old.Info.ID = "3EB0GAP0"
+        old.Info.Timestamp = int(time_module.time()) - 3600
+        await handle_message(client, old, app)
+        fresh = dm_event("halo sanka")
+        fresh.Info.ID = "3EB0GAP1"
+        await handle_message(client, fresh, app)
+        first_system, first_decision = llm.system, llm.decisions[0]
+        second = dm_event("masih di situ?")
+        second.Info.ID = "3EB0GAP2"
+        await handle_message(client, second, app)
+        return sent, app, first_system, first_decision
+
+    sent, app, first_system, first_decision = asyncio.run(flow())
+
+    assert len(sent) == 2
+    assert "baru aktif lagi" in first_system and "1 pesan" in first_system
+    assert "baru aktif lagi" in first_decision
+    assert "baru aktif lagi" not in llm.system  # catatan tidak diulang di turn berikutnya
+    assert app.backlog == {}
+
+
+def test_stop_silences_chat_until_reset(tmp_path) -> None:
+    llm = DecisionLLM(answer="iya")
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(
+            rich_config(
+                tmp_path,
+                roles={"owner": RoleConfig("owner", commands=("*",))},
+                default_role="owner",
+            ),
+            llm,
+            FakeHub(),
+            Sessions(),
+        )
+        app.bot_digits = {"628567770837"}
+
+        async def say(text: str, event_id: str) -> None:
+            ev = dm_event(text)
+            ev.Info.ID = event_id
+            await handle_message(client, ev, app)
+
+        await say("/stop", "3EB0STOP0")
+        await say("halo sanka", "3EB0STOP1")
+        await say("/help", "3EB0STOP2")
+        await say("/stop 0", "3EB0STOP3")
+        await say("halo lagi", "3EB0STOP4")
+        return sent, app
+
+    sent, app = asyncio.run(flow())
+    texts = [payload_text(item) for item in sent]
+
+    assert texts[0] == "ok, aku diam 10 menit. Panggil /stop 0 kalau mau aku aktif lagi."
+    assert texts[1].startswith("🧭 *Command Sanka*")  # command tetap jalan saat diam
+    assert texts[2:] == ["ok, aku aktif lagi.", "iya"]
+    assert len(llm.decisions) == 1  # quiet: satu-satunya keputusan LLM dari DM terakhir
+    assert app.quiet == {}
+
+
+def test_message_arriving_during_reply_gets_its_own_turn(tmp_path) -> None:
+    class SlowLLM(DecisionLLM):
+        def __init__(self) -> None:
+            super().__init__(answer="siap")
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def run(self, system, user_content, specs, ctx, session="") -> str:
+            self.started.set()
+            await self.release.wait()
+            return await super().run(system, user_content, specs, ctx, session)
+
+    async def flow():
+        client, sent, _ = transport()
+        llm = SlowLLM()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        first = dm_event("halo sanka")
+        first.Info.ID = "3EB0DURING0"
+        task = asyncio.create_task(handle_message(client, first, app))
+        await asyncio.wait_for(llm.started.wait(), timeout=5)
+        second = dm_event("eh masih di situ?")
+        second.Info.ID = "3EB0DURING1"
+        other = asyncio.create_task(handle_message(client, second, app))
+        llm.release.set()
+        await asyncio.gather(task, other)
+        return sent, llm
+
+    sent, llm = asyncio.run(flow())
+
+    assert len(sent) == 2  # pesan yang masuk saat LLM kerja tidak dibuang diam-diam
+    assert len(llm.calls) == 2
+    assert "eh masih di situ?" not in llm.calls[0]  # payload turn pertama tidak mengklaimnya
+    assert "eh masih di situ?" in llm.calls[1]
+
+
+def test_reflection_stores_mood_with_memory(tmp_path) -> None:
+    from sanka.affect import AffectStore
+    from sanka.config import AffectConfig
+    from sanka.memory import MemoryStore
+
+    class FactLLM(ReflectLLM):
+        async def reflect(self, user_text, answer, context="", memory=""):
+            self.reflected += 1
+            return [{"text": "suka kopi pahit", "kind": "preference"}]
+
+    affect = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
+    memory = MemoryStore(tmp_path / "memory.db")
+    llm = FactLLM()
+    config = rich_config(
+        tmp_path,
+        roles={"owner": RoleConfig("owner", tools=("memory",), commands=("*",))},
+        default_role="owner",
+    )
+    app = App(config, llm, FakeHub(), Sessions(), memory=memory, affect=affect)
+    app.bot_digits = {"628567770837"}
+    client, _, _ = transport()
+    ev = dm_event("aku suka kopi pahit banget")
+    ev.Info.ID = "3EB0PAD"
+
+    async def flow() -> None:
+        await handle_message(client, ev, app)
+        await asyncio.gather(*app.tasks)
+
+    asyncio.run(flow())
+
+    pad = affect.pad("628999999999@s.whatsapp.net")
+    row = memory.entries(["628999999999@s.whatsapp.net"])[0]
+    assert llm.reflected == 1
+    assert row["valence"] == pad["pleasure"]  # mood saat menulis ikut tersimpan
+    assert row["arousal"] == pad["arousal"]
+    memory.close()
+    affect.close()
+
+
+def test_room_vibe_reaches_decision_and_reply(tmp_path) -> None:
+    BLOCK = "Vibe ruangan: negatif, berenergi, seimbang."
+
+    class FakeVibe:
+        def __init__(self) -> None:
+            self.seen: list[tuple[str, str]] = []
+            self.closed = 0
+
+        async def observe(self, chat_id: str, text: str) -> str:
+            self.seen.append((chat_id, text))
+            return BLOCK
+
+        async def close(self) -> None:
+            self.closed += 1
+
+    llm = DecisionLLM(answer="santai aja")
+    vibe = FakeVibe()
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions(), anima=vibe)
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("aku capek banget"), app)
+        await app.close()
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert vibe.seen == [("628999999999@s.whatsapp.net", "aku capek banget")]
+    assert BLOCK in llm.decisions[0] and BLOCK in llm.system
+    assert vibe.closed == 1
+    assert payload_text(sent[0]) == "santai aja"

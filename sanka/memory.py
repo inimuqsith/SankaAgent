@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS memory (
     kind TEXT NOT NULL,
     text TEXT NOT NULL,
     source TEXT NOT NULL DEFAULT '',
+    valence REAL,
+    arousal REAL,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
     superseded_by INTEGER,
@@ -102,16 +104,18 @@ class MemoryStore:
             pass
 
     def _migrate(self) -> None:
-        """DB lama belum punya kolom supersede; tambahkan tanpa menyentuh baris."""
+        """DB lama belum punya kolom supersede/valence; tambahkan tanpa menyentuh baris."""
         columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(memory)")}
-        if "superseded_by" in columns:
-            return
-        try:
-            self._conn.execute("ALTER TABLE memory ADD COLUMN superseded_by INTEGER")
-        except sqlite3.OperationalError:  # proses lain menambah kolom lebih dulu
-            columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(memory)")}
-            if "superseded_by" not in columns:
-                raise
+        if "superseded_by" not in columns:
+            try:
+                self._conn.execute("ALTER TABLE memory ADD COLUMN superseded_by INTEGER")
+            except sqlite3.OperationalError:  # proses lain menambah kolom lebih dulu
+                columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(memory)")}
+                if "superseded_by" not in columns:
+                    raise
+        for name in ("valence", "arousal"):
+            if name not in columns:
+                self._conn.execute(f"ALTER TABLE memory ADD COLUMN {name} REAL")
 
     def _require(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -132,11 +136,14 @@ class MemoryStore:
         source: str = "",
         *,
         supersedes: int | None = None,
+        valence: float | None = None,
+        arousal: float | None = None,
     ) -> tuple[int, bool]:
         """Simpan memori; `supersedes` menandai satu entri lama sebagai digantikan.
 
         Entri lama tidak dihapus (`superseded_by` terisi), jadi keputusan salah masih bisa
         dipulihkan. Id wajib aktif, satu scope, dan satu kind dengan teks baru.
+        `valence`/`arousal` merekam mood saat menulis untuk recall mood-congruent.
         """
         kind = kind.strip().lower()
         if kind not in KINDS:
@@ -150,6 +157,8 @@ class MemoryStore:
                 old_id = int(supersedes)
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"supersedes bukan id: {supersedes}") from exc
+        v = None if valence is None else max(-1.0, min(1.0, float(valence)))
+        a = None if arousal is None else max(0.0, min(1.0, float(arousal)))
         now = time.time()
         with self._lock:
             conn = self._require()
@@ -170,11 +179,13 @@ class MemoryStore:
             if old_id is not None and existing is not None and int(existing["id"]) == old_id:
                 raise ValueError("memori tidak bisa menggantikan dirinya sendiri")
             conn.execute(
-                "INSERT INTO memory(scope, kind, text, source, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
+                "INSERT INTO memory(scope, kind, text, source, created_at, updated_at, valence, arousal) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(scope, kind, text) DO UPDATE SET "
-                "source=excluded.source, updated_at=excluded.updated_at, superseded_by=NULL",
-                (scope, kind, body, _clip(source, MAX_SOURCE), now, now),
+                "source=excluded.source, updated_at=excluded.updated_at, superseded_by=NULL, "
+                "valence=COALESCE(excluded.valence, memory.valence), "
+                "arousal=COALESCE(excluded.arousal, memory.arousal)",
+                (scope, kind, body, _clip(source, MAX_SOURCE), now, now, v, a),
             )
             row = conn.execute(
                 "SELECT id FROM memory WHERE scope=? AND kind=? AND text=?",
@@ -246,14 +257,22 @@ class MemoryStore:
             self._require().commit()
             return int(cursor.rowcount)
 
-    def context(self, chat_id: str, *, include_global: bool = True, query: str = "") -> str:
+    def context(
+        self,
+        chat_id: str,
+        *,
+        include_global: bool = True,
+        query: str = "",
+        mood: tuple[float, float] | None = None,
+    ) -> str:
         """Blok L1 untuk system prompt; kosong bila tidak ada memori.
 
         Entri yang cocok dengan pesan terakhir didahulukan, sisanya diisi yang terbaru.
+        `mood` (valence 0..1, arousal 0..1) menambah rerank mood-congruent ala AFT.
         """
         with self._lock:
-            global_rows = self._ranked(["global"], query) if include_global else []
-            chat_rows = self._ranked([chat_id], query) if chat_id else []
+            global_rows = self._ranked(["global"], query, mood) if include_global else []
+            chat_rows = self._ranked([chat_id], query, mood) if chat_id else []
         if not global_rows and not chat_rows:
             return ""
 
@@ -346,11 +365,29 @@ class MemoryStore:
             text = text[: ACTION_CHARS - 1].rstrip() + "…"
         return text
 
-    def _ranked(self, scopes: list[str], query: str) -> list[sqlite3.Row]:
-        """Cocok query dulu, lengkapi dengan yang terbaru tanpa duplikat."""
+    def _ranked(
+        self, scopes: list[str], query: str, mood: tuple[float, float] | None = None
+    ) -> list[sqlite3.Row]:
+        """Cocok query dulu, lengkapi dengan yang terbaru tanpa duplikat; mood ikut menilai."""
         recent = self._select(scopes, "", self.max_items)
-        if not str(query or "").strip():
-            return recent
-        matched = self._select(scopes, query, self.max_items)
+        matched = self._select(scopes, query, self.max_items) if str(query or "").strip() else []
         seen = {row["id"] for row in matched}
-        return [*matched, *(row for row in recent if row["id"] not in seen)][: self.max_items]
+        rows = [*matched, *(row for row in recent if row["id"] not in seen)]
+        if mood is None:
+            return rows[: self.max_items]
+        mood_valence, mood_arousal = float(mood[0]), float(mood[1])
+        now = time.time()
+        scored: list[tuple[float, sqlite3.Row]] = []
+        for row in rows:
+            age_days = max(0.0, now - float(row["updated_at"])) / 86400.0
+            recency = 1.0 / (1.0 + age_days)
+            if row["valence"] is None or row["arousal"] is None:
+                congruence = 0.5  # tanpa label: netral, bukan dihukum
+            else:
+                v = (float(row["valence"]) + 1.0) / 2.0
+                a = float(row["arousal"])
+                congruence = 1.0 - (abs(v - mood_valence) + abs(a - mood_arousal)) / 2.0
+            score = (2.0 if row["id"] in seen else 0.0) + 0.3 * recency + 0.2 * congruence
+            scored.append((score, row))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [row for _, row in scored[: self.max_items]]

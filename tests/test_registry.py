@@ -42,6 +42,7 @@ def test_builtin_handlers_discovered() -> None:
         "reset",
         "skill",
         "status",
+        "stop",
         "tools",
         "whoami",
     }

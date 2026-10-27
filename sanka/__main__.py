@@ -7,6 +7,7 @@ import contextlib
 import logging
 import shutil
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -37,6 +38,7 @@ try:
     from .style import StyleStore
     from .tools import REGISTRY, ToolContext, execute
     from .tools.sandbox import resolve_runtime
+    from .vibe import VibeRunner
     from .wa import App, Sessions, bot_digits, handle_message
 except RegistryError as exc:  # plugin invalid menggagalkan start dengan satu pesan
     sys.exit(f"sanka: {exc}")
@@ -261,6 +263,14 @@ async def run_bot(config: Config) -> None:
                     log.info("profil gaya dari arsip: %s", style.stats())
             except Exception:
                 log.exception("gagal seed gaya dari arsip")
+        vibe = None
+        if config.affect.enabled and config.affect.vibe.enabled:
+            try:
+                runner = VibeRunner(config.affect.vibe)
+                vibe = runner if await runner.start() else None
+            except Exception:  # vibe nonaktif tidak boleh menahan bot
+                log.exception("vibe gagal dimulai; lanjut tanpa vibe")
+                vibe = None
         sessions = Sessions(store=store)
         app = App(
             config,
@@ -271,6 +281,7 @@ async def run_bot(config: Config) -> None:
             skills=skills,
             affect=affect,
             style=style,
+            anima=vibe,
         )
         if config.ambient.enabled:
             ambient = Ambient(
@@ -282,6 +293,7 @@ async def run_bot(config: Config) -> None:
                 store,
                 app.sessions,
                 app.send_text,
+                quiet=lambda chat_id: app.quiet.get(chat_id, 0.0) > time.time(),
             )
             app.ambient = ambient
             ambient.start()
@@ -416,7 +428,7 @@ async def backfill(config: Config) -> int:
         secure_db(session)
         try:
             await asyncio.wait_for(done.wait(), BACKFILL_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning("backfill timeout setelah %s detik; menghentikan perangkat sementara", BACKFILL_TIMEOUT)
         if done.is_set():
             await asyncio.sleep(2)  # beri waktu chunk terakhir selesai ditulis

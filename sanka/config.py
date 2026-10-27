@@ -27,6 +27,8 @@ class WhatsAppConfig:
     session_db: Path
     bot_name: str = "sanka"
     history_db: Path | None = None
+    backlog_seconds: int = 600  # lebih tua dari ini = arsip, bukan antrean balasan
+    quiet_seconds: int = 600  # durasi default /stop
 
 
 @dataclass(frozen=True)
@@ -68,11 +70,25 @@ class SkillsConfig:
 
 
 @dataclass(frozen=True)
+class VibeConfig:
+    enabled: bool = True  # default aktif; fail-open kalau torch/model tidak ada
+    model: str = "Aardiiiiy/EmoSense-ID-Indonesian-Emotion-Classifier"
+    max_length: int = 128
+    attack: float = 0.35
+    baseline_influence: float = 0.05
+    hold_seconds: float = 1.2
+    neutral_floor: float = 0.35
+    tick_seconds: float = 1.0
+    state_path: Path = Path(".sanka/vibe.json")
+
+
+@dataclass(frozen=True)
 class AffectConfig:
     enabled: bool = False
     path: Path = Path(".sanka/affect.db")  # hubungan, orang, topik, drives
     state_dir: Path | None = None  # file state emotion-engine per chat; None = di samping DB
     volatility: str = "expressive"
+    vibe: VibeConfig = field(default_factory=VibeConfig)
 
 
 @dataclass(frozen=True)
@@ -341,6 +357,11 @@ def load_config(path: str | None = None) -> Config:
         _expand(str(affect_raw.get("state_dir") or ".sanka/emotions"), base), "affect.state_dir"
     )
     affect_state_dir.mkdir(parents=True, exist_ok=True)
+    vibe_raw = affect_raw.get("vibe") if isinstance(affect_raw.get("vibe"), dict) else {}
+    vibe_state = _reject_legacy(
+        _expand(str(vibe_raw.get("state_path") or ".sanka/vibe.json"), base), "affect.vibe.state_path"
+    )
+    vibe_state.parent.mkdir(parents=True, exist_ok=True)
     style_path = _reject_legacy(
         _expand(str(style_raw.get("path") or ".sanka/style.json"), base), "style.path"
     )
@@ -382,6 +403,8 @@ def load_config(path: str | None = None) -> Config:
             session_db=session_db,
             bot_name=str(wa_raw.get("bot_name") or "sanka"),
             history_db=history_db,
+            backlog_seconds=int(_num(wa_raw.get("backlog_seconds"), 600)),
+            quiet_seconds=int(_num(wa_raw.get("quiet_seconds"), 600)),
         ),
         roles=roles,
         default_role=default_role,
@@ -413,6 +436,19 @@ def load_config(path: str | None = None) -> Config:
             path=affect_db,
             state_dir=affect_state_dir,
             volatility=str(affect_raw.get("volatility") or "expressive").strip() or "expressive",
+            vibe=VibeConfig(
+                enabled=_bool(vibe_raw.get("enabled"), True),
+                model=str(
+                    vibe_raw.get("model") or "Aardiiiiy/EmoSense-ID-Indonesian-Emotion-Classifier"
+                ),
+                max_length=int(_num(vibe_raw.get("max_length"), 128)),
+                attack=_num(vibe_raw.get("attack"), 0.35),
+                baseline_influence=_num(vibe_raw.get("baseline_influence"), 0.05),
+                hold_seconds=_num(vibe_raw.get("hold_seconds"), 1.2),
+                neutral_floor=_num(vibe_raw.get("neutral_floor"), 0.35),
+                tick_seconds=_num(vibe_raw.get("tick_seconds"), 1.0),
+                state_path=vibe_state,
+            ),
         ),
         humanize=HumanizeConfig(
             enabled=_bool(humanize_raw.get("enabled"), False),
