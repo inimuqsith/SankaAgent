@@ -366,10 +366,9 @@ def command_body(text: str, bot_name: str, bots: set[str]) -> str:
 
 DAILY_STYLE = (
     "Balas seperti chat WhatsApp sungguhan: kalimat pendek, ideal di bawah 300 karakter. "
-    "Kalau kamu ingin beberapa pesan terpisah seperti orang chat beruntun, tulis baris berisi "
-    "tepat `---` di antara pesan; runtime mengirimnya sebagai bubble berurutan. Jangan memakai "
-    "baris kosong untuk memecah: penjelasan serius, daftar, atau langkah bernomor tetap satu pesan "
-    "utuh (tanpa `---`).\n"
+    "Kalau kamu ingin beberapa pesan terpisah seperti orang chat beruntun, pisahkan dengan baris "
+    "kosong (atau baris `---`); runtime mengirimnya sebagai bubble berurutan. Untuk penjelasan "
+    "serius, daftar, atau langkah bernomor, tulis satu pesan utuh tanpa baris kosong di tengah.\n"
 )
 PRO_STYLE = (
     "Mode profesional: pesan ini tugas, bukan obrolan. Kerjakan sampai tuntas dengan tool yang ada, "

@@ -175,13 +175,14 @@ menjalankan container privileged. Batasi `tools` role dan hanya lakukan bila mem
 
 ## Emosi, keputusan, dan otonomi
 
-**Bubble ditentukan model, bukan penghitung byte.** Batas pesan ditandai model dengan baris berisi
-`---`: `bohong apanya sih 😭` + `---` + `masa aku ngambek terus…` jadi dua bubble berurutan dengan
-jeda mengetik per bubble. Baris kosong **bukan** pemisah, jadi penjelasan serius dan daftar bernomor
-selalu utuh dalam satu pesan; `---` di dalam blok kode diabaikan. Tidak ada pemotongan paksa dan
-tidak ada elipsis: kalau bubble melebihi `humanize.max_bubbles`, sisanya digabung ke pesan terakhir,
-bukan dibuang. Prompt `DAILY_STYLE` mengajarkan konvensi ini; `max_bubbles` hanya batas atas. Mode
-`professional` dan command selalu satu pesan (`format_reply`). Chunk pertama mengutip pesan asal. Pesan yang masuk
+**Bubble ditentukan model, bukan penghitung byte.** Dua jalur, dua-duanya dari niat model:
+baris `---` selalu jadi batas pesan; baris kosong jadi batas **hanya untuk obrolan santai** — tanpa
+penanda daftar/poin, tanpa blok kode, dan tiap paragraf tidak lebih dari 300 karakter. Daftar
+bernomor, langkah teknis, dan paragraf panjang tetap satu pesan utuh, jadi penjelasan serius tidak
+dipecah. Tidak ada pemotongan paksa dan tidak ada elipsis: kalau bubble melebihi
+`humanize.max_bubbles`, sisanya digabung ke pesan terakhir, bukan dibuang. Prompt `DAILY_STYLE`
+mengajarkan konvensi ini; `max_bubbles` hanya batas atas. Mode `professional` dan command selalu
+satu pesan (`format_reply`). Chunk pertama mengutip pesan asal, sisanya pesan biasa. Pesan yang masuk
 sesaat sebelum burst terakhir terkirim dianggap sudah terwakili, jadi tag beruntun dijawab sekali.
 Kalau `humanize.enabled: false`, semua balasan memakai jalur mengutip tanpa jeda.
 

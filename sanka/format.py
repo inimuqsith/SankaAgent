@@ -47,6 +47,9 @@ def format_reply(text: str, limit: int = 3500) -> list[str]:
 
 
 BUBBLE = re.compile(r"(?m)^\s*-{3,}\s*$")  # baris "---" saja = bubble baru; pilihan model
+BLANK = re.compile(r"\n\s*\n")  # baris kosong: dipakai hanya untuk obrolan, bukan daftar
+LIST_LINE = re.compile(r"(?m)^\s*(?:[-*•]|\d+[.)]|\d\ufe0f?\u20e3)\s")
+CASUAL_BUBBLE_MAX = 300  # paragraf obrolan sepanjang ini masih wajar jadi satu pesan
 
 
 def human_chunks(text: str, *, max_parts: int = 3) -> list[str]:
@@ -78,6 +81,17 @@ def human_chunks(text: str, *, max_parts: int = 3) -> list[str]:
             current = chunk
     if current:
         parts.append(current)
+    if len(parts) == 1 and FENCE_START not in body:
+        # Tidak ada penanda: baris kosong baru dianggap batas pesan kalau ini obrolan santai.
+        # Daftar/poin dan paragraf panjang tetap satu pesan supaya penjelasan tidak hancur.
+        paragraphs = [part.strip() for part in BLANK.split(parts[0]) if part.strip()]
+        casual = (
+            len(paragraphs) > 1
+            and not LIST_LINE.search(parts[0])
+            and all(len(part) <= CASUAL_BUBBLE_MAX for part in paragraphs)
+        )
+        if casual:
+            parts = paragraphs
     cap = max(1, int(max_parts))
     if len(parts) > cap:
         parts = [*parts[: cap - 1], "\n\n".join(parts[cap - 1 :])]

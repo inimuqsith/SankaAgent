@@ -72,9 +72,10 @@
   (arsip + `decision(act=ignore, reason="grup tanpa panggilan")`), jadi tidak ada balasan dan emosi
   tidak bergerak. `group_reply: model` mengembalikan perilaku lama (percaya keputusan). Nimbrung
   tanpa panggilan tetap lewat chime yang berjatah.
-- Bubble ditentukan model: `human_chunks`/`humanize_reply` memakai baris `---` sebagai satu-satunya
-  batas pesan (baris kosong tidak memecah, `---` di dalam blok kode diabaikan), tanpa pemotongan
-  paksa dan tanpa elipsis; kelebihan bubble digabung ke yang terakhir (bukan dibuang). `DAILY_STYLE` menjelaskan konvensinya (obrolan santai boleh banyak bubble,
+- Bubble ditentukan model: `human_chunks`/`humanize_reply` memakai baris `---` sebagai batas pasti,
+  dan baris kosong sebagai batas hanya untuk obrolan (tanpa penanda daftar, tanpa blok kode, tiap
+  paragraf <= 300 karakter). Tanpa pemotongan paksa dan tanpa elipsis; kelebihan bubble digabung
+  ke yang terakhir. `---` di dalam blok kode diabaikan. `DAILY_STYLE` menjelaskan konvensinya (obrolan santai boleh banyak bubble,
   penjelasan serius/daftar tetap satu pesan). `reply_budget` beserta `normal_chars`/`normal_parts`/
   `detail_chars`/`detail_parts` dihapus karena sudah mati; `max_bubbles` jadi batas atas.
 - `decision.ground_tone`: nada `curt`/`hurt`/`angry` diturunkan ke `neutral` bila PAD netral/positif

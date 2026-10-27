@@ -138,3 +138,29 @@ def test_profile_uses_live_stats_after_enough_samples(tmp_path) -> None:
 
     assert "median" in text and "partikel:" in text
     store.close()
+
+
+def test_casual_blank_line_becomes_two_bubbles() -> None:
+    # Kasus produksi: model menulis dua kalimat obrolan dengan baris kosong, tanpa penanda `---`.
+    text = "iya, lumayan. udah nggak berat lagi rasanya 🙂\n\nkamu sendiri gimana? kelar juga kan kerjanya?"
+
+    parts = humanize_reply(text, max_parts=3)
+
+    assert parts == [
+        "iya, lumayan. udah nggak berat lagi rasanya 🙂",
+        "kamu sendiri gimana? kelar juga kan kerjanya?",
+    ]
+
+
+def test_long_paragraphs_are_not_shredded() -> None:
+    text = ("a " * 200).strip() + "\n\n" + ("b " * 200).strip()
+
+    assert len(humanize_reply(text, max_parts=3)) == 1  # terlalu panjang: biar utuh satu pesan
+
+
+def test_explicit_marker_still_wins() -> None:
+    text = "satu kalimat\n---\nkalimat kedua\n\nmasih kalimat kedua"
+
+    parts = humanize_reply(text, max_parts=3)
+
+    assert parts == ["satu kalimat", "kalimat kedua\n\nmasih kalimat kedua"]
