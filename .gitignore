@@ -10,3 +10,6 @@ __pycache__/
 *.db
 logs/
 workspace/
+
+# ekspor chat pribadi untuk analisis lokal (jangan di-commit)
+references/

@@ -59,6 +59,24 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   arsip, memori, skill, tool), `/tools` (tool yang diizinkan role), `/cari` (arsip chat aktif),
   `/help <command>` (usage/alias/izin), dan alias `/new` untuk `/reset`.
 
+- [x] Emosi persisten (PAD + OCC lewat `affect-kernel`) per chat dan hubungan per orang di
+  `affect.db`: trust/afeksi/respek/kesal, sulk/nangis, catatan trait dari arsip, dan label mood
+  yang masuk prompt. Sulk hanya mengurangi kemampuan: `/calmdown` (owner), dua permintaan maaf,
+  atau waktu habis; isi krisis tidak pernah disimpan dan selalu dibalas.
+- [x] Gate balasan memutuskan `reply`/`react`/`ignore` lewat LLM (mood + hubungan + 6 pesan
+  terakhir); skor deterministik hanya prior/fallback. Rate limit per chat/orang + cooldown menang
+  atas mention, `max_consecutive_ignores` mencegah ghosting.
+- [x] Balasan manusia: 1-3 bubble pendek (`human_chunks`), jeda mengetik dari panjang teks, chunk
+  pertama mengutip pesan, dan double-text opsional yang diputuskan model (`LLM.followup`, maks
+  `max_followups`/`max_bubbles`).
+- [x] Profil gaya chat dari agregat arsip (median panjang, huruf kecil, partikel, emoji) tanpa
+  menyimpan teks, dengan seed acuan `references/*.md` bila sampel masih sedikit.
+- [x] Otonomi terbatas (`ambient`): digest topik + fakta ke memori, riset `web_search` saat chat
+  sepi, chime grup sesekali dengan gate, dan sedih saat ditinggal. Tool context hanya `web_search`
+  dan tidak pernah DM.
+- [x] Persona laki-laki dengan ekspresi emosional feminin, bukan asisten; balasan pendek dan tidak
+  mengaku AI. Command baru `/calmdown` (owner).
+
 ## Nanti
 
 - Integrasi penuh (fetch URL, parsing PDF/audio/OCR, calendar/email) — ditunda; sementara lewat

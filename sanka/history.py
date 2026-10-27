@@ -595,6 +595,40 @@ class HistoryStore:
         with self._lock:
             return int(self._require().execute("SELECT COUNT(*) FROM messages").fetchone()[0])
 
+    def resolve_person(self, jid: str) -> str:
+        """JID (…@lid atau …@s.whatsapp.net) -> kunci orang stabil berbasis nomor PN."""
+        raw = str(jid or "")
+        if not raw:
+            return ""
+        with self._lock:
+            if raw.endswith("@lid"):
+                row = self._require().execute(
+                    "SELECT pn FROM lid_map WHERE lid=?", (raw,)
+                ).fetchone()
+                if row is not None and str(row["pn"]):
+                    return digits(str(row["pn"]))
+            return digits(raw)
+
+    def _human_rows(self, limit: int, days: int) -> list[dict]:
+        """Baris pesan manusia terbaru; satu query untuk seed orang dan seed gaya."""
+        size = max(1, min(int(limit or 2000), 20_000))
+        cutoff = time.time() - max(1, int(days)) * 86400
+        sql = (
+            "SELECT sender_id, sender_name, sender_jid, text, ts FROM messages "
+            "WHERE outgoing=0 AND text<>'' AND ts>=? ORDER BY ts DESC, id DESC LIMIT ?"
+        )
+        with self._lock:
+            rows = self._require().execute(sql, (cutoff, size)).fetchall()
+        return [dict(row) for row in rows]
+
+    def people_seed(self, limit: int = 5000, days: int = 90) -> list[dict]:
+        """Contoh pesan manusia untuk membangun profil orang saat DB emosi masih kosong."""
+        return self._human_rows(limit, days)
+
+    def style_sample(self, limit: int = 2000) -> list[str]:
+        """Teks pesan manusia untuk statistik gaya; isi hanya dipakai agregat, tidak disimpan."""
+        return [str(row["text"]) for row in self._human_rows(limit, 365)]
+
     def needs_full_sync(self) -> bool:
         with self._lock:
             row = self._require().execute("SELECT value FROM meta WHERE key='full_sync_done'").fetchone()

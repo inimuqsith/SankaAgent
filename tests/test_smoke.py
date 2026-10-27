@@ -391,3 +391,94 @@ def test_memory_and_skills_config_from_yaml(tmp_path, monkeypatch) -> None:
     assert config.memory.auto_extract is False
     assert config.skills.dir == tmp_path / "skills"
     assert config.skills.max_index_chars == 800
+
+
+def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    target = tmp_path / "config.yaml"
+    target.write_text(
+        "persona: p\n"
+        "llm:\n  api_key_env: SANKA_TEST_KEY\n"
+        f"workspace: \"{tmp_path / 'ws'}\"\n"
+        f"whatsapp:\n  session_db: \"{tmp_path / 's.db'}\"\n"
+        "roles:\n  member: {}\n"
+        "default_role: member\n"
+        "affect:\n"
+        "  enabled: true\n"
+        "  path: \".sanka/affect.db\"\n"
+        "  sulk_minutes: 12\n"
+        "  silence_max_ignores: 5\n"
+        "  allow_owner_sulk: false\n"
+        "  decay_hours: 2.5\n"
+        "gate:\n"
+        "  enabled: true\n"
+        "  reply_threshold: 0.5\n"
+        "  llm_decide: true\n"
+        "  reply_cooldown_seconds: 12\n"
+        "humanize:\n"
+        "  enabled: true\n"
+        "  normal_chars: 180\n"
+        "  max_bubbles: 5\n"
+        "  followups: true\n"
+        "  reaction_stickers: [\"stickers/a.webp\"]\n"
+        "style:\n"
+        "  enabled: true\n"
+        "  path: \".sanka/style.json\"\n"
+        "  max_chars: 640\n"
+        "ambient:\n"
+        "  enabled: true\n"
+        "  research_per_day: 3\n"
+        "  proactive: false\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(str(target))
+
+    assert config.affect.enabled is True
+    assert config.affect.path == tmp_path / ".sanka/affect.db"
+    assert config.affect.sulk_minutes == 12
+    assert config.affect.silence_max_ignores == 5
+    assert config.affect.allow_owner_sulk is False
+    assert config.affect.decay_hours == 2.5
+    assert config.gate.reply_threshold == 0.5
+    assert config.gate.llm_decide is True
+    assert config.gate.reply_cooldown_seconds == 12
+    assert config.humanize.normal_chars == 180
+    assert config.humanize.max_bubbles == 5
+    assert config.humanize.followups is True
+    assert config.humanize.reaction_stickers == ("stickers/a.webp",)
+    assert config.style.path == tmp_path / ".sanka/style.json"
+    assert config.style.max_chars == 640
+    assert config.ambient.research_per_day == 3
+    assert config.ambient.proactive is False
+
+
+def test_human_features_default_off() -> None:
+    config = make_config()
+
+    assert config.affect.enabled is False
+    assert config.gate.enabled is False
+    assert config.humanize.enabled is False
+    assert config.style.enabled is False
+    assert config.ambient.enabled is False
+
+
+def test_config_false_string_disables_flag(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    target = tmp_path / "config.yaml"
+    target.write_text(
+        "persona: p\n"
+        "llm:\n  api_key_env: SANKA_TEST_KEY\n"
+        f"workspace: \"{tmp_path / 'ws'}\"\n"
+        f"whatsapp:\n  session_db: \"{tmp_path / 's.db'}\"\n"
+        "roles:\n  member: {}\n"
+        "default_role: member\n"
+        "humanize:\n  enabled: \"false\"\n"
+        "ambient:\n  proactive: \"false\"\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(str(target))
+
+    assert config.humanize.enabled is False
+    assert config.ambient.proactive is False

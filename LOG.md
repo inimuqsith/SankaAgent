@@ -1,5 +1,47 @@
 # LOG
 
+## 2026-10-27 (emosi, gaya pendek, gate, otonomi)
+
+- `sanka/affect.py`: `AffectStore` (SQLite `affect.path`, 0600/WAL/busy_timeout) menyimpan mood PAD +
+  emosi OCC per chat, hubungan per orang (trust/afeksi/respek/kesal/notes), `sulks`, `topics`, dan
+  `events` 200 baris. Appraisal memakai `affect-kernel` 0.1.0 apa adanya; delta kustom hanya untuk
+  trust/afeksi/respek/kesal. Satu hinaan -> level 1 (`sulk_minutes`), escalate ke level 2, nangis
+  bila distress+sadness tinggi. Sulk tidak turun hanya karena annoyance turun; berakhir lewat
+  `/calmdown`, dua permintaan maaf/afeksi (`appease>=2`), atau `until`. Isi krisis tidak pernah
+  ditulis ke `events`/notes; krisis tetap dibalas.
+- `sanka/gate.py`: `ReplyGate` -> `reply|react|ignore`. `LLM.decide` (mood + hubungan + 6 pesan
+  terakhir) yang memutuskan; skor deterministik jadi prior/fallback, `LLM.judge` untuk borderline
+  saat `llm_decide` dimatikan. Rate limit 10 menit per chat/orang + cooldown menang atas mention;
+  `max_consecutive_ignores` memaksa balas agar Sanka tidak ghosting. Reaksi stiker dibatasi 1/5 menit.
+- `sanka/style.py`: agregat gaya dari `history.db` (median, huruf kecil, partikel, emoji) tanpa
+  menyimpan teks; seed acuan `references/*.md` (median 34) saat sampel < 20. `history.py` menambah
+  `resolve_person`, `people_seed`, `style_sample` (tanpa ubah schema).
+- `sanka/format.py`: `reply_budget`, `human_chunks` (fence utuh, potong per kalimat/kata, `…`),
+  `humanize_reply`, `typing_delay`. `wa.py` mengirim bubble: chunk pertama kutip pesan, berikutnya
+  `send_message`, jeda mengetik per bubble; command tetap satu jalur lama.
+- Double-text: `LLM.followup` + `parse_followup` (`[DIAM]`/duplikat ditolak) menambah maks
+  `humanize.max_followups` bubble sampai `max_bubbles`; dilewati untuk command, krisis, dan saat
+  sulk. Tanpa tool, jadi izin tidak bertambah.
+- `sanka/ambient.py`: digest topik+fakta ke memori/notes, riset `web_search` saat sepi, chime grup
+  sesekali, dan `neglect` (sedih maks 1/jam). Tool context hanya `("web_search",)`, tidak pernah DM.
+- `sanka/guard.py`: satu tempat regex krisis/injeksi/sensitif/tensi/fun + `EXEMPT_COMMANDS`
+  (`help`, `status`, `whoami`, `reset`, `stop`, `ping`, `calmdown`) dan `command_name`.
+- Config baru `affect`/`gate`/`humanize`/`style`/`ambient` (semua default mati, `_bool` agar
+  `"false"` tidak truthy); `config.yaml` + contoh menyalakannya. Persona ditulis ulang: laki-laki
+  dengan ekspresi emosional feminin, bukan asisten, tidak mengaku AI. Command baru `/calmdown`
+  (owner, alias `/tenang`).
+- Budget token latar: model reasoning menghabiskan jatah sebelum menulis, jadi `max_tokens`
+  kecil menghasilkan teks kosong (finish=length). `decide` 400, `judge` 600, `followup` 400,
+  `chime` 300, `digest` 500, `research_summary` 250; teks kosong dicatat warning dan otomatis
+  jatuh ke fallback deterministik, bukan diam-diam gagal.
+- Verifikasi: `pytest -q` 147 lulus (baru: affect/gate/style/ambient + integrasi balasan dan
+  `system_prompt`); `python -m sanka selftest` -> `PASS affect`, `PASS style`, `SELFTEST OK`.
+- Risiko/sisa: kualitas keputusan gate dan bahan double-text bergantung model; biaya LLM latar bisa
+  ditekan lewat `gate.llm_review: false`, `gate.llm_decide: false`, `ambient.digest_every`, dan
+  `ambient.research_per_day`. Smoke di grup tester (ledekan, hinaan, /calmdown, digest, riset)
+  belum dijalankan karena butuh sesi WhatsApp nyata.
+
+
 ## 2026-10-22 (gid socket docker + ownership)
 
 - `Dockerfile`: `ARG DOCKER_GID=994` setelah `RUN useradd ... sanka`; `groupadd -g "${DOCKER_GID}"

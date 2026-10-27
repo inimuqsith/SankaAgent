@@ -68,6 +68,75 @@ class SkillsConfig:
 
 
 @dataclass(frozen=True)
+class AffectConfig:
+    enabled: bool = False
+    path: Path = Path(".sanka/affect.db")
+    sulk_minutes: int = 30
+    cry_minutes: int = 30
+    silence_max_minutes: int = 30
+    silence_max_ignores: int = 3
+    allow_owner_sulk: bool = True
+    decay_hours: float = 1.0
+
+
+@dataclass(frozen=True)
+class GateConfig:
+    enabled: bool = False
+    reply_threshold: float = 0.45
+    react_threshold: float = 0.25
+    llm_decide: bool = False
+    max_consecutive_ignores: int = 2
+    llm_review: bool = True
+    review_low: float = 0.25
+    review_high: float = 0.60
+    max_reviews_per_minute: int = 6
+    max_replies_per_10min: int = 8
+    max_person_replies_per_10min: int = 4
+    reply_cooldown_seconds: float = 45.0
+
+
+@dataclass(frozen=True)
+class HumanizeConfig:
+    enabled: bool = False
+    normal_chars: int = 220
+    normal_parts: int = 3
+    detail_chars: int = 420
+    detail_parts: int = 4
+    cpms: float = 25.0
+    min_delay: float = 0.5
+    max_delay: float = 5.0
+    between_delay: float = 0.7
+    followups: bool = False
+    max_followups: int = 2
+    max_bubbles: int = 4
+    followup_delay: float = 1.2
+    reaction_stickers: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class StyleConfig:
+    enabled: bool = False
+    path: Path = Path(".sanka/style.json")
+    max_chars: int = 800
+
+
+@dataclass(frozen=True)
+class AmbientConfig:
+    enabled: bool = False
+    tick_seconds: int = 120
+    digest_every: int = 12
+    digest_cooldown: int = 900
+    history_window: int = 30
+    idle_minutes: int = 20
+    proactive: bool = True
+    chime_cooldown: int = 3600
+    chime_per_day: int = 6
+    research_cooldown: int = 21600
+    research_per_day: int = 6
+    research_results: int = 5
+
+
+@dataclass(frozen=True)
 class MCPServerConfig:
     name: str
     command: str | None = None  # stdio; None bila server memakai url
@@ -89,6 +158,11 @@ class Config:
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
+    affect: AffectConfig = field(default_factory=AffectConfig)
+    gate: GateConfig = field(default_factory=GateConfig)
+    humanize: HumanizeConfig = field(default_factory=HumanizeConfig)
+    style: StyleConfig = field(default_factory=StyleConfig)
+    ambient: AmbientConfig = field(default_factory=AmbientConfig)
 
     def api_key(self) -> str:
         return os.environ[self.llm.api_key_env]
@@ -164,6 +238,32 @@ def _optional_str_tuple(value: object) -> tuple[str, ...] | None:
     return None if value is None else _str_tuple(value)
 
 
+def _bool(value: object, default: bool) -> bool:
+    """String `"false"` di YAML harus mati, bukan truthy seperti `bool("false")`."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"true", "yes", "1", "on"}:
+        return True
+    if text in {"false", "no", "0", "off"}:
+        return False
+    return default
+
+
+def _num(value: object, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _section(raw: dict, key: str) -> dict:
+    body = raw.get(key)
+    return body if isinstance(body, dict) else {}
+
+
 def _roles(raw: object) -> dict[str, RoleConfig]:
     if not isinstance(raw, dict) or not raw:
         raise _fail("config: 'roles' wajib berisi minimal satu role")
@@ -236,6 +336,11 @@ def load_config(path: str | None = None) -> Config:
     search_raw = raw.get("web_search") if isinstance(raw.get("web_search"), dict) else {}
     memory_raw = raw.get("memory") if isinstance(raw.get("memory"), dict) else {}
     skills_raw = raw.get("skills") if isinstance(raw.get("skills"), dict) else {}
+    affect_raw = _section(raw, "affect")
+    gate_raw = _section(raw, "gate")
+    humanize_raw = _section(raw, "humanize")
+    style_raw = _section(raw, "style")
+    ambient_raw = _section(raw, "ambient")
 
     base = target.resolve().parent
     workspace = _reject_legacy(
@@ -254,6 +359,12 @@ def load_config(path: str | None = None) -> Config:
     memory_db = _reject_legacy(
         _expand(str(memory_raw.get("path") or ".sanka/memory.db"), base), "memory.path"
     )
+    affect_db = _reject_legacy(
+        _expand(str(affect_raw.get("path") or ".sanka/affect.db"), base), "affect.path"
+    )
+    style_path = _reject_legacy(
+        _expand(str(style_raw.get("path") or ".sanka/style.json"), base), "style.path"
+    )
     skills_dir = _reject_legacy(
         _expand(str(skills_raw.get("dir") or ".sanka/skills"), base), "skills.dir"
     )
@@ -265,6 +376,7 @@ def load_config(path: str | None = None) -> Config:
         raise _fail(f"config: sandbox.host_workspace '{host_workspace}' bukan direktori")
     secure_db(session_db)
     secure_db(history_db)
+    secure_db(affect_db)
 
     return Config(
         persona=str(raw.get("persona") or "").strip(),
@@ -306,5 +418,66 @@ def load_config(path: str | None = None) -> Config:
         skills=SkillsConfig(
             dir=skills_dir,
             max_index_chars=int(skills_raw.get("max_index_chars") or 3000),
+        ),
+        affect=AffectConfig(
+            enabled=_bool(affect_raw.get("enabled"), False),
+            path=affect_db,
+            sulk_minutes=int(_num(affect_raw.get("sulk_minutes"), 30)),
+            cry_minutes=int(_num(affect_raw.get("cry_minutes"), 30)),
+            silence_max_minutes=int(_num(affect_raw.get("silence_max_minutes"), 30)),
+            silence_max_ignores=int(_num(affect_raw.get("silence_max_ignores"), 3)),
+            allow_owner_sulk=_bool(affect_raw.get("allow_owner_sulk"), True),
+            decay_hours=_num(affect_raw.get("decay_hours"), 1.0),
+        ),
+        gate=GateConfig(
+            enabled=_bool(gate_raw.get("enabled"), False),
+            reply_threshold=_num(gate_raw.get("reply_threshold"), 0.45),
+            react_threshold=_num(gate_raw.get("react_threshold"), 0.25),
+            llm_decide=_bool(gate_raw.get("llm_decide"), False),
+            max_consecutive_ignores=int(_num(gate_raw.get("max_consecutive_ignores"), 2)),
+            llm_review=_bool(gate_raw.get("llm_review"), True),
+            review_low=_num(gate_raw.get("review_low"), 0.25),
+            review_high=_num(gate_raw.get("review_high"), 0.60),
+            max_reviews_per_minute=int(_num(gate_raw.get("max_reviews_per_minute"), 6)),
+            max_replies_per_10min=int(_num(gate_raw.get("max_replies_per_10min"), 8)),
+            max_person_replies_per_10min=int(
+                _num(gate_raw.get("max_person_replies_per_10min"), 4)
+            ),
+            reply_cooldown_seconds=_num(gate_raw.get("reply_cooldown_seconds"), 45.0),
+        ),
+        humanize=HumanizeConfig(
+            enabled=_bool(humanize_raw.get("enabled"), False),
+            normal_chars=int(_num(humanize_raw.get("normal_chars"), 220)),
+            normal_parts=int(_num(humanize_raw.get("normal_parts"), 3)),
+            detail_chars=int(_num(humanize_raw.get("detail_chars"), 420)),
+            detail_parts=int(_num(humanize_raw.get("detail_parts"), 4)),
+            cpms=_num(humanize_raw.get("cpms"), 25.0),
+            min_delay=_num(humanize_raw.get("min_delay"), 0.5),
+            max_delay=_num(humanize_raw.get("max_delay"), 5.0),
+            between_delay=_num(humanize_raw.get("between_delay"), 0.7),
+            followups=_bool(humanize_raw.get("followups"), False),
+            max_followups=int(_num(humanize_raw.get("max_followups"), 2)),
+            max_bubbles=int(_num(humanize_raw.get("max_bubbles"), 4)),
+            followup_delay=_num(humanize_raw.get("followup_delay"), 1.2),
+            reaction_stickers=_str_tuple(humanize_raw.get("reaction_stickers")),
+        ),
+        style=StyleConfig(
+            enabled=_bool(style_raw.get("enabled"), False),
+            path=style_path,
+            max_chars=int(_num(style_raw.get("max_chars"), 800)),
+        ),
+        ambient=AmbientConfig(
+            enabled=_bool(ambient_raw.get("enabled"), False),
+            tick_seconds=int(_num(ambient_raw.get("tick_seconds"), 120)),
+            digest_every=int(_num(ambient_raw.get("digest_every"), 12)),
+            digest_cooldown=int(_num(ambient_raw.get("digest_cooldown"), 900)),
+            history_window=int(_num(ambient_raw.get("history_window"), 30)),
+            idle_minutes=int(_num(ambient_raw.get("idle_minutes"), 20)),
+            proactive=_bool(ambient_raw.get("proactive"), True),
+            chime_cooldown=int(_num(ambient_raw.get("chime_cooldown"), 3600)),
+            chime_per_day=int(_num(ambient_raw.get("chime_per_day"), 6)),
+            research_cooldown=int(_num(ambient_raw.get("research_cooldown"), 21600)),
+            research_per_day=int(_num(ambient_raw.get("research_per_day"), 6)),
+            research_results=int(_num(ambient_raw.get("research_results"), 5)),
         ),
     )

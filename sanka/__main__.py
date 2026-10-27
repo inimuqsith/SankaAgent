@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import sys
+from pathlib import Path
 
 from neonize.aioze.client import NewAClient
 from neonize.aioze.events import ConnectedEv, GroupInfoEv, HistorySyncEv, MessageEv
@@ -12,6 +14,8 @@ from neonize.aioze.events import ConnectedEv, GroupInfoEv, HistorySyncEv, Messag
 from .registry import RegistryError
 
 try:
+    from .affect import AffectStore
+    from .ambient import Ambient
     from .commands import REGISTRY as COMMANDS
     from .config import (
         Config,
@@ -21,12 +25,14 @@ try:
         load_env,
         secure_db,
     )
+    from .gate import ReplyGate
     from .history import HistoryStore, history_props
     from .llm import API_ERROR_TEXT, LLM
     from .mcp import Hub
     from .memory import MemoryStore
     from .permissions import commands_for, tool_patterns, tools_for
     from .skills import SkillStore
+    from .style import StyleStore
     from .tools import REGISTRY, ToolContext, execute
     from .tools.sandbox import resolve_runtime
     from .wa import App, Sessions, bot_digits, handle_message
@@ -110,6 +116,49 @@ async def selftest(config: Config) -> int:
         passed = bool(answer.strip()) and answer != API_ERROR_TEXT
         results.append(_report("llm", "PASS" if passed else "FAIL", "" if passed else answer[:200]))
 
+        affect_path = config.workspace / "selftest-affect.db"
+        affect = None
+        try:
+            affect = AffectStore(affect_path, config.affect)
+            affect.observe(
+                "selftest", "p1", "Tester", "goblok banget sih kamu", directed=True, is_dm=True
+            )
+            sulking = affect.silent("selftest", "p1")
+            affect.calm("selftest")
+            passed = sulking and not affect.silent("selftest", "p1")
+            results.append(_report("affect", "PASS" if passed else "FAIL", "" if passed else "sulk tidak konsisten"))
+        except Exception as exc:
+            results.append(_report("affect", "FAIL", f"{type(exc).__name__}: {exc}"))
+        finally:
+            if affect is not None:
+                with contextlib.suppress(Exception):
+                    affect.close()
+            for suffix in ("", "-wal", "-shm"):
+                try:
+                    Path(f"{affect_path}{suffix}").unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+        style_path = config.workspace / "selftest-style.json"
+        style = None
+        try:
+            style = StyleStore(style_path, config.style)
+            style.learn("iyaa aku udah cek, aman kok")
+            text = style.profile()
+            passed = "media" in text and "karakter" in text
+            results.append(_report("style", "PASS" if passed else "FAIL", "" if passed else text[:120]))
+        except Exception as exc:
+            results.append(_report("style", "FAIL", f"{type(exc).__name__}: {exc}"))
+        finally:
+            if style is not None:
+                with contextlib.suppress(Exception):
+                    style.close()
+            for suffix in ("", ".tmp"):
+                try:
+                    Path(f"{style_path}{suffix}").unlink(missing_ok=True)
+                except OSError:
+                    pass
+
         for name in config.mcp:
             found = [spec.name for spec in hub.specs(role) if spec.name.startswith(f"mcp__{name}__")]
             print(f"mcp {name}: {', '.join(found) or '(tidak ada tool)'}", flush=True)
@@ -135,6 +184,7 @@ async def run_bot(config: Config) -> None:
     store: HistoryStore | None = None
     memory: MemoryStore | None = None
     skills: SkillStore | None = None
+    affect = style = gate = ambient = None
     app: App | None = None
     try:
         try:
@@ -150,7 +200,69 @@ async def run_bot(config: Config) -> None:
             skills = SkillStore(config.skills.dir, config.skills.max_index_chars)
         except Exception:
             log.exception("gagal membuka direktori skill; skill nonaktif")
-        app = App(config, LLM(config), hub, Sessions(store=store), memory=memory, skills=skills)
+        if config.affect.enabled:
+            try:
+                affect = AffectStore(config.affect.path, config.affect)
+            except Exception:  # emosi nonaktif, bot tetap membalas seperti sebelumnya
+                log.exception("gagal membuka affect; emosi nonaktif")
+        if config.style.enabled:
+            try:
+                style = StyleStore(config.style.path, config.style)
+            except Exception:
+                log.exception("gagal membuka style; profil gaya nonaktif")
+        if affect is not None and store is not None:
+            try:
+                seeded = affect.seed_from_history(store)
+                if seeded:
+                    log.info("profil orang dari arsip: %d", seeded)
+            except Exception:
+                log.exception("gagal seed people dari arsip")
+        if style is not None and store is not None:
+            try:
+                if style.seed_from_history(store):
+                    log.info("profil gaya dari arsip: %s", style.stats())
+            except Exception:
+                log.exception("gagal seed gaya dari arsip")
+        sessions = Sessions(store=store)
+        gate = (
+            ReplyGate(
+                config.gate,
+                None,
+                affect,
+                sessions,
+                config.whatsapp.bot_name,
+                config.humanize.reaction_stickers,
+            )
+            if config.gate.enabled
+            else None
+        )
+        app = App(
+            config,
+            LLM(config),
+            hub,
+            sessions,
+            memory=memory,
+            skills=skills,
+            affect=affect,
+            gate=gate,
+            style=style,
+        )
+        if gate is not None:
+            gate.llm = app.llm
+        if config.ambient.enabled:
+            ambient = Ambient(
+                config,
+                app.llm,
+                affect,
+                style,
+                memory,
+                store,
+                app.sessions,
+                gate,
+                app.send_text,
+            )
+            app.ambient = ambient
+            ambient.start()
         client = NewAClient(
             str(config.whatsapp.session_db),
             props=history_props(store.needs_full_sync() if store is not None else True),
@@ -218,8 +330,14 @@ async def run_bot(config: Config) -> None:
         secure_db(config.whatsapp.session_db)
         await client.idle()
     finally:
+        if ambient is not None:
+            await ambient.stop()
         if app is not None:
             await app.close()
+        if affect is not None:
+            affect.close()
+        if style is not None:
+            style.close()
         if store is not None:
             store.close()
         if memory is not None:
