@@ -30,6 +30,7 @@ class WhatsAppConfig:
     backlog_seconds: int = 600  # lebih tua dari ini = arsip, bukan antrean balasan
     quiet_seconds: int = 600  # durasi default /stop
     group_reply: str = "addressed"  # addressed = hanya bila dipanggil; model = percayakan keputusan
+    thread_seconds: int = 900  # situasi percakapan terbuka: lanjutan tidak perlu mention
 
 
 @dataclass(frozen=True)
@@ -415,6 +416,7 @@ def load_config(path: str | None = None) -> Config:
             backlog_seconds=int(_num(wa_raw.get("backlog_seconds"), 600)),
             quiet_seconds=int(_num(wa_raw.get("quiet_seconds"), 600)),
             group_reply=str(wa_raw.get("group_reply") or "addressed").strip().lower(),
+            thread_seconds=int(_num(wa_raw.get("thread_seconds"), 900)),
         ),
         roles=roles,
         default_role=default_role,

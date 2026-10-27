@@ -45,7 +45,7 @@ menulis peringatan `SOUL.md tidak ada di <folder>`. Saat start, loader mencatat 
 | `SOUL.md` | soul/karakter Sanka (root repo, di samping `config.yaml`); `persona` di YAML hanya fallback |
 | `llm` | `base_url`, `model`, `api_key_env`, `max_turns`, `timeout_seconds`, `temperature` (balasan; keputusan memakai 0.3) |
 | `workspace` | direktori kerja tool `read`/`write`/`shell`/`sandbox`; `read`/`write` menolak path di luarnya |
-| `whatsapp` | `session_db`, `history_db`, `bot_name`, `backlog_seconds` (pesan lebih tua = arsip), `quiet_seconds` (durasi default `/stop`), `group_reply` (`addressed` = hanya balas bila dipanggil, `model` = percayakan keputusan) |
+| `whatsapp` | `session_db`, `history_db`, `bot_name`, `backlog_seconds` (pesan lebih tua = arsip), `quiet_seconds` (durasi default `/stop`), `group_reply` (`addressed` = hanya balas bila dipanggil, `model` = percayakan keputusan), `thread_seconds` (situasi percakapan terbuka) |
 | `roles` | `users` (nomor), `tools`, `commands`; pola glob (`*`, `mcp__*`) |
 | `default_role` | role untuk nomor tak dikenal |
 | `sandbox` | `runtime` (`podman`/`docker`/kosong = autodetect), `image`, `timeout_seconds`, `network`, `host_workspace`, `env` |
@@ -253,6 +253,18 @@ disebut sebagai kata — dilewati tanpa memanggil LLM keputusan: masuk arsip, em
 tidak ada balasan. Gambar/stiker tanpa caption juga termasuk "bukan panggilan". Untuk nimbrung
 tanpa dipanggil, jalurnya chime yang berjatah (4 percobaan/24 jam, jeda 30 menit), bukan balasan.
 Set `group_reply: model` kalau mau keputusan model yang menentukan (perilaku lama).
+
+**Nama yang ditekuk tetap dihitung memanggil.** Pola nama dibuat toleran huruf berulang:
+`sanka` → `s+a+n+k+a+`, jadi `SANKAAAAAAAA`, `sannnkaaaaaa`, `saaannkaaa` dikenali, sementara
+`kesankan`/`sangka`/`s a n k a` tidak.
+
+**Situasi percakapan.** Setiap balasan membuka situasi per chat (`App.threads`): siapa lawan
+bicara, kata kunci topik, dan batas waktu `whatsapp.thread_seconds` (default 15 menit). Selama
+situasi terbuka, pesan lanjutan dari **orang yang sama** tidak butuh mention lagi — baik karena
+kata kuncinya beririsan maupun karena bentuknya lanjutan pendek (`"iya?"`, `"maksudnya?"`,
+`"gimana dong"`). Situasi **ditutup** begitu: pengirim berbeda, kata kunci tidak nyambung (konteks
+pindah), atau waktunya habis — dan pesan yang menutupnya tidak dibalas. Petunjuk situasi masuk ke
+konteks keputusan ("Situasi percakapan: kamu sedang mengobrol dengan … tentang …").
 
 **Atensi, bukan ratchet.** Obrolan yang bukan untuk Sanka tidak menggerakkan hubungan: delta hanya
 diterapkan bila keputusan `addressed=me` dan `act` bukan `ignore`. Appraisal PAD ditimbang atensi

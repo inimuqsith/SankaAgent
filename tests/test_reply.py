@@ -1548,3 +1548,110 @@ def test_command_does_not_wait_in_the_queue(tmp_path) -> None:
 
     assert "aku diam" in payload_text(sent[0])  # /stop langsung dijawab
     assert app.quiet
+
+
+def test_stretched_name_counts_as_a_call() -> None:
+    from sanka.wa import bot_named
+
+    for text in ("SAANKAAAA", "SANKAAAAAAAAAAA", "sannnkaaaaaa", "saaannkaaaa tolong"):
+        assert bot_named(text, "sanka") is True, text
+    for text in ("kesankan", "sangka", "sanksi baru", "s a n k a"):
+        assert bot_named(text, "sanka") is False, text
+
+
+def open_thread_flow(tmp_path):
+    async def flow():
+        client, sent, _ = transport()
+        llm = DecisionLLM(answer="rapatnya jam tiga")
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(
+            client, group_event("@sanka catatan rapat jam tiga", event_id="3EB0T1"), app
+        )
+        return client, sent, llm, app
+
+    return flow
+
+
+def test_open_thread_continues_without_mention(tmp_path) -> None:
+    import asyncio as aio
+
+    async def flow():
+        client, sent, llm, app = await open_thread_flow(tmp_path)()
+        await handle_message(client, group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0T2"), app)
+        return sent, llm, app
+
+    sent, llm, app = aio.run(flow())
+
+    assert len(llm.decisions) == 2  # lanjutan situasi ikut diputuskan tanpa mention
+    assert len(sent) == 2
+    assert app.threads  # situasi masih terbuka
+
+
+def test_new_topic_closes_the_situation(tmp_path) -> None:
+    import asyncio as aio
+
+    async def flow():
+        client, sent, llm, app = await open_thread_flow(tmp_path)()
+        await handle_message(
+            client, group_event("eh tiket bola besok berapa", mention=False, event_id="3EB0T3"), app
+        )
+        return sent, llm, app
+
+    sent, llm, app = aio.run(flow())
+
+    assert len(llm.decisions) == 1  # konteks pindah: tidak diputuskan lagi
+    assert len(sent) == 1
+    assert app.threads == {}  # situasi dianggap selesai
+
+
+def test_other_person_closes_the_situation(tmp_path) -> None:
+    import asyncio as aio
+
+    async def flow():
+        client, sent, llm, app = await open_thread_flow(tmp_path)()
+        other = group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0T4")
+        other.Info.MessageSource.Sender.User = "628111111111"
+        await handle_message(client, other, app)
+        return sent, llm, app
+
+    sent, llm, app = aio.run(flow())
+
+    assert len(llm.decisions) == 1
+    assert len(sent) == 1
+    assert app.threads == {}
+
+
+def test_expired_thread_needs_a_new_call(tmp_path) -> None:
+    import asyncio as aio
+    import time
+
+    async def flow():
+        client, sent, llm, app = await open_thread_flow(tmp_path)()
+        app.threads["1234567890@g.us"]["until"] = time.time() - 1
+        await handle_message(
+            client, group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0T5"), app
+        )
+        return sent, llm, app
+
+    sent, llm, app = aio.run(flow())
+
+    assert len(llm.decisions) == 1
+    assert len(sent) == 1
+    assert app.threads == {}
+
+
+def test_open_situation_reaches_the_decision_prompt(tmp_path) -> None:
+    import asyncio as aio
+
+    async def flow():
+        client, _, llm, app = await open_thread_flow(tmp_path)()
+        await handle_message(
+            client, group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0T6"), app
+        )
+        return llm
+
+    llm = aio.run(flow())
+
+    assert "Situasi percakapan" in llm.decisions[1]
+    assert "melanjutkan obrolan" in llm.decisions[1]

@@ -18,6 +18,7 @@ whatsapp:
   backlog_seconds: 600   # pesan lebih tua dari ini hanya diarsipkan, tidak dibalas
   quiet_seconds: 600     # durasi default /stop
   group_reply: addressed # grup: hanya balas bila dipanggil (addressed) atau percayakan model (model)
+  thread_seconds: 900    # lanjutan percakapan yang sama tidak perlu mention lagi
 
 roles:
   # tools/commands yang tidak ditulis -> pakai default dari registry handler.

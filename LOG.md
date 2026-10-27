@@ -85,6 +85,13 @@
   supaya `/stop` tetap bisa memotong antrean. `App.reflect` ikut mengambil lock yang sama, dan
   `Ambient` menerima `turn_busy=lambda: app.turn.locked()` supaya chime tidak menyelituk saat ada
   balasan berjalan.
+- Panggilan nama toleran tekukan: `_name_regex` meng-cache pola `s+a+n+k+a+`, jadi `SANKAAAAAAAA`,
+  `sannnkaaaaaa`, `saaannkaaa` dihitung memanggil; `kesankan`/`sangka`/`s a n k a` tidak.
+- Situasi percakapan (`App.threads`): balasan membuka situasi (lawan bicara + kata kunci + TTL
+  `whatsapp.thread_seconds` 900 dtk). Lanjutan dari orang yang sama dengan kata kunci beririsan
+  atau ucapan lanjutan pendek tidak butuh mention; situasi ditutup saat pengirim beda, konteks
+  pindah, atau kedaluwarsa. Petunjuk situasi ikut masuk konteks keputusan (`build_context`) dan
+  system prompt.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

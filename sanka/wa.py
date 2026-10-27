@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 import random
 import re
@@ -156,7 +157,51 @@ class App:
         self.reactions: dict[str, float] = {}
         self.answered: dict[str, frozenset[str]] = {}
         self.backlog: dict[str, int] = {}  # pesan lama per chat: arsip, bukan antrean
+        self.threads: dict[str, dict] = {}  # situasi percakapan yang sedang terbuka
         self.quiet: dict[str, float] = {}  # chat_id -> sampai kapan diam (epoch detik)
+
+    def note_thread(self, chat_id: str, message: ChatMessage, reply: str) -> None:
+        """Catat situasi yang dibuka balasan ini: siapa, tentang apa, sampai kapan berlaku."""
+        seconds = int(self.config.whatsapp.thread_seconds or 0)
+        if seconds <= 0 or not message.sender_id:
+            return
+        keys = _keywords(message.text) | _keywords(reply)
+        self.threads[chat_id] = {
+            "person": message.sender_id,
+            "name": message.sender_name,
+            "until": time.time() + seconds,
+            "keywords": set(sorted(keys)[:THREAD_KEYWORDS]),
+        }
+
+    def continues_thread(self, chat_id: str, message: ChatMessage) -> bool:
+        """Pesan ini melanjutkan situasi yang sama, bukan konteks baru yang butuh panggilan."""
+        state = self.threads.get(chat_id)
+        if not state:
+            return False
+        if time.time() > float(state["until"]) or message.sender_id != state["person"]:
+            self.threads.pop(chat_id, None)  # situasi selesai: beda orang atau sudah lama
+            return False
+        body = str(message.text or "").strip()
+        if not body:
+            return False
+        if _keywords(body) & state["keywords"]:
+            return True
+        return _followup_utterance(body)
+
+    def close_thread(self, chat_id: str) -> None:
+        self.threads.pop(chat_id, None)
+
+    def thread_note(self, chat_id: str, message: ChatMessage) -> str:
+        """Petunjuk singkat bahwa pesan ini melanjutkan situasi yang masih terbuka."""
+        state = self.threads.get(chat_id)
+        if not state or message.sender_id != state["person"]:
+            return ""
+        about = ", ".join(sorted(state["keywords"])) or "obrolan tadi"
+        who = state.get("name") or "orang ini"
+        return (
+            f"Kamu sedang mengobrol dengan {who} tentang {about}. Pesan ini melanjutkan obrolan itu, "
+            "bukan konteks baru: tidak perlu dipanggil namamu, dan jangan mengganti topik."
+        )
 
     def spawn(self, coro) -> None:
         """Jalankan tugas latar (mis. refleksi memori) tanpa menahan balasan."""
@@ -409,6 +454,7 @@ def system_prompt(
     cross_send: bool = False,
     topic: str = "",
     away: str = "",
+    thread: str = "",
     emotion: str = "",
     vibe: str = "",
     style: str = "",
@@ -501,6 +547,7 @@ def system_prompt(
             base,
             topic,
             away,
+            thread,
             emotion,
             vibe,
             style,
@@ -554,13 +601,58 @@ def _quote(ev, app: App, chat_id: str) -> Quote | None:
 MENTION_TOKEN = re.compile(r"@\+?\d[\d\s().-]{3,24}\d")
 
 
+@functools.lru_cache(maxsize=8)
+def _name_regex(name: str) -> re.Pattern:
+    """Nama jadi pola yang toleran tekukan: `sanka` -> `s+a+n+k+a+` (SANKAAAA, sannnkaaa)."""
+    parts: list[str] = []
+    for char in name:
+        if char.isalpha():
+            parts.append(f"{re.escape(char)}+")
+        elif char.isspace():
+            parts.append(r"\s+")
+        else:
+            parts.append(re.escape(char))
+    return re.compile(rf"(?<!\w){''.join(parts)}(?!\w)", re.IGNORECASE)
+
+
 def bot_named(text: str, name: str) -> bool:
-    """Namanya disebut sebagai kata utuh: panggilan tanpa tag (bukan bagian kata lain)."""
+    """Namanya disebut sebagai kata utuh; huruf berulang tetap dihitung memanggil."""
     body = str(text or "").strip()
     clean = str(name or "").strip()
     if not body or not clean:
         return False
-    return re.search(rf"(?<!\w){re.escape(clean)}(?!\w)", body, re.IGNORECASE) is not None
+    return _name_regex(clean).search(body) is not None
+
+
+THREAD_KEYWORDS = 10
+STOPWORDS = frozenset(
+    {
+        "yang", "sama", "untuk", "dari", "kamu", "aku", "ini", "itu", "apa", "gimana",
+        "kalau", "jadi", "sudah", "udah", "belum", "bisa", "aja", "saja", "juga", "kok",
+        "sih", "deh", "loh", "kan", "nya", "dan", "atau", "tapi", "atau", "the", "and",
+        "for", "with", "that", "this", "dengan", "karena", "biar", "gak", "nggak", "ngga",
+    }
+)
+FOLLOWUP_CUES = frozenset(
+    {
+        "iya", "iyaa", "iyaaa", "hah", "apaan", "maksudnya", "kenapa", "kok", "terus",
+        "lanjut", "gimana", "emang", "bener", "beneran", "serius", "trus", "ya", "yaa",
+        "maksud", "kok", "lah", "loh", "mau", "jadi",
+    }
+)
+
+
+def _keywords(text: str) -> set[str]:
+    words = re.findall(r"[a-z0-9]{4,}", str(text or "").lower())
+    return {word for word in words if word not in STOPWORDS}
+
+
+def _followup_utterance(text: str) -> bool:
+    """Pendek dan berpola menyambung ("iya?", "maksudnya?", "gimana dong")."""
+    words = re.findall(r"[a-z]+", str(text or "").lower())
+    if not words or len(words) > 4:
+        return False
+    return bool(set(words) & FOLLOWUP_CUES) or str(text).strip().endswith("?")
 
 
 def _resolve_mentions(text: str, app: App, chat_id: str) -> tuple[str, list[str]]:
@@ -824,6 +916,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             return
         missed = app.backlog.pop(chat_id, 0) if not is_command else 0
         away = _away_block(missed)
+        thread = app.thread_note(chat_id, message)
         vibe = ""
         if app.anima is not None and not is_command and not crisis and message.text.strip():
             try:  # mood ruangan ikut bergerak sebelum keputusan dibuat
@@ -844,7 +937,12 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
 
         # Di grup, tanpa panggilan/kutipan/namanya disebut, Sanka tidak ikut bicara. Menyelituk
         # tanpa konteks tetap mungkin, tapi lewat jalur chime yang berjatah.
-        called = is_mention or is_reply or bot_named(message.text, app.config.whatsapp.bot_name)
+        called = (
+            is_mention
+            or is_reply
+            or bot_named(message.text, app.config.whatsapp.bot_name)
+            or app.continues_thread(chat_id, message)
+        )
         unprompted = (
             not is_dm
             and not is_command
@@ -852,6 +950,8 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             and str(app.config.whatsapp.group_reply or "addressed") == "addressed"
             and not called
         )
+        if unprompted:
+            app.close_thread(chat_id)  # konteksnya sudah pindah: situasi dianggap selesai
         decision: Decision | None
         safety = ""
         fallback_only = False
@@ -894,6 +994,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 is_reply=is_reply,
                 away=away,
                 vibe=vibe,
+                thread=thread,
                 soul=app.config.persona,
             )
             if decision is None:
@@ -1082,6 +1183,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         topic=topic_block,
                         away=away,
                         vibe=vibe,
+                        thread=thread,
                         emotion=emotion_block,
                         style=style_block,
                         person_style=person_style,
@@ -1112,7 +1214,11 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 chunks = humanize_reply(answer, max_parts=planned) or ["(kosong)"]
                 pace = bool(humanize.enabled)
                 quote_all = not pace
-            await _send_chunks(client, ev, app, chat_id, chunks, pace=pace, quote_all=quote_all)
+            sent_texts = await _send_chunks(
+                client, ev, app, chat_id, chunks, pace=pace, quote_all=quote_all
+            )
+            if sent_texts and not is_command:
+                app.note_thread(chat_id, message, " ".join(sent_texts))
             if covered:
                 app.answered[chat_id] = covered
             if (
