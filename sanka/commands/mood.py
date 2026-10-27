@@ -1,4 +1,4 @@
-"""Command /mood: keadaan mood Sanka saat ini."""
+"""Command /mood: keadaan emosi Sanka saat ini."""
 
 from __future__ import annotations
 
@@ -33,22 +33,22 @@ async def mood(ctx: CommandContext) -> str:
         return "state emosi belum aktif."
     person_id = _person_id(ctx.app, ctx.sender)
     try:
-        data = affect.modes(ctx.chat_id, person_id)
+        data = affect.status(ctx.chat_id, person_id)
     except Exception:  # noqa: BLE001
         return "aku belum bisa membaca mood-ku sekarang. coba lagi bentar ya."
-    valence = float(data["valence"])
-    feel = "senang" if valence > 0.2 else "kesal" if valence < -0.2 else "tenang"
+    pleasure = float(data["pleasure"])
+    feel = "senang" if pleasure > 0.2 else "kesal" if pleasure < -0.2 else "tenang"
     lines = [
         "💭 *Mood Sanka*",
-        f"• Lagi: {data['label']}",
-        f"• Perasaan: {feel}",
+        f"• Lagi: {data['summary']}",
+        (
+            f"• Perasaan: {feel} (P {pleasure:.1f}, A {float(data['arousal']):.1f}, "
+            f"D {float(data['dominance']):.1f})"
+        ),
+        f"• Pulse: {data['pulse']}",
+        f"• Trust: {data['trust_tier']}",
         f"• Energi: {_level(float(data['energy']))}",
         f"• Gabut: {_level(float(data['boredom']))}, kesepian: {_level(float(data['loneliness']))}",
-        (
-            "• Status: lagi ngambek/nangis"
-            if int(data["level"]) or data["crying"]
-            else "• Status: nggak ngambek"
-        ),
     ]
     name = str(data.get("person_name") or "")
     relation = str(data.get("relation") or "")

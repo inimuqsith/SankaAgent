@@ -20,13 +20,11 @@ class LLMConfig:
     max_turns: int = 20
     timeout_seconds: float = 120.0
     temperature: float = 0.9  # balasan utama
-    appraise_temperature: float = 0.3  # pembacaan emosi
 
 
 @dataclass(frozen=True)
 class WhatsAppConfig:
     session_db: Path
-    require_mention: bool = True
     bot_name: str = "sanka"
     history_db: Path | None = None
 
@@ -72,28 +70,9 @@ class SkillsConfig:
 @dataclass(frozen=True)
 class AffectConfig:
     enabled: bool = False
-    path: Path = Path(".sanka/affect.db")
-    sulk_minutes: int = 30
-    cry_minutes: int = 30
-    silence_max_minutes: int = 30
-    silence_max_ignores: int = 3
-    allow_owner_sulk: bool = True
-    decay_hours: float = 1.0
-    max_appraisals_per_minute: int = 12
-
-
-@dataclass(frozen=True)
-class GateConfig:
-    enabled: bool = False
-    reply_threshold: float = 0.45
-    react_threshold: float = 0.25
-    llm_decide: bool = False
-    decide_temperature: float = 0.5
-    max_decisions_per_minute: int = 12
-    llm_review: bool = True
-    review_low: float = 0.25
-    review_high: float = 0.60
-    max_reviews_per_minute: int = 6
+    path: Path = Path(".sanka/affect.db")  # hubungan, orang, topik, drives
+    state_dir: Path | None = None  # file state emotion-engine per chat; None = di samping DB
+    volatility: str = "expressive"
 
 
 @dataclass(frozen=True)
@@ -157,7 +136,6 @@ class Config:
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
     affect: AffectConfig = field(default_factory=AffectConfig)
-    gate: GateConfig = field(default_factory=GateConfig)
     humanize: HumanizeConfig = field(default_factory=HumanizeConfig)
     style: StyleConfig = field(default_factory=StyleConfig)
     ambient: AmbientConfig = field(default_factory=AmbientConfig)
@@ -335,7 +313,6 @@ def load_config(path: str | None = None) -> Config:
     memory_raw = raw.get("memory") if isinstance(raw.get("memory"), dict) else {}
     skills_raw = raw.get("skills") if isinstance(raw.get("skills"), dict) else {}
     affect_raw = _section(raw, "affect")
-    gate_raw = _section(raw, "gate")
     humanize_raw = _section(raw, "humanize")
     style_raw = _section(raw, "style")
     ambient_raw = _section(raw, "ambient")
@@ -360,6 +337,10 @@ def load_config(path: str | None = None) -> Config:
     affect_db = _reject_legacy(
         _expand(str(affect_raw.get("path") or ".sanka/affect.db"), base), "affect.path"
     )
+    affect_state_dir = _reject_legacy(
+        _expand(str(affect_raw.get("state_dir") or ".sanka/emotions"), base), "affect.state_dir"
+    )
+    affect_state_dir.mkdir(parents=True, exist_ok=True)
     style_path = _reject_legacy(
         _expand(str(style_raw.get("path") or ".sanka/style.json"), base), "style.path"
     )
@@ -376,8 +357,18 @@ def load_config(path: str | None = None) -> Config:
     secure_db(history_db)
     secure_db(affect_db)
 
+    soul = base / "SOUL.md"
+    persona = ""
+    if soul.is_file():
+        try:
+            persona = soul.read_text(encoding="utf-8").strip()
+        except OSError:
+            log.warning("gagal membaca %s; fallback ke persona YAML", soul, exc_info=True)
+    if not persona:
+        persona = str(raw.get("persona") or "").strip()
+
     return Config(
-        persona=str(raw.get("persona") or "").strip(),
+        persona=persona,
         llm=LLMConfig(
             base_url=str(llm_raw.get("base_url") or "https://opencode.ai/inference/go/openai/v1"),
             model=str(llm_raw.get("model") or "deepseek-v4.1-flash"),
@@ -385,12 +376,10 @@ def load_config(path: str | None = None) -> Config:
             max_turns=int(llm_raw.get("max_turns") or 20),
             timeout_seconds=float(llm_raw.get("timeout_seconds") or 120),
             temperature=_num(llm_raw.get("temperature"), 0.9),
-            appraise_temperature=_num(llm_raw.get("appraise_temperature"), 0.3),
         ),
         workspace=workspace,
         whatsapp=WhatsAppConfig(
             session_db=session_db,
-            require_mention=_bool(wa_raw.get("require_mention"), True),
             bot_name=str(wa_raw.get("bot_name") or "sanka"),
             history_db=history_db,
         ),
@@ -422,27 +411,8 @@ def load_config(path: str | None = None) -> Config:
         affect=AffectConfig(
             enabled=_bool(affect_raw.get("enabled"), False),
             path=affect_db,
-            sulk_minutes=int(_num(affect_raw.get("sulk_minutes"), 30)),
-            cry_minutes=int(_num(affect_raw.get("cry_minutes"), 30)),
-            silence_max_minutes=int(_num(affect_raw.get("silence_max_minutes"), 30)),
-            silence_max_ignores=int(_num(affect_raw.get("silence_max_ignores"), 3)),
-            allow_owner_sulk=_bool(affect_raw.get("allow_owner_sulk"), True),
-            decay_hours=_num(affect_raw.get("decay_hours"), 1.0),
-            max_appraisals_per_minute=int(
-                _num(affect_raw.get("max_appraisals_per_minute"), 12)
-            ),
-        ),
-        gate=GateConfig(
-            enabled=_bool(gate_raw.get("enabled"), False),
-            reply_threshold=_num(gate_raw.get("reply_threshold"), 0.45),
-            react_threshold=_num(gate_raw.get("react_threshold"), 0.25),
-            llm_decide=_bool(gate_raw.get("llm_decide"), False),
-            decide_temperature=_num(gate_raw.get("decide_temperature"), 0.5),
-            max_decisions_per_minute=int(_num(gate_raw.get("max_decisions_per_minute"), 12)),
-            llm_review=_bool(gate_raw.get("llm_review"), True),
-            review_low=_num(gate_raw.get("review_low"), 0.25),
-            review_high=_num(gate_raw.get("review_high"), 0.60),
-            max_reviews_per_minute=int(_num(gate_raw.get("max_reviews_per_minute"), 6)),
+            state_dir=affect_state_dir,
+            volatility=str(affect_raw.get("volatility") or "expressive").strip() or "expressive",
         ),
         humanize=HumanizeConfig(
             enabled=_bool(humanize_raw.get("enabled"), False),

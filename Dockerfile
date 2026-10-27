@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 WORKDIR /app
 
 COPY pyproject.toml ./
+COPY SOUL.md ./SOUL.md
 COPY sanka ./sanka
 RUN pip install --no-cache-dir .
 

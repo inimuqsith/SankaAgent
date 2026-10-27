@@ -1,299 +1,240 @@
-"""Kontrak emosi: intent, sulk/nangis, permintaan maaf, prompt, dan batas krisis."""
+"""Kontrak emosi: state emotion-engine per chat, hubungan per orang, topik, dan drives."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-
-import time
 
 import pytest
 
 from sanka import guard
-from sanka.affect import AffectStore, classify_intent_fallback, mine_notes
+from sanka.affect import AffectStore
 from sanka.config import AffectConfig
+from sanka.decision import Appraisal, Decision, RelationshipDelta
 
 CHAT = "120363415422117951@g.us"
+OTHER = "120363000000000000@g.us"
 OWNER = "6285111242960"
 FRIEND = "628222222222"
 
 
 def make_store(tmp_path: Path) -> AffectStore:
+    # state_dir sengaja kosong: state harus jatuh ke tmp_path/emotions, bukan .sanka repo.
     return AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
 
 
-def insult(store: AffectStore, *, person: str = OWNER, text: str = "goblok banget sih kamu", chat: str = CHAT) -> None:
-    store.observe(
-        chat,
-        person,
-        "Muqsith",
-        text,
-        directed=True,
-        is_dm=False,
-        role="owner",
-        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.75, "warmth": 0.0},
+def decision(
+    *,
+    dP: float = 0.0,
+    dA: float = 0.0,
+    dD: float = 0.0,
+    label: str = "neutral",
+    reason: str = "",
+    trust: float = 0.0,
+    affection: float = 0.0,
+    respect: float = 0.0,
+    annoyance: float = 0.0,
+    note: str = "",
+) -> Decision:
+    return Decision(
+        addressed="me",
+        act="reply",
+        mode="daily",
+        tone="neutral",
+        bubbles=1,
+        appraisal=Appraisal(label, dP, dA, dD, note),
+        relationship=RelationshipDelta(trust, affection, respect, annoyance),
+        reason=reason,
     )
 
 
-def test_insult_makes_her_sulk_and_apology_calms(tmp_path) -> None:
+def turn(
+    store: AffectStore,
+    dec: Decision | None,
+    *,
+    message_id: str = "MSG1",
+    text: str = "halo",
+    person: str = FRIEND,
+    name: str = "Fahri",
+    chat: str = CHAT,
+) -> None:
+    store.turn_end(chat, person, name, text, "member", f"{person}@s.whatsapp.net", dec, message_id)
+
+
+def state_file(store: AffectStore, chat: str = CHAT) -> Path:
+    files = list(store.state_dir.glob("*.json"))
+    assert len(files) == 1, files
+    return files[0]
+
+
+def test_turn_start_binds_state_and_applies_decay(tmp_path) -> None:
     store = make_store(tmp_path)
-    insult(store)
 
-    assert store.silent(CHAT, OWNER) is True
+    start = store.turn_start(CHAT, "MSG1")
 
-    store.observe(CHAT, OWNER, "Muqsith", "maaf ya aku salah", directed=True, is_dm=False)
-    assert store.silent(CHAT, OWNER) is True  # satu permintaan maaf belum cukup
+    path = state_file(store)
+    assert path.parent == tmp_path / "emotions"
+    state = json.loads(path.read_text(encoding="utf-8"))
+    assert state["identity"]["status"] == "bound"
+    assert state["identity"]["character_id"] == "sanka"
+    assert state["identity"]["relationship_id"] == CHAT
+    assert state["volatility_profile"] == "expressive"
+    assert start["summary"] and start["pulse"] and start["trust_tier"]
+    assert -1.0 <= float(start["pleasure"]) <= 1.0
 
-    store.observe(CHAT, OWNER, "Muqsith", "maaf banget, aku sayang sama kamu", directed=True, is_dm=False)
-    assert store.silent(CHAT, OWNER) is False
+    state["emotion"]["pleasure"] = -0.8
+    path.write_text(json.dumps(state), encoding="utf-8")
+    decayed = store.turn_start(CHAT, "MSG2")
+
+    assert float(decayed["pleasure"]) > -0.8  # decay menarik P ke baseline
     store.close()
 
 
-def test_calm_clears_sulk(tmp_path) -> None:
+def test_turn_end_moves_pad_and_relationship(tmp_path) -> None:
     store = make_store(tmp_path)
-    insult(store)
-    before = store.modes(CHAT, OWNER)["valence"]
-    assert store.silent(CHAT) is True  # chat-wide dipakai ambient
+    before = store.turn_start(CHAT, "MSG1")
 
-    assert store.calm(CHAT, OWNER) is True
-
-    assert store.silent(CHAT, OWNER) is False
-    assert store.modes(CHAT, OWNER)["valence"] > before
-    store.close()
-
-
-def test_tease_does_not_sulk(tmp_path) -> None:
-    store = make_store(tmp_path)
-    store.observe(CHAT, FRIEND, "Fahri", "wkwk anjir kamu", directed=True, is_dm=False)
-
-    assert store.silent(CHAT, FRIEND) is False
-    assert store.modes(CHAT, FRIEND)["playful"] is True
-    store.close()
-
-
-def test_classify_intent() -> None:
-    cases = {
-        "maaf ya aku salah": "APOLOGY",
-        "dasar goblok": "ABUSE",
-        "aku sayang kamu": "AFFECTION",
-        "wkwk jahil banget": "TEASE",
-        "aku capek dan sedih": "VULNERABILITY",
-        "kok gitu?": "CURIOSITY",
-        "menurutku itu salah": "CHALLENGE",
-        "rekap absen dong": "COMMAND",
-        "halo pagi": "CASUAL",
-        "tolong rekap absen": "CASUAL",  # ada "tolong" -> bukan perintah ke Sanka
-    }
-    for text, expected in cases.items():
-        assert classify_intent_fallback(text, directed=True, is_dm=True) == expected, text
-    # hinaan hanya dihitung bila pesan ditujukan ke Sanka
-    assert classify_intent_fallback("dasar goblok", directed=False, is_dm=False) == "CASUAL"
-
-
-def test_llm_appraisal_overrides_fallback(tmp_path) -> None:
-    store = make_store(tmp_path)
-
-    # "jelek" tidak ada di regex ABUSE; hanya pembacaan LLM yang membuatnya hinaan.
-    store.observe(
-        CHAT,
-        FRIEND,
-        "Fahri",
-        "kamu jelek banget sih",
-        directed=True,
-        is_dm=False,
-        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.7, "warmth": 0.0},
+    turn(
+        store,
+        decision(
+            dP=-0.4,
+            dA=0.3,
+            dD=0.1,
+            label="hostility",
+            note="dia menghina aku",
+            trust=-0.1,
+            respect=-0.05,
+            annoyance=0.15,
+        ),
+        text="dasar goblok",
     )
 
-    assert store.silent(CHAT, FRIEND) is True
+    after = store.status(CHAT, FRIEND)
+    assert after["pleasure"] < before["pleasure"]
+    assert after["arousal"] > before["arousal"]
+    assert "guarded" in after["summary"]
+    people = store.known_people(CHAT, 5)
+    assert people[0]["person_id"] == FRIEND
+    assert people[0]["interactions"] == 1
+    assert people[0]["annoyance"] == pytest.approx(0.15)
+    assert people[0]["trust"] == pytest.approx(0.0)
+    assert store.topic(CHAT)["pending"] == 1
     store.close()
 
 
-def test_fallback_appraisal_never_sulks(tmp_path) -> None:
+def test_duplicate_message_id_is_idempotent(tmp_path) -> None:
     store = make_store(tmp_path)
+    store.turn_start(CHAT, "MSG1")
+    dec = decision(dP=-0.4, label="hostility", annoyance=0.15)
 
-    # tanpa appraisal, regex hanya menggerakkan mood; hurt=0 sehingga tidak ada sulk.
-    store.observe(CHAT, FRIEND, "Fahri", "goblok banget sih", directed=True, is_dm=False)
+    turn(store, dec)
+    once = store.status(CHAT, FRIEND)
+    turn(store, dec)
+    twice = store.status(CHAT, FRIEND)
 
-    assert store.silent(CHAT, FRIEND) is False
+    assert twice["pleasure"] == once["pleasure"]
+    assert twice["turns"] == once["turns"] == 1
+    assert store.known_people(CHAT, 5)[0]["annoyance"] == pytest.approx(0.15)
     store.close()
 
 
-def test_appraisal_promotes_untagged_message(tmp_path) -> None:
+def test_crisis_turn_keeps_emotion(tmp_path) -> None:
     store = make_store(tmp_path)
+    before = store.turn_start(CHAT, "MSG1")
 
-    # Pesan tidak men-tag Sanka, tapi LLM menilai pesan itu diarahkan kepadanya.
-    store.observe(
-        CHAT,
-        FRIEND,
-        "Fahri",
-        "dasar yang tadi itu jelek",
-        directed=False,
-        is_dm=False,
-        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.8, "warmth": 0.0},
-    )
+    turn(store, None, text="pengen mati aja rasanya")
 
-    assert store.silent(CHAT, FRIEND) is True
+    after = store.status(CHAT, FRIEND)
+    assert after["pleasure"] == before["pleasure"]
+    assert after["turns"] == 0
+    assert store.known_people(CHAT, 5)[0]["name"] == "Fahri"  # orangnya tetap dikenal
     store.close()
 
 
-def test_many_teases_do_not_sulk(tmp_path) -> None:
+def test_calm_moves_pad_toward_baseline(tmp_path) -> None:
     store = make_store(tmp_path)
+    store.turn_start(CHAT, "MSG1")
+    turn(store, decision(dP=-0.4, label="hostility", annoyance=0.15))
+    hurt = store.status(CHAT, FRIEND)
 
-    for _ in range(30):
-        store.observe(
-            CHAT,
-            FRIEND,
-            "Fahri",
-            "wkwk dasar",
-            directed=True,
-            is_dm=False,
-            appraisal={"intent": "TEASE", "directed": True, "hurt": 0.1, "warmth": 0.3},
-        )
+    assert store.calm(CHAT, FRIEND) is True
 
-    assert store.silent(CHAT, FRIEND) is False
+    calmed = store.status(CHAT, FRIEND)
+    assert calmed["pleasure"] > hurt["pleasure"]
+    assert store.known_people(CHAT, 5)[0]["annoyance"] == pytest.approx(0.075)
+    assert store.calm(CHAT, FRIEND) is False  # sudah tenang
     store.close()
 
 
 def test_chat_people_membership(tmp_path) -> None:
     store = make_store(tmp_path)
-    other = "120363000000000000@g.us"
-    store.observe(CHAT, FRIEND, "Fahri", "halo", directed=False, is_dm=False)
-    store.observe(other, OWNER, "Muqsith", "halo", directed=False, is_dm=False)
+    turn(store, decision(), person=FRIEND, name="Fahri")
+    turn(store, decision(), person=OWNER, name="Muqsith", chat=OTHER)
 
     names = [item["name"] for item in store.known_people(CHAT, 5)]
 
     assert names == ["Fahri"]
-    assert [item["name"] for item in store.known_people(other, 5)] == ["Muqsith"]
+    assert [item["name"] for item in store.known_people(OTHER, 5)] == ["Muqsith"]
     store.close()
 
 
-def test_pulse_decays_mood_and_expires_sulk(tmp_path) -> None:
+def test_prompt_contains_relationship_and_log(tmp_path) -> None:
     store = make_store(tmp_path)
-    start = time.time()
-    store.observe(
-        CHAT,
-        FRIEND,
-        "Fahri",
-        "kamu culun",
-        directed=True,
-        is_dm=False,
-        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.9, "warmth": 0.0},
-        now=start,
-    )
-    before = abs(float(store.pulse(CHAT, now=start)["valence"]))
-    assert store.sulk_until(CHAT, FRIEND) > start
+    store.turn_start(CHAT, "MSG1")
+    turn(store, decision(dP=-0.4, label="hostility", note="dia menghina aku"), text="kamu culun")
+    store.note_person(FRIEND, "suka ngejailin")
 
-    mood = store.pulse(CHAT, now=start + 3 * 3600)
+    text = store.prompt(CHAT, FRIEND)
 
-    assert store.sulk_until(CHAT, FRIEND) == 0.0
-    assert abs(float(mood["valence"])) <= before
-    store.close()
-
-
-def test_first_pulse_only_anchors_drives(tmp_path) -> None:
-    store = make_store(tmp_path)
-    start = time.time()
-
-    store.pulse(CHAT, now=start)  # belum ada baris drives: cukup tambatkan waktu
-    anchored = store.drives(CHAT)
-
-    assert anchored == {"energy": 0.6, "boredom": 0.2, "loneliness": 0.0}
-    store.pulse(CHAT, now=start + 2 * 3600)
-    assert store.drives(CHAT)["boredom"] > anchored["boredom"]
-    store.close()
-
-
-def test_short_ticks_still_decay_mood_hourly(tmp_path) -> None:
-    store = make_store(tmp_path)
-    start = time.time()
-    store.observe(
-        CHAT,
-        FRIEND,
-        "Fahri",
-        "kamu culun",
-        directed=True,
-        is_dm=False,
-        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.8, "warmth": 0.0},
-        now=start,
-    )
-    anchored = store.drives(CHAT)
-    store.pulse(CHAT, now=start + 30)  # lebih rapat dari PULSE_MINUTES: no-op
-    assert store.drives(CHAT) == anchored
-
-    begin = abs(float(store.pulse(CHAT, now=start)["valence"]))
-    mood = {}
-    for minute in range(2, 181, 2):  # tick produksi 2 menit selama 3 jam
-        mood = store.pulse(CHAT, now=start + minute * 60)
-
-    assert abs(float(mood["valence"])) < begin  # PAD tetap meluruh per jam
-    assert store.sulk_until(CHAT, FRIEND) == 0.0  # sulk habis di menit ke-30
+    assert "Fahri" in text
+    assert "hostility" in text and "kamu culun" in text
+    assert "dia menghina aku" in text
+    assert "suka ngejailin" in text
+    assert "trust=" not in text and "valence=" not in text
     store.close()
 
 
 def test_drives_grow_when_idle(tmp_path) -> None:
     store = make_store(tmp_path)
-    start = time.time()
-    store.observe(CHAT, FRIEND, "Fahri", "halo", directed=False, is_dm=False, now=start)
+    turn(store, decision(), text="halo")
     before = store.drives(CHAT)
+    first = store.pulse(CHAT)
 
-    store.pulse(CHAT, now=start + 2 * 3600)
-    after = store.drives(CHAT)
-
-    assert after["boredom"] > before["boredom"]
-    assert after["loneliness"] > before["loneliness"]
-    assert after["energy"] < before["energy"]
+    assert first["boredom"] == before["boredom"]  # detak pertama hanya menambatkan waktu
+    anchored = store.drives(CHAT)
+    store.pulse(CHAT)
+    assert store.drives(CHAT) == anchored  # < 5 menit: tidak mengubah apa pun
     store.close()
 
 
-def test_mine_notes_detects_bossy_and_teasing() -> None:
-    texts = [
-        "tolong cek ini",
-        "tolong kirim yang tadi",
-        "bantu buat rekap",
-        "wkwk",
-        "wkwk lagi",
-        "halo",
-        "iya",
-        "siap",
-        "nih",
-        "oke",
-    ]
-
-    notes = mine_notes(texts)
-
-    assert "sering menyuruh/mengatur" in notes
-    assert "suka ngejailin" in notes
-
-
-def test_prompt_contains_relationship_and_no_raw_numbers(tmp_path) -> None:
+def test_pulse_keeps_state_file_and_returns_status(tmp_path) -> None:
     store = make_store(tmp_path)
-    insult(store)
-    store.note_person(OWNER, "sering menyuruh/mengatur")
+    store.turn_start(CHAT, "MSG1")
 
-    text = store.prompt(CHAT, OWNER)
+    data = store.pulse(CHAT)
 
-    assert "Muqsith" in text
-    assert "sering menyuruh/mengatur" in text
-    assert "trust=" not in text and "valence=" not in text
+    assert data["summary"] and data["trust_tier"]
+    assert state_file(store).exists()
     store.close()
 
 
-def test_crisis_text_is_not_stored(tmp_path) -> None:
+def test_pulse_skips_write_inside_same_bucket(tmp_path) -> None:
     store = make_store(tmp_path)
+    store.turn_start(CHAT, "MSG1")
+    store.pulse(CHAT)  # bucket pertama menulis state
+    path = state_file(store)
+    before = path.stat().st_mtime_ns
 
-    assert guard.is_crisis("pengen mati aja rasanya") is True
-    store.observe(CHAT, FRIEND, "Fahri", "pengen mati aja rasanya", directed=True, is_dm=True)
+    data = store.pulse(CHAT)  # tick berikutnya di bucket 5 menit yang sama
 
-    assert store.stats()["events"] == 0
-    people = store.known_people(CHAT, 5)
-    assert people and people[0]["familiarity"] > 0  # orangnya tetap dikenal
-    assert people[0]["notes"] == []
-    assert store.silent(CHAT, FRIEND) is False
+    assert path.stat().st_mtime_ns == before
+    assert data["trust_tier"] and data["summary"]
     store.close()
 
 
 def test_pending_and_topic_roundtrip(tmp_path) -> None:
     store = make_store(tmp_path)
-    store.observe(CHAT, FRIEND, "Fahri", "nanti rapat jam berapa?", directed=False, is_dm=False)
+    turn(store, decision(), text="nanti rapat jam berapa?")
     store.set_topic(CHAT, "rapat logistik", ["rapat", "logistik"], ["jam berapa?"])
 
     assert store.pending(CHAT) == 1
@@ -305,26 +246,18 @@ def test_pending_and_topic_roundtrip(tmp_path) -> None:
     store.close()
 
 
-def test_neglect_sadness_is_capped(tmp_path) -> None:
+def test_stats_counts_relational_tables(tmp_path) -> None:
     store = make_store(tmp_path)
+    turn(store, decision())
 
-    assert store.neglect(CHAT, now=1000) is True
-    before = store.modes(CHAT)["valence"]
-    assert store.neglect(CHAT, now=1100) is False  # < 60 menit
-    assert store.modes(CHAT)["valence"] == before
+    stats = store.stats()
+
+    assert stats["people"] == 1
+    assert stats["topics"] == 1
+    assert stats["drives"] == 1
+    assert stats["chat_people"] == 1
+    assert stats["states"] == 1
     store.close()
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("/help", "help"),
-        ("/Cek Nilai", "cek"),
-        ("halo /help", ""),
-    ],
-)
-def test_command_name(text: str, expected: str) -> None:
-    assert guard.command_name(text) == expected
 
 
 def test_safe_text_drops_sensitive_and_injection() -> None:

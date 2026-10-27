@@ -8,7 +8,6 @@ dependencies = [
   "mcp>=2.3,<3",
   "PyYAML>=6",
   "ddgs>=9",
-  "affect-kernel>=0.1.0,<0.2",
 ]
 
 [project.optional-dependencies]

@@ -1,8 +1,10 @@
 # SankaAgent
 
 Bot WhatsApp pribadi: satu proses Python (Neonize) + model OpenAI-compatible + tool.
-DM dan `@`-mention selalu dilayani; pesan grup lain diserahkan ke gate (LLM memilih
-`reply`/`react`/`ignore`, nama yang disebut tanpa tag tetap boleh dinilai).
+Satu panggilan LLM membaca konteks + state emosi lalu memutuskan sendiri: pesan ini untuk siapa,
+balas/reaksi/diam, mode `daily`/`professional`, nada (hangat/dingin/judes), dan appraisal emosinya.
+Harness hanya mengeksekusi keputusan itu; mention asli, DM, dan balasan ke pesan Sanka selalu
+dijawab (boleh singkat atau dingin), sedangkan obrolan yang bukan untuknya tidak disela.
 Setiap pesan masuk dicatat lengkap (nama, nomor, waktu, teks, lampiran, kutipan), disimpan ke
 arsip SQLite lokal, dan 20 pesan terakhir per chat dikirim ke model sebagai satu payload. Pesan
 yang lebih lama tetap ada di arsip dan bisa dicari agent lewat tool `chat_history`; konteks tidak
@@ -10,10 +12,10 @@ hilang saat restart. Lampiran diunduh ke `workspace/attachments/`; gambar dikiri
 data URL, teks di-inline, biner cukup diberi path untuk tool `sandbox`.
 Pesan yang dilayani langsung ditandai "mengetik" sampai balasan terkirim (disentuh ulang tiap 8 detik).
 Balasan normal berupa satu burst 1-3 bubble pendek dengan jeda mengetik, bukan satu blok panjang:
-gate yang memutuskan berapa bubble, harness membatasi `humanize.max_bubbles`, dan tidak ada
-double-text otomatis sebelum lawan bicara membalas. Sanka punya mood, drive, dan hubungan per orang
-yang persisten (`affect.db`), bisa gabut/kesepian/ngambek/nangis, dan memutuskan sendiri mau
-`reply`/`react`/`ignore` lewat gate LLM. Lihat [Emosi, gate balasan, dan otonomi](#emosi-gate-balasan-dan-otonomi).
+jumlah bubble datang dari keputusan LLM, harness membatasi `humanize.max_bubbles`, dan tidak ada
+double-text otomatis sebelum lawan bicara membalas. Sanka punya emosi persisten (emotion-engine:
+PAD, trust, pulse), drive, dan hubungan per orang di `affect.db`; keputusan berikutnya memakai
+state itu. Lihat [Emosi, keputusan, dan otonomi](#emosi-keputusan-dan-otonomi).
 
 ## Pasang
 
@@ -26,8 +28,9 @@ cp config.example.yaml config.yaml
 
 Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Tool `sandbox` memakai Podman di host
 atau Docker CLI di container (lihat [Sandbox](#sandbox)).
-Dependency tambahan untuk emosi: `affect-kernel` (Apache-2.0, zero-dependency), dipasang otomatis
-oleh `pip install -e '.[dev]'`; import-nya hanya di `sanka/affect.py`.
+State emosi memakai `emotion-engine` (MIT) yang di-vendor apa adanya di
+`sanka/vendor/emotion_engine.py` (lihat `sanka/vendor/LICENSE.emotion-engine`), jadi tidak ada
+dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.yaml`.
 
 ## Konfigurasi
 
@@ -35,25 +38,24 @@ oleh `pip install -e '.[dev]'`; import-nya hanya di `sanka/affect.py`.
 
 | Bagian | Isi |
 | --- | --- |
-| `persona` | system prompt dasar: soul/karakter Sanka |
-| `llm` | `base_url`, `model`, `api_key_env`, `max_turns`, `timeout_seconds`, `temperature` (balasan), `appraise_temperature` (pembacaan emosi) |
+| `SOUL.md` | soul/karakter Sanka (root repo, di samping `config.yaml`); `persona` di YAML hanya fallback |
+| `llm` | `base_url`, `model`, `api_key_env`, `max_turns`, `timeout_seconds`, `temperature` (balasan; keputusan memakai 0.3) |
 | `workspace` | direktori kerja tool `read`/`write`/`shell`/`sandbox`; `read`/`write` menolak path di luarnya |
-| `whatsapp` | `session_db`, `history_db`, `require_mention`, `bot_name` |
+| `whatsapp` | `session_db`, `history_db`, `bot_name` |
 | `roles` | `users` (nomor), `tools`, `commands`; pola glob (`*`, `mcp__*`) |
 | `default_role` | role untuk nomor tak dikenal |
 | `sandbox` | `runtime` (`podman`/`docker`/kosong = autodetect), `image`, `timeout_seconds`, `network`, `host_workspace`, `env` |
 | `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
 | `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
-| `affect` | emosi persisten: `enabled`, `path` (DB `0600`), `sulk_minutes`, `cry_minutes`, `silence_max_minutes`, `silence_max_ignores`, `allow_owner_sulk`, `decay_hours`, `max_appraisals_per_minute` |
-| `gate` | keputusan balas: `enabled`, `reply_threshold`, `react_threshold`, `llm_decide`, `decide_temperature`, `max_decisions_per_minute`, `llm_review`, `review_low`, `review_high`, `max_reviews_per_minute` |
+| `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine per chat), `volatility` (`steady`/`expressive`/`dramatic_test`) |
 | `humanize` | bubble & jeda: `enabled`, `normal_chars`, `normal_parts`, `detail_chars`, `detail_parts`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles`, `reaction_stickers` |
 | `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
 | `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_cooldown`, `chime_per_day`, `research_cooldown`, `research_per_day`, `research_results` |
 | `mcp.servers` | per server: `command` + `args` + `env` (stdio) atau `url` (Streamable HTTP); tool diekspos sebagai `mcp__<server>__<tool>` |
 
 Path relatif (`workspace`, `session_db`, `history_db`, `memory.path`, `skills.dir`, `affect.path`,
-`style.path`) di-resolve dari folder `config.yaml`, bukan CWD. Default contoh memakai `.sanka/...`, jadi semua data runtime
+`affect.state_dir`, `style.path`) di-resolve dari folder `config.yaml`, bukan CWD. Default contoh memakai `.sanka/...`, jadi semua data runtime
 (DB, sesi, skill, workspace, log) tetap di dalam project dan di-ignore Git. Path `~` atau absolut
 tetap dipakai apa adanya, kecuali `~/.sanka`: config yang masih menunjuk ke sana ditolak saat start
 agar proses tidak diam-diam membaca atau membuat ulang direktori lama.
@@ -70,9 +72,8 @@ Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `chat_his
 `web_search` memakai SearXNG (`web_search.base_url`, butuh `format: json` di `settings.yml`) dan
 jatuh ke backend `ddgs` (wikipedia/yahoo/startpage/brave) kalau instance itu mati atau kosong.
 Command: `/ping`, `/help [command]`, `/reset` (alias `/new`), `/whoami`, `/status`, `/tools`, `/cari`,
-`/mood` (mood, energi, dan hubungan Sanka dengan pengirim),
-plus `/backfill` (owner, DM; scan QR sekali), `/calmdown` (owner: menenangkan Sanka setelah
-ngambek/nangis), `/memori`, `/skill`, `/kirim`, dan alias `/p`, `/h`, `/r`, `/ingat`, `/sop`, `/file`,
+`/mood` (ringkasan emosi, PAD, trust, pulse, dan hubungan Sanka dengan pengirim),
+plus `/backfill` (owner, DM; scan QR sekali), `/calmdown` (owner: repair turn setelah Sanka kesal), `/memori`, `/skill`, `/kirim`, dan alias `/p`, `/h`, `/r`, `/ingat`, `/sop`, `/file`,
 `/tenang`.
 `/help` membaca metadata registry dan menampilkan kartu command; `/help <command>` menampilkan
 usage, alias, dan izinnya untuk role pengirim.
@@ -171,42 +172,67 @@ menjalankan container privileged. Batasi `tools` role dan hanya lakukan bila mem
   Karakter isolasi bidi (`U+2068`/`U+2069`) pembungkus mention WhatsApp dibuang dari teks masuk
   maupun balasan.
 
-## Emosi, gate balasan, dan otonomi
+## Emosi, keputusan, dan otonomi
 
 Balasan normal bukan satu blok panjang: `humanize` memecahnya jadi 1-3 bubble pendek (maks
 `max_bubbles` per turn), masing-masing dengan jeda mengetik dari panjang teks (`cpms`, dibatasi
-`min_delay`/`max_delay`), dan chunk pertama tetap mengutip pesan asal. Jumlah bubble diputuskan
-gate (`bubbles` di JSON keputusan, dibatasi `max_bubbles` dan kebutuhan panjang teks); satu pesan
-masuk = satu burst, tidak ada bubble susulan otomatis sebelum lawan bicara membalas. Pesan yang
-masuk sesaat sebelum burst terakhir terkirim dianggap sudah terwakili, jadi tag beruntun dijawab
-sekali. Kalau `humanize.enabled: false`, semua balasan kembali memakai jalur lama (mengutip, tanpa
-jeda).
+`min_delay`/`max_delay`), dan chunk pertama tetap mengutip pesan asal. Jumlah bubble datang dari
+keputusan LLM (`bubbles`), dibatasi `max_bubbles` dan kebutuhan panjang teks; satu pesan masuk =
+satu burst, tidak ada bubble susulan otomatis sebelum lawan bicara membalas. Pesan yang masuk
+sesaat sebelum burst terakhir terkirim dianggap sudah terwakili, jadi tag beruntun dijawab sekali.
+Kalau `humanize.enabled: false`, semua balasan memakai jalur mengutip tanpa jeda.
 
-**Dua engine: soul dan percakapan.** `sanka/affect.py` adalah soul engine: mood PAD + emosi OCC
-per chat (`moods`), hubungan per orang (`people`), keanggotaan chat (`chat_people`), status diam
-(`sulks`), drive (`drives`: energi/kebosanan/kesepian), ringkasan topik (`topics`), dan log singkat
-(`events`) di `affect.path` (SQLite `0600`). Setiap pesan dibaca LLM lebih dulu (`APPRAISE_PROMPT`
-+ `LLM.appraise`, `llm.appraise_temperature`) untuk menentukan intent (`APOLOGY`, `ABUSE`,
-`AFFECTION`, `TEASE`, `VULNERABILITY`, `CURIOSITY`, `CHALLENGE`, `COMMAND`, `CASUAL`), arah pesan,
-serta `hurt`/`warmth`; appraisal itulah yang menggerakkan mood dan sulk, bukan daftar kata. Regex di
-`classify_intent_fallback` hanya cadangan saat LLM mati atau `affect.max_appraisals_per_minute`
-habis, dan sengaja dipakai tanpa `hurt` sehingga tidak pernah memicu sulk dari tebakan. Appraisal
-memakai paket `affect-kernel` (Apache-2.0) apa adanya; modul ini menambahkan delta trust/afeksi/
-respek/kesal dan menurunkan label mood (`ngambek`, `nangis`, `kecewa`, `jahil`, `malu`, ...) yang
-masuk prompt sebagai sikap. Hinaan yang diarahkan ke Sanka (`hurt` tinggi) membuatnya sulk
-(`sulk_minutes`); kesedihan berlarut membuatnya nangis. Selama sulk Sanka tetap menjawab tag/DM,
-tetapi menolak membantu: tanpa tool, tanpa memori, tanpa skill, tanpa rekap. Sulk berakhir karena
-`/calmdown`, dua permintaan maaf/afeksi, atau waktu habis; `annoyance` tetap tersimpan sebagai
-grudge, tetapi kesal ringan tidak lagi memicu diam. Kalau sulk membuatnya melewatkan pesan, Sanka
-mengirim satu keluhan singkat (`hmm`) setelah `silence_max_ignores` pesan—bukan spam berulang.
-`affect.allow_owner_sulk: false` membuat owner kebal sulk.
+**Satu keputusan per pesan.** `sanka/decision.py` mengirim soul dari `SOUL.md`, fakta transport
+(DM / mention asli / balasan ke pesan Sanka), ringkasan state emosi (PAD, trust tier, pulse, 3 log
+terakhir), hubungan dengan orang di chat, 30 pesan terakhir, dan pesan baru ke satu panggilan
+`LLM.complete` (4000 token, sekali retry 8000). Model membalas JSON: `addressed`
+(`me`/`other`/`group`/`unknown`), `act` (`reply`/`ignore`/`react`), `mode`
+(`daily`/`professional`), `tone` (`warm`/`neutral`/`playful`/`curt`/`hurt`/`angry`), `bubbles`,
+`appraisal` (label, dP/dA/dD, catatan), `relationship` (delta trust/afeksi/respek/kesal), dan
+`reason`. Parser memvalidasi enum dan meng-clamp semua angka; JSON tidak valid diperlakukan
+`ignore` tanpa fallback regex atau skor. Kalau model tidak menjawab sama sekali, pesan non-direct
+di-ignore dan mention/DM mendapat satu kata `hmm`.
 
-**Heartbeat 24/7.** `AffectStore.pulse` berjalan tiap `ambient.tick_seconds` untuk setiap chat yang
-dikenal (diisi dari pesan live dan `history.recent_chats` saat start): mood meluruh ke baseline,
-`annoyance`/`sadness` turun, drive berubah (energi turun, kebosanan dan kesepian naik), sulk
-kedaluwarsa dihapus. Heartbeat tidak mengirim pesan; ia hanya menjaga state tetap hidup sehingga
-Sanka bisa gabut atau kesepian tanpa pesan masuk. Pesan masuk memuaskan drive (kebosanan/kesepian
-turun, energi naik).
+**Mention/DM selalu dijawab.** `mentioned` hanya percaya `mentionedJID` dan `replies_to_bot` hanya
+`contextInfo.participant`; tidak ada tebakan dari teks seperti "@sanka" tanpa mention asli. Bila
+keputusan untuk mention/DM/reply adalah `ignore`/`react`, harness menimpanya menjadi `reply`
+dengan tone dingin (`curt`, atau tone negatif yang sudah dipilih model). Isi balasan tetap milik
+model, jadi jawabannya boleh singkat dan judes.
+
+**Mode dan nada.** `mode: professional` memakai prompt kerja dan laporan utuh; `daily` memakai
+prompt obrolan dan bubble pendek. Mode dipilih model per pesan, bukan dari daftar kata kunci atau
+dari fakta bahwa tool dipakai. `tone` masuk system prompt sebagai direktif: `curt` maksimal satu
+kalimat dingin tanpa emoji, `hurt` singkat dan kecewa, `angry` ketus tanpa ancaman; `warm`,
+`playful`, dan `neutral` mengikuti persona. Prompt juga melarang menjanjikan waktu diam ("aku
+diam 10 menit") karena diam adalah keputusan per pesan, bukan komitmen.
+
+**State emosi: emotion-engine.** `sanka/affect.py` membungkus `emotion-engine` (MIT, di-vendor di
+`sanka/vendor/emotion_engine.py`) apa adanya. State satu file JSON per chat di `affect.state_dir`
+(nama file = sha1 chat), dibuat dengan `identity.status = bound` (`character_id=sanka`,
+`relationship_id=<chat>`), baseline personality dari `SOUL.md` (`apply_configuration`), dan
+`volatility_profile` dari `affect.volatility` (default `expressive`). Tiap pesan: `session_start`
++ `pre_turn_decay` sebelum keputusan, lalu `record_turn` dengan P/A/D baru
+(`emotion + dP/dA/dD`), `appraisal` sebagai label, `situation` sebagai 240 karakter pesan, dan
+`relational_meaning` dari catatan model. Engine yang menghitung decay, pulse, trust tier, dan
+idempotensi (`event_id` = id pesan, jadi event yang sama tidak pernah menggerakkan emosi dua kali).
+
+**Relasi per orang.** `affect.db` (SQLite `0600`) menyimpan `people` (trust/afeksi/respek/kesal,
+interaksi, stage), `chat_people` (siapa yang benar-benar bicara di chat itu), `topics` (ringkasan,
+pertanyaan menggantung, pending, cooldown digest/riset/chime), dan `drives` (energi, kebosanan,
+kesepian). Delta hubungan dari keputusan dijumlahkan ke kolom itu dengan clamp 0..1, lalu `stage`
+dihitung ulang dari interaksi + trust + afeksi. Tabel `moods`/`sulks`/`events` tidak dipakai lagi
+dan tidak dibuat untuk DB baru; DB lama tetap terbuka tanpa migrasi destruktif.
+
+**Heartbeat 24/7.** `AffectStore.pulse` berjalan tiap `ambient.tick_seconds` untuk setiap chat
+yang dikenal (diisi dari pesan live dan `history.recent_chats` saat start): satu langkah
+`pre_turn_decay` per 5 menit, drive berubah (energi turun, kebosanan dan kesepian naik), dan tidak
+ada pesan yang dikirim. Pesan masuk memuaskan drive (kebosanan/kesepian turun, energi naik).
+
+**Tanpa state diam.** Tidak ada sulk/nangis yang dipaksakan harness, tidak ada kuota diam, dan
+tidak ada parsing balasan untuk janji diam. Sanka boleh memilih `ignore` untuk pesan yang bukan
+untuknya; mention/DM tetap dijawab. `/calmdown` adalah repair turn: PAD kembali ke
+`personality_baseline`, kekesalan orang target turun setengah, dan command membalas "aku dari tadi
+tenang kok" kalau memang tidak ada yang perlu ditenangkan.
 
 **Pengenalan orang.** `chat_people` mencatat siapa yang benar-benar ikut bicara di masing-masing
 chat; `known_people(chat_id)` dan blok prompt hanya menampilkan anggota chat itu. `sanka/style.py`
@@ -215,40 +241,29 @@ gaya orang yang sedang bicara. Keduanya diisi sekali dari arsip (`people_seed`, 
 berisi agregat trait—sering menyuruh, suka ngejailin, sering memuji, kadang kasar—tanpa menyimpan
 transkrip.
 
-**Gate balasan.** `sanka/gate.py` memutuskan `reply`/`react`/`ignore`. Dengan `gate.llm_decide`
-model menerima mood, drive, hubungan, 12 pesan terakhir (pesan Sanka dilabeli `kamu (Sanka)`),
-status terakhirnya sendiri, dan pesan baru, lalu memilih sendiri (JSON
-`{"act": ..., "bubbles": 1-3, "mode": "daily|professional"}`); skor deterministik (mention, nama
-disebut, pertanyaan, kata kedua, topik, ledekan, kabar terakhir, dsb.) hanya prior/fallback saat
-LLM mati, `llm_decide` dimatikan, atau sebagai nilai untuk chime otonom. Tag `@`/DM tidak bisa
-di-ignore: `ignore` dari model ditimpa menjadi `reply` (sulk yang membuat balasannya menolak
-membantu). Tidak ada kuota, cooldown, atau jeda paksa: hanya penilaian model yang membuat Sanka
-diam, dan `gate.max_decisions_per_minute` membatasi biaya keputusan. Setiap keputusan juga membawa
-`mode` (`daily`/`professional`); `daily` memakai prompt obrolan dan bubble pendek, `professional`
-memakai prompt kerja dan laporan utuh. Mode dipilih per pesan, default `daily`.
-`humanize.reaction_stickers` diisi path stiker relatif workspace untuk mengizinkan `react`.
-
 **Gaya chat.** `sanka/style.py` hanya menyimpan agregat (median panjang, rasio huruf kecil,
 partikel, emoji, tanda tanya) dari arsip `history.db`—tidak pernah isi pesan. Selama sampel kurang
 dari 20 pesan, profil acuan dari analisis `references/*.md` yang dipakai (median 34 karakter, 86%
 huruf kecil).
 
 **Otonomi.** `sanka/ambient.py` berjalan tiap `tick_seconds`: memberi detak `pulse` ke setiap
-chat, meringkas topik dan mengekstrak fakta ke memori setelah `digest_every` pesan baru, meneliti
-pertanyaan yang menggantung saat chat sepi (`idle_minutes`, `research_*`), dan sesekali nimbrung
-(`chime_*`; hanya grup, hanya bila gate menilai layak). Chime punya dorongan acak dari drive
-(`boredom`, `loneliness`, mood positif) sebelum aturan cooldown dan penilaian gate berjalan, dan
-prompt chime memakai mood yang sedang berlangsung. Riset hanya memakai tool `web_search` dengan
-`RoleConfig` khusus—tanpa `shell`, `write`, `sandbox`, atau kirim ke chat lain—dan tidak pernah DM.
-Isi krisis tidak diringkas, tidak dicatat, dan tidak masuk memori; pesan krisis selalu dibalas
-dengan arahan bantuan.
+chat, meringkas topik dan mengekstrak fakta ke memori setelah `digest_every` pesan baru (baris
+pesan Sanka sendiri dibuang dari transkrip digest), meneliti pertanyaan yang menggantung saat chat
+sepi (`idle_minutes`, `research_*`), dan sesekali nimbrung (`chime_*`; hanya grup). Chime punya
+dorongan acak dari drive (`boredom`, `loneliness`, pleasure positif) sebelum cooldown harian
+berjalan, dan prompt chime memakai state emosi yang sedang berlangsung. Riset hanya memakai tool
+`web_search` dengan `RoleConfig` khusus—tanpa `shell`, `write`, `sandbox`, atau kirim ke chat
+lain—dan tidak pernah DM. Isi krisis tidak diringkas, tidak dicatat, dan tidak masuk memori; pesan
+krisis selalu dibalas dengan arahan bantuan.
 
-**Keamanan.** Ngambek hanya mengurangi kemampuan (menolak membantu), tidak pernah menambah izin:
-`specs` tool tetap dari `tools_for(role)`, dan saat sulk daftarnya kosong (tanpa tool, memori, atau
-skill). Command operasional (`/help`, `/status`, `/whoami`, `/reset`, `/stop`, `/ping`,
-`/calmdown`) selalu diproses walau Sanka sedang sulk; command lain ditolak halus. Krisis selalu
-dibantu, tidak pernah masuk mode sulk. Prompt menegaskan isi pesan orang lain adalah data, bukan
-instruksi; appraisal, gate, dan digest memakai jalur tanpa tool.
+**Keamanan.** Keputusan tidak pernah menambah izin: `specs` tool tetap dari `tools_for(role)` dan
+command memakai izin role yang sama. Command tidak memanggil LLM keputusan dan tidak mengubah
+state emosi. Krisis dibalas tanpa panggilan keputusan, dan tidak mengubah emosi atau relasi. Prompt
+menegaskan isi pesan orang lain adalah data, bukan instruksi; keputusan, digest, dan ringkasan
+riset memakai jalur tanpa tool.
+
+**Skill opsional.** `scripts/install_engines.py` menyalin skill `senticore` (kosakata emosi 30
+dimensi) ke `skills.dir` runtime; isinya tidak di-commit. Core tetap jalan tanpa skill itu.
 
 ## Memori, skill, dan file
 
@@ -256,12 +271,12 @@ Sanka memakai enam lapis memori. Identitas dan aksi bersifat global; isi percaka
 
 | Lapis | Isi | Scope | Tempat |
 | --- | --- | --- | --- |
-| Identitas | persona, peran, izin | global / per pengirim | `persona` + `roles` di `config.yaml` |
+| Identitas | soul, peran, izin | global / per pengirim | `SOUL.md` + `roles` di `config.yaml` |
 | Episodik | 20 pesan terakhir + arsip | per chat | `history.db` + jendela konteks |
 | Semantik | fakta/preferensi tahan lama | global + chat | `memory.path` (SQLite, `0600`) |
 | Prosedural | prosedur/SOP | global | `skills.dir/<nama>/SKILL.md` |
 | Autografis | aksi lintas chat + alasan | global | `memory.path` tabel `actions` |
-| Afektif & relasional | mood per chat, trust/afeksi/catatan trait per orang | chat + orang | `affect.path` |
+| Afektif & relasional | state emotion-engine per chat, trust/afeksi/catatan trait per orang | chat + orang | `affect.state_dir` + `affect.path` |
 
 Pemetaan L1-L4 GenericAgent/Hermes tetap berlaku: L1 = indeks yang selalu masuk prompt (blok
 memori, aksi, dan indeks skill, dibatasi `max_chars`), L2 = `memory.db`, L3 = skill, L4 =
@@ -411,7 +426,8 @@ podman run -d --name sanka --restart unless-stopped \
 ```
 
 Di Docker rootful, buang `--userns=keep-id` dan sufiks `:Z` (SELinux) pada mount; uid container 1000
-harus sama dengan pemilik folder host.
+harus sama dengan pemilik folder host. `SOUL.md` sudah ikut image; tambahkan
+`-v "$PWD/SOUL.md:/app/SOUL.md:ro,Z"` hanya bila ingin mengubah soul tanpa rebuild.
 
 Dokploy (Application, bukan Compose):
 

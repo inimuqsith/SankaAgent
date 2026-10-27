@@ -1,4 +1,4 @@
-"""Command /calmdown: owner menenangkan Sanka setelah ngambek atau nangis."""
+"""Command /calmdown: owner menenangkan Sanka setelah kesal atau terluka."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ async def calmdown(ctx: CommandContext) -> str:
         return "state emosi belum aktif."
     target = ctx.args.strip()
     try:
-        was_sulking = affect.calm(ctx.chat_id, target)
+        was_upset = affect.calm(ctx.chat_id, target)
     except Exception:
         return "aku belum bisa menenangkan diri sekarang. coba lagi bentar ya."
-    if not was_sulking:
+    if not was_upset:
         return "aku dari tadi tenang kok 🙃"
     if not target:
         return "okeee... aku udah agak tenang 😌 makasih ya."
@@ -24,7 +24,7 @@ async def calmdown(ctx: CommandContext) -> str:
 
 COMMAND = Handler(
     name="calmdown",
-    description="🧊 Tenangkan Sanka setelah ngambek/nangis (owner).",
+    description="🧊 Tenangkan Sanka setelah kesal atau terluka (owner).",
     fn=calmdown,
     aliases=("tenang",),
     usage="/calmdown [nama atau nomor]",

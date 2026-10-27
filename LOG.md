@@ -1,5 +1,43 @@
 # LOG
 
+## 2026-10-28 (engine emosi + keputusan otonom v2)
+
+- `SOUL.md` baru di root: persona lama dipindah apa adanya + bagian otonomi, emosi, grounding, dan
+  format WhatsApp. `sanka/config.py::load_config` membaca `SOUL.md` di folder `config.yaml` dan
+  memakainya sebagai `Config.persona` (YAML `persona` hanya fallback); `Dockerfile` menyalinnya.
+  `config.yaml`/`config.example.yaml` tidak lagi menyimpan persona.
+- `emotion-engine` (MIT) di-vendor ke `sanka/vendor/emotion_engine.py` + license/commit di
+  `sanka/vendor/LICENSE.emotion-engine`; `affect-kernel` dihapus dari `pyproject.toml`.
+- `sanka/affect.py` ditulis ulang sebagai adapter engine: satu file state JSON per chat di
+  `affect.state_dir` (bound `character_id=sanka`, baseline dari `SOUL.md`, volatility
+  `expressive`), API baru `turn_start`/`turn_end`/`prompt`/`status`/`calm`/`pulse`/`stats`.
+  SQLite tinggal `people`/`chat_people`/`topics`/`drives`/`meta`; tabel mood/sulk/event dan semua
+  regex intent/sulk dibuang. Idempotensi lewat `event_id` = id pesan.
+- `sanka/gate.py` dihapus; `sanka/decision.py` menggantikannya: `DECISION_PROMPT` (soul + aturan
+  arah/nada/mode/appraisal), parser JSON ketat dengan clamp, `build_context` (fakta transport,
+  state emosi, relasi, 30 pesan), dan `decide` (4000 token, retry 8000). Tidak ada regex/score;
+  mention/DM/reply ditimpa jadi `reply` oleh `ensure_reply`.
+- `sanka/wa.py`: `should_process`/`mentioned` regex/`named`/sulk/`SIGH`/appraisal helpers dibuang.
+  `handle_message` sekarang: command (tanpa keputusan/emosi) -> krisis (tanpa keputusan) ->
+  `turn_start` + `decide` + `turn_end` -> routing `ignore`/`react`/`reply`; typing hanya muncul
+  untuk reply. `system_prompt` menerima `tone`/`decision_reason`/`emotion`, memilih gaya dari
+  keputusan (bukan fakta tool), dan melarang janji diam serta mengarang tindakan.
+- `sanka/llm.py`: `APPRAISE_PROMPT`/`appraise`/`decide`/`judge`/`parse_verdict` dibuang;
+  `DIGEST_PROMPT` melarang fakta dari baris "Sanka" dan budget digest 1200->3000.
+- `sanka/ambient.py`: `gate`/`neglect`/`silent` dibuang; chime memakai `affect.status` + drive,
+  `pulse` satu argumen, dan digest membuang baris pesan Sanka sendiri. `AffectStore.pulse`
+  melewati load/save bila bucket 5 menitnya sudah diproses, jadi tick 10 detik tidak menulis file
+  state terus-menerus.
+- Command: `/mood` memakai `affect.status` (ringkasan, PAD, pulse, trust), `/calmdown` = repair
+  turn. `scripts/install_engines.py` memasang skill opsional `senticore` di folder skill runtime.
+- Uji: `tests/test_gate.py` dihapus; `tests/test_decision.py` baru; `test_affect`, `test_reply`,
+  `test_smoke`, `test_ambient`, `test_commands` ditulis ulang untuk kontrak baru (ignore tanpa
+  typing, mention dipaksa reply dengan tone curt, krisis tanpa panggilan keputusan, mode
+  professional vs daily, digest tanpa baris keluar).
+- Verifikasi: `pytest -q` 166 lulus; `python -m sanka selftest` SELFTEST OK; keputusan live
+  deepseek-v4.1-flash: obrolan grup netral -> `ignore`, mention -> `reply` tone `curt`, hinaan ->
+  `reply` tone `hurt` dengan PAD negatif.
+
 ## 2026-10-27 (DM tidak butuh tag/nama; chat kind di konteks)
 
 - `sanka/wa.py` `system_prompt(is_dm=...)`: di chat pribadi persona menyatakan semua pesan

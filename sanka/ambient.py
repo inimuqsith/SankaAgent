@@ -1,8 +1,8 @@
-"""Otonomi terbatas: ringkas topik, riset saat sepi, nimbrung jarang, sedih kalau ditinggal.
+"""Otonomi terbatas: ringkas topik, riset saat sepi, dan nimbrung jarang.
 
 Semua akses di luar efek emosi dibatasi: tool hanya `web_search`, memori hanya chat yang
 sama + global, dan tidak pernah mengirim DM. Pengiriman spontan tunduk pada cooldown harian
-serta gate yang sama dengan balasan biasa.
+dan state emosi dari emotion-engine.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ log = logging.getLogger(__name__)
 
 TRANSCRIPT_CHARS = 300
 CHIME_IDLE_WINDOW = 1800
-NEGLECT_AFTER = 1200
 AMBIENT_ROLE = ("web_search",)
 CHIME_SYSTEM = """Kamu Sanka, laki-laki dengan ekspresi emosional feminin, di grup WhatsApp yang sedang sepi.
 Tulis SATU pesan pendek (maks 200 karakter) yang natural dan menambah nilai, seperti manusia
@@ -46,7 +45,6 @@ class Ambient:
         memory=None,
         history=None,
         sessions=None,
-        gate=None,
         send_text=None,
     ):
         self.config = config
@@ -57,7 +55,6 @@ class Ambient:
         self.memory = memory
         self.history = history
         self.sessions = sessions
-        self.gate = gate
         self.send_text = send_text
         self.known_chats: set[str] = set()
         self.busy: set[str] = set()
@@ -129,7 +126,7 @@ class Ambient:
         chats = sorted(self.known_chats)
         for chat_id in chats:
             try:  # heartbeat: mood meluruh dan drive tumbuh walau tidak ada pesan
-                self.affect.pulse(chat_id, moment)
+                self.affect.pulse(chat_id)
             except Exception:
                 log.debug("heartbeat pulse gagal chat=%s", chat_id, exc_info=True)
         for chat_id in chats:
@@ -156,8 +153,6 @@ class Ambient:
                 if await self._chime_candidate(chat_id, moment):
                     await self._chime(chat_id)
                     break
-        for chat_id in chats:
-            await self._neglect(chat_id, moment)
 
     async def _research_candidate(self, chat_id: str, moment: float) -> bool:
         settings = self.settings
@@ -175,7 +170,7 @@ class Ambient:
 
     async def _chime_candidate(self, chat_id: str, moment: float) -> bool:
         settings = self.settings
-        if self.gate is None or not chat_id.endswith("@g.us"):
+        if self.affect is None or not chat_id.endswith("@g.us"):
             return False
         try:
             topic = self.affect.topic(chat_id)
@@ -191,34 +186,17 @@ class Ambient:
         if not rows or getattr(rows[-1], "outgoing", False):
             return False
         try:
-            modes = self.affect.modes(chat_id)
+            status = self.affect.status(chat_id)
             drives = self.affect.drives(chat_id)
         except Exception:
-            return False
-        if modes["level"] or modes["crying"]:
             return False
         urge = (
             0.10
             + 0.35 * float(drives["boredom"])
             + 0.30 * float(drives["loneliness"])
-            + 0.20 * max(0.0, float(modes["valence"]))
+            + 0.20 * max(0.0, float(status["pleasure"]))
         )
-        if random.random() > urge:
-            return False
-        unresolved = [item for item in topic["unresolved"] if str(item).strip()]
-        last = rows[-1]
-        score, _ = self.gate.score(
-            chat_id=chat_id,
-            text=getattr(last, "text", "") or "",
-            is_dm=False,
-            mentioned=False,
-            replied_to_bot=False,
-            sender_id=getattr(last, "sender_id", "") or "",
-            has_media=getattr(last, "media", None) is not None,
-            quote_sender_is_bot=False,
-            now=moment,
-        )
-        return bool(unresolved) or score >= 0.55
+        return random.random() <= urge
 
     # ------------------------------------------------------------------ aksi
 
@@ -227,7 +205,11 @@ class Ambient:
             if self.affect is None or self.history is None or self.llm is None:
                 return
             topic = self.affect.topic(chat_id)
-            rows = self._recent(chat_id, int(self.settings.history_window))
+            rows = [
+                row
+                for row in self._recent(chat_id, int(self.settings.history_window))
+                if not getattr(row, "outgoing", False)
+            ]
             if not rows:
                 self.affect.mark_digest(chat_id)
                 return
@@ -323,8 +305,6 @@ class Ambient:
             return
         if not chat_id.endswith("@g.us") or chat_id not in self.known_chats:
             return
-        if self.affect.silent(chat_id):
-            return
         rows = self._recent(chat_id, 8)
         if not rows or getattr(rows[-1], "outgoing", False):
             return
@@ -370,20 +350,6 @@ class Ambient:
             return
         self.affect.mark_chime(chat_id)
         log.info("ambient chime terkirim chat=%s", chat_id)
-
-    async def _neglect(self, chat_id: str, moment: float) -> None:
-        if self.affect is None:
-            return
-        rows = self._recent(chat_id, 2)
-        if not rows or not getattr(rows[-1], "outgoing", False):
-            return
-        stamp = self._last_human.get(chat_id, 0.0)
-        if not stamp or moment - stamp < NEGLECT_AFTER:
-            return
-        try:
-            self.affect.neglect(chat_id, moment)
-        except Exception:
-            log.debug("ambient neglect gagal chat=%s", chat_id, exc_info=True)
 
     # ------------------------------------------------------------------ util
 

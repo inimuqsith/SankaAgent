@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 from neonize.proto.Neonize_pb2 import Message
-from neonize.utils import extract_text
 
 from sanka.commands import REGISTRY as COMMANDS
 from sanka.commands.help import help_command
@@ -21,7 +20,7 @@ from sanka.config import (
 from sanka.format import format_reply
 from sanka.permissions import allows, role_for
 from sanka.tools.web_search import searx_hits
-from sanka.wa import named, should_process, system_prompt
+from sanka.wa import mentioned, system_prompt
 
 BOT = {"628567770837"}
 
@@ -72,27 +71,12 @@ def group_event(text: str, mentioned: tuple[str, ...] = (), participant: str = "
     return ev
 
 
-def test_group_routing() -> None:
-    config = make_config()
-
-    def routed(ev: Message, is_dm: bool = False) -> bool:
-        chat = "1234567890@g.us" if not is_dm else "628999999999@s.whatsapp.net"
-        return should_process(
-            ev,
-            chat,
-            extract_text(ev.Message),
-            is_dm=is_dm,
-            bot_name=config.whatsapp.bot_name,
-            require_mention=config.whatsapp.require_mention,
-            bots=BOT,
-        )
-
-    assert routed(dm_event(), is_dm=True) is True
-    assert routed(group_event("halo semua")) is False
-    assert routed(group_event("pagi", mentioned=("628567770837@s.whatsapp.net",))) is True
-    assert routed(group_event("@sanka tolong cek")) is True
-    assert routed(group_event("@SANKAAAAAAAAA tolong cek")) is True
-    assert routed(group_event("jawab ya", participant="628567770837@s.whatsapp.net")) is True
+def test_mentioned_only_trusts_transport_facts() -> None:
+    # Nama yang disebut dalam teks bukan mention: hanya payload transport yang dihitung.
+    assert mentioned(group_event("@sanka tolong cek"), BOT) is False
+    assert mentioned(group_event("@SANKAAAAAAAAA tolong cek"), BOT) is False
+    assert mentioned(group_event("pagi", mentioned=("628567770837@s.whatsapp.net",)), BOT) is True
+    assert mentioned(group_event("@sanka", mentioned=("999@s.whatsapp.net",)), BOT) is False
 
 
 def media_event(is_dm: bool) -> Message:
@@ -103,29 +87,6 @@ def media_event(is_dm: bool) -> Message:
     ev.Info.MessageSource.Sender.Server = "s.whatsapp.net"
     ev.Message.imageMessage.mimetype = "image/jpeg"
     return ev
-
-
-def test_captionless_media_routing() -> None:
-    config = make_config()
-
-    def routed(ev: Message, is_dm: bool) -> bool:
-        chat = "628999999999@s.whatsapp.net" if is_dm else "1234567890@g.us"
-        return should_process(
-            ev,
-            chat,
-            extract_text(ev.Message),
-            is_dm=is_dm,
-            bot_name=config.whatsapp.bot_name,
-            require_mention=config.whatsapp.require_mention,
-            bots=BOT,
-            has_media=True,
-        )
-
-    assert routed(media_event(True), is_dm=True) is True
-    assert routed(media_event(False), is_dm=False) is False
-    addressed = media_event(False)
-    addressed.Message.imageMessage.contextInfo.mentionedJID.append("628567770837@s.whatsapp.net")
-    assert routed(addressed, is_dm=False) is True
 
 
 def dm_event() -> Message:
@@ -181,6 +142,8 @@ default_role: owner
         encoding="utf-8",
     )
 
+    (tmp_path / "SOUL.md").write_text("Kamu Sanka dari SOUL.md.", encoding="utf-8")
+
     loaded = load_config(str(target))
 
     assert loaded.workspace == tmp_path / ".sanka/workspace"
@@ -188,6 +151,10 @@ default_role: owner
     assert loaded.whatsapp.history_db == tmp_path / ".sanka/history.db"
     assert loaded.memory.path == tmp_path / ".sanka/memory.db"
     assert loaded.skills.dir == tmp_path / ".sanka/skills"
+    assert loaded.affect.state_dir == tmp_path / ".sanka/emotions"
+    assert loaded.affect.state_dir.is_dir()
+    assert loaded.affect.volatility == "expressive"
+    assert loaded.persona == "Kamu Sanka dari SOUL.md."  # SOUL.md menang atas persona YAML
 
 
 def test_load_config_rejects_legacy_home_data(tmp_path: Path, monkeypatch) -> None:
@@ -402,7 +369,6 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
         "llm:\n"
         "  api_key_env: SANKA_TEST_KEY\n"
         "  temperature: 0.7\n"
-        "  appraise_temperature: 0.2\n"
         f"workspace: \"{tmp_path / 'ws'}\"\n"
         f"whatsapp:\n  session_db: \"{tmp_path / 's.db'}\"\n"
         "roles:\n  member: {}\n"
@@ -410,17 +376,8 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
         "affect:\n"
         "  enabled: true\n"
         "  path: \".sanka/affect.db\"\n"
-        "  sulk_minutes: 12\n"
-        "  silence_max_ignores: 5\n"
-        "  allow_owner_sulk: false\n"
-        "  decay_hours: 2.5\n"
-        "  max_appraisals_per_minute: 4\n"
-        "gate:\n"
-        "  enabled: true\n"
-        "  reply_threshold: 0.5\n"
-        "  llm_decide: true\n"
-        "  decide_temperature: 0.4\n"
-        "  max_decisions_per_minute: 7\n"
+        "  state_dir: \".sanka/emotions\"\n"
+        "  volatility: steady\n"
         "humanize:\n"
         "  enabled: true\n"
         "  normal_chars: 180\n"
@@ -442,24 +399,16 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
 
     assert config.affect.enabled is True
     assert config.affect.path == tmp_path / ".sanka/affect.db"
-    assert config.affect.sulk_minutes == 12
-    assert config.affect.silence_max_ignores == 5
-    assert config.affect.allow_owner_sulk is False
-    assert config.affect.decay_hours == 2.5
-    assert config.affect.max_appraisals_per_minute == 4
-    assert config.gate.reply_threshold == 0.5
-    assert config.gate.llm_decide is True
-    assert config.gate.decide_temperature == 0.4
-    assert config.gate.max_decisions_per_minute == 7
+    assert config.affect.state_dir == tmp_path / ".sanka/emotions"
+    assert config.affect.volatility == "steady"
+    assert not hasattr(config, "gate")
     assert config.humanize.normal_chars == 180
     assert config.humanize.normal_parts == 2
     assert config.humanize.max_bubbles == 5
     assert config.humanize.reaction_stickers == ("stickers/a.webp",)
     assert not hasattr(config.humanize, "followups")
     assert not hasattr(config.humanize, "max_followups")
-    assert not hasattr(config.gate, "max_consecutive_ignores")
     assert config.llm.temperature == 0.7
-    assert config.llm.appraise_temperature == 0.2
     assert config.style.path == tmp_path / ".sanka/style.json"
     assert config.style.max_chars == 640
     assert config.ambient.research_per_day == 3
@@ -470,7 +419,6 @@ def test_human_features_default_off() -> None:
     config = make_config()
 
     assert config.affect.enabled is False
-    assert config.gate.enabled is False
     assert config.humanize.enabled is False
     assert config.style.enabled is False
     assert config.ambient.enabled is False
@@ -495,13 +443,6 @@ def test_config_false_string_disables_flag(tmp_path, monkeypatch) -> None:
 
     assert config.humanize.enabled is False
     assert config.ambient.proactive is False
-
-
-def test_elongated_name_is_detected() -> None:
-    assert named("SANKAAAAAAAAA") is True
-    assert named("SANNNKAAAAAA") is True
-    assert named("sankaaaaaa") is True
-    assert named("sankas") is False
 
 
 def test_system_prompt_marks_dm_as_always_for_bot() -> None:

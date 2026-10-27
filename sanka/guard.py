@@ -1,4 +1,4 @@
-"""Batas aman bersama: krisis, injeksi, rahasia, sentimen grup, command operasional."""
+"""Batas aman bersama: krisis, injeksi, dan rahasia."""
 
 from __future__ import annotations
 
@@ -15,13 +15,6 @@ INJECTION = re.compile(
     r"mulai sekarang kamu|developer mode)",
     re.IGNORECASE,
 )
-# Command yang tetap jalan walau Sanka sedang ngambek/nangis: operasional, bukan obrolan.
-EXEMPT_COMMANDS = frozenset({"help", "status", "whoami", "reset", "stop", "ping", "calmdown", "mood"})
-TENSION = re.compile(
-    r"\b(anjir|asu|bangsat|goblok|tolol|jancok|sampah|mampus|diam|gausah)\b", re.IGNORECASE
-)
-FUN = re.compile(r"\b(wkwk|awok|hehe|haha)\b|🗿|😭|😹", re.IGNORECASE)
-COMMAND_TEXT = re.compile(r"^/([a-z0-9_]{1,63})", re.IGNORECASE)
 
 
 def is_crisis(text: str) -> bool:
@@ -38,9 +31,3 @@ def safe_text(text: str, limit: int = 400) -> str:
     if not flat or SENSITIVE.search(flat) or INJECTION.search(flat):
         return ""
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
-
-
-def command_name(text: str) -> str:
-    """'/help foo' -> 'help'; bukan command -> string kosong."""
-    match = COMMAND_TEXT.match(str(text or "").strip())
-    return match.group(1).lower() if match else ""

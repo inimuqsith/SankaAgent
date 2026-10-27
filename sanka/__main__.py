@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import shutil
 import sys
-import time
+from dataclasses import replace
 from pathlib import Path
 
 from neonize.aioze.client import NewAClient
@@ -26,7 +27,7 @@ try:
         load_env,
         secure_db,
     )
-    from .gate import ReplyGate
+    from .decision import Appraisal, Decision, RelationshipDelta
     from .history import HistoryStore, history_props
     from .llm import API_ERROR_TEXT, LLM
     from .mcp import Hub
@@ -118,27 +119,47 @@ async def selftest(config: Config) -> int:
         results.append(_report("llm", "PASS" if passed else "FAIL", "" if passed else answer[:200]))
 
         affect_path = config.workspace / "selftest-affect.db"
+        affect_states = config.workspace / "selftest-emotions"
         affect = None
         try:
-            affect = AffectStore(affect_path, config.affect)
-            affect.observe(
+            affect = AffectStore(
+                affect_path,
+                replace(config.affect, state_dir=affect_states),
+                soul=config.persona,
+            )
+            affect.turn_start("selftest", "selftest-1")
+            affect.turn_end(
                 "selftest",
                 "p1",
                 "Tester",
                 "goblok banget sih kamu",
-                directed=True,
-                is_dm=True,
-                appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.7, "warmth": 0.0},
+                "member",
+                "p1@s.whatsapp.net",
+                Decision(
+                    addressed="me",
+                    act="reply",
+                    mode="daily",
+                    tone="hurt",
+                    bubbles=1,
+                    appraisal=Appraisal("hostility", -0.4, 0.3, 0.1, "dihina"),
+                    relationship=RelationshipDelta(trust=-0.1, annoyance=0.15),
+                    reason="hinaan",
+                ),
+                "selftest-1",
             )
-            sulking = affect.silent("selftest", "p1")
-            affect.calm("selftest")
-            affect.pulse("selftest", now=time.time() + 3600)
+            hurt = affect.status("selftest", "p1")
+            calmed = affect.calm("selftest", "p1")
+            healed = affect.status("selftest", "p1")
+            affect.pulse("selftest")
             passed = (
-                sulking
-                and not affect.silent("selftest", "p1")
-                and affect.drives("selftest")["boredom"] > 0
+                hurt["pleasure"] < 0
+                and calmed
+                and healed["pleasure"] > hurt["pleasure"]
+                and affect.drives("selftest")["boredom"] >= 0
             )
-            results.append(_report("affect", "PASS" if passed else "FAIL", "" if passed else "sulk tidak konsisten"))
+            results.append(
+                _report("affect", "PASS" if passed else "FAIL", "" if passed else "PAD tidak bergerak")
+            )
         except Exception as exc:
             results.append(_report("affect", "FAIL", f"{type(exc).__name__}: {exc}"))
         finally:
@@ -150,6 +171,8 @@ async def selftest(config: Config) -> int:
                     Path(f"{affect_path}{suffix}").unlink(missing_ok=True)
                 except OSError:
                     pass
+            with contextlib.suppress(OSError):
+                shutil.rmtree(affect_states, ignore_errors=True)
 
         style_path = config.workspace / "selftest-style.json"
         style = None
@@ -196,7 +219,7 @@ async def run_bot(config: Config) -> None:
     store: HistoryStore | None = None
     memory: MemoryStore | None = None
     skills: SkillStore | None = None
-    affect = style = gate = ambient = None
+    affect = style = ambient = None
     app: App | None = None
     try:
         try:
@@ -214,7 +237,7 @@ async def run_bot(config: Config) -> None:
             log.exception("gagal membuka direktori skill; skill nonaktif")
         if config.affect.enabled:
             try:
-                affect = AffectStore(config.affect.path, config.affect)
+                affect = AffectStore(config.affect.path, config.affect, soul=config.persona)
             except Exception:  # emosi nonaktif, bot tetap membalas seperti sebelumnya
                 log.exception("gagal membuka affect; emosi nonaktif")
         if config.style.enabled:
@@ -239,18 +262,6 @@ async def run_bot(config: Config) -> None:
             except Exception:
                 log.exception("gagal seed gaya dari arsip")
         sessions = Sessions(store=store)
-        gate = (
-            ReplyGate(
-                config.gate,
-                None,
-                affect,
-                sessions,
-                config.whatsapp.bot_name,
-                config.humanize.reaction_stickers,
-            )
-            if config.gate.enabled
-            else None
-        )
         app = App(
             config,
             LLM(config),
@@ -259,11 +270,8 @@ async def run_bot(config: Config) -> None:
             memory=memory,
             skills=skills,
             affect=affect,
-            gate=gate,
             style=style,
         )
-        if gate is not None:
-            gate.llm = app.llm
         if config.ambient.enabled:
             ambient = Ambient(
                 config,
@@ -273,7 +281,6 @@ async def run_bot(config: Config) -> None:
                 memory,
                 store,
                 app.sessions,
-                gate,
                 app.send_text,
             )
             app.ambient = ambient

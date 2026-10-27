@@ -68,10 +68,10 @@ class PulseAffect:
     """Affect tiruan: cukup mencatat detak dan menjawab state netral."""
 
     def __init__(self) -> None:
-        self.pulses: list[tuple[str, float | None]] = []
+        self.pulses: list[str] = []
 
-    def pulse(self, chat_id: str, now: float | None = None) -> dict:
-        self.pulses.append((chat_id, now))
+    def pulse(self, chat_id: str) -> dict:
+        self.pulses.append(chat_id)
         return {}
 
     def topic(self, chat_id: str) -> dict:
@@ -91,25 +91,21 @@ class PulseAffect:
     def pending(self, chat_id: str) -> int:
         return 0
 
-    def modes(self, chat_id: str, person_id: str = "") -> dict:
-        return {"level": 0, "crying": False, "valence": 0.0}
+    def status(self, chat_id: str, person_id: str = "") -> dict:
+        return {"summary": "even, steady, balanced", "pulse": "quiet none pulse", "pleasure": 0.0}
 
     def drives(self, chat_id: str) -> dict:
         return {"energy": 0.6, "boredom": 0.0, "loneliness": 0.0}
-
-    def silent(self, chat_id: str, person_id: str = "") -> bool:
-        return False
-
-    def neglect(self, chat_id: str, now: float | None = None) -> bool:
-        return False
 
 
 class FakeLLM:
     def __init__(self, digest: dict | None = None) -> None:
         self.payload = digest or {}
         self.chime_calls = 0
+        self.transcripts: list[str] = []
 
     async def digest(self, chat_name: str, transcript: str, topic: str, people: str) -> dict:
+        self.transcripts.append(transcript)
         return self.payload
 
     async def research_summary(self, query: str, results: str) -> str:
@@ -139,7 +135,7 @@ def test_tick_pulses_affect(tmp_path) -> None:
 
     asyncio.run(ambient._tick(now=1000.0))
 
-    assert affect.pulses == [(CHAT, 1000.0)]
+    assert affect.pulses == [CHAT]
 
 
 def test_prime_loads_history_chats(tmp_path) -> None:
@@ -160,7 +156,7 @@ def test_prime_loads_history_chats(tmp_path) -> None:
 
 def test_digest_stores_topic_and_person_note(tmp_path) -> None:
     affect = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
-    affect.observe(CHAT, PERSON, "Fahri", "halo", directed=False, is_dm=False)
+    affect.turn_end(CHAT, PERSON, "Fahri", "halo", "member", "628222222222@s.whatsapp.net", None, "M1")
     memory = MemoryStore(tmp_path / "memory.db")
     llm = FakeLLM(
         {
@@ -228,7 +224,7 @@ def test_research_skips_without_question(tmp_path, monkeypatch) -> None:
     affect.close()
 
 
-def test_chime_skips_dm_and_sulk(tmp_path) -> None:
+def test_chime_skips_dm(tmp_path) -> None:
     affect = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
     sent: list[tuple[str, str]] = []
 
@@ -238,24 +234,19 @@ def test_chime_skips_dm_and_sulk(tmp_path) -> None:
 
     llm = FakeLLM()
     ambient = Ambient(
-        make_config(tmp_path), llm, affect, None, None, FakeHistory([message("sepi ya")]), None, None, send_text
+        make_config(tmp_path),
+        llm,
+        affect,
+        None,
+        None,
+        FakeHistory([message("sepi ya")]),
+        sessions=None,
+        send_text=send_text,
     )
 
     ambient.note(DM, message("halo"))
     asyncio.run(ambient._chime(DM))
-    assert sent == []
 
-    ambient.note(CHAT, message("halo"))
-    affect.observe(
-        CHAT,
-        PERSON,
-        "Fahri",
-        "kamu culun",
-        directed=True,
-        is_dm=False,
-        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.8, "warmth": 0.0},
-    )
-    asyncio.run(ambient._chime(CHAT))
     assert sent == []
     assert llm.chime_calls == 0
     affect.close()
@@ -270,7 +261,14 @@ def test_chime_sends_when_allowed(tmp_path) -> None:
         return "ok"
 
     ambient = Ambient(
-        make_config(tmp_path), FakeLLM(), affect, None, None, FakeHistory([message("sepi ya")]), None, None, send_text
+        make_config(tmp_path),
+        FakeLLM(),
+        affect,
+        None,
+        None,
+        FakeHistory([message("sepi ya")]),
+        sessions=None,
+        send_text=send_text,
     )
     ambient.note(CHAT, message("sepi ya"))
 
@@ -279,6 +277,66 @@ def test_chime_sends_when_allowed(tmp_path) -> None:
     assert sent == [(CHAT, "eh masih pada di sini?")]
     assert affect.topic(CHAT)["chime_count"] == 1
     affect.close()
+
+
+def test_digest_excludes_outgoing_messages(tmp_path) -> None:
+    affect = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
+    llm = FakeLLM({"topic": "logistik", "keywords": [], "facts": [], "unresolved": []})
+    rows = [message("rapat jam 3"), message("1.3TB sisa", sender="Sanka", outgoing=True)]
+    ambient = Ambient(
+        make_config(tmp_path),
+        llm,
+        affect,
+        None,
+        None,
+        FakeHistory(rows),
+        sessions=None,
+    )
+
+    asyncio.run(ambient._digest(CHAT))
+
+    assert llm.transcripts
+    assert "1.3TB" not in llm.transcripts[0]
+    assert "rapat jam 3" in llm.transcripts[0]
+    affect.close()
+
+
+def test_chime_candidate_uses_engine_status(tmp_path, monkeypatch) -> None:
+    class LonelyAffect(PulseAffect):
+        def status(self, chat_id: str, person_id: str = "") -> dict:
+            return {"summary": "guarded", "pulse": "quiet none pulse", "pleasure": -0.4}
+
+        def drives(self, chat_id: str) -> dict:
+            return {"energy": 0.4, "boredom": 1.0, "loneliness": 1.0}
+
+        def topic(self, chat_id: str) -> dict:
+            return {
+                "summary": "logistik",
+                "unresolved": [],
+                "last_message": 99000.0,
+                "last_digest": 0.0,
+                "last_research": 0.0,
+                "last_chime": 0.0,
+                "research_day": "",
+                "research_count": 0,
+                "chime_day": "",
+                "chime_count": 0,
+            }
+
+    ambient = Ambient(
+        make_config(tmp_path),
+        FakeLLM(),
+        LonelyAffect(),
+        None,
+        None,
+        FakeHistory([message("sepi ya")]),
+        sessions=None,
+    )
+
+    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
+
+    assert asyncio.run(ambient._chime_candidate(CHAT, 100000.0)) is True
+    assert asyncio.run(ambient._chime_candidate(DM, 100000.0)) is False
 
 
 def test_digest_parsing_rejects_secrets_and_junk() -> None:

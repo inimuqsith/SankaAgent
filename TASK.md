@@ -57,46 +57,43 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
 
 - [x] Command observability tanpa LLM: `/whoami` (pengirim, role, chat, bot), `/status` (model,
   arsip, memori, skill, tool), `/tools` (tool yang diizinkan role), `/cari` (arsip chat aktif),
-  `/help <command>` (usage/alias/izin), `/mood` (label mood, valence, drive, status sulk/nangis,
+  `/help <command>` (usage/alias/izin), `/mood` (ringkasan emosi, PAD, trust, pulse, drive,
   dan hubungan dengan pengirim), dan alias `/new` untuk `/reset`.
-- [x] Arah pesan diputuskan model, bukan regex: gate dan appraisal menerima entri pesan yang sama
-  (`prompt_entry`: nama, teks, label media, kutipan) plus fakta arah (`men-tag kamu`, `membalas
-  pesanmu`, `membalas pesan orang lain`), sehingga ledekan yang objeknya orang lain tidak lagi
-  dianggap untuk Sanka. Nama dengan huruf berulang (`SANKAAAAAAAAA`) dikenali sebagai sinyal
-  lembut/routing; prompt melarang mengarang kondisi tubuh dan menuduh ngambek dari stiker saja.
+- [x] Arah pesan diputuskan model, bukan regex: satu keputusan LLM (`sanka/decision.py`) menerima
+  `prompt_entry` (nama, teks, label media, kutipan) plus fakta transport (DM / mention asli /
+  balasan ke pesan Sanka), lalu memilih `addressed`, `act`, `mode`, `tone`, `bubbles`, appraisal,
+  dan delta hubungan. Tidak ada regex nama/arah/mode; prompt melarang mengarang kondisi tubuh dan
+  menuduh ngambek dari stiker saja.
 - [x] Kirim ke chat pribadi (CP): `send_to` juga me-resolve kontak arsip (`contacts` +
   `lid_map`), bukan hanya grup, dan prompt mewajibkan panggilan tool yang sukses sebelum Sanka
   mengaku sudah mengirim ke chat lain.
 
-- [x] Dua engine: soul (appraisal + drives + heartbeat) dan percakapan (gate + balasan + tool)
-  berbagi state SQLite. `sanka/affect.py` menyimpan mood PAD + OCC (`affect-kernel`) per chat,
-  hubungan per orang, keanggotaan `chat_people`, `drives` (energi/kebosanan/kesepian), sulk/nangis,
-  catatan trait dari arsip, dan label mood yang masuk prompt.
-- [x] Penilaian emosi oleh LLM: `LLM.appraise` membaca konteks, pengirim, hubungan, dan pesan
-  sebelumnya lalu mengembalikan `intent`/`directed`/`hurt`/`warmth`/`sarcasm`; itulah yang
-  menggerakkan mood dan sulk. Regex `classify_intent_fallback` hanya cadangan (tanpa `hurt`, jadi
-  tidak pernah memicu sulk dari tebakan) dan dibatasi `affect.max_appraisals_per_minute`.
-- [x] Sulk tetap menjawab: tag/DM tidak bisa di-ignore; saat sulk Sanka membalas jujur soal
-  perasaannya tetapi menolak membantu (tanpa tool, memori, skill, atau rekap). Command operasional
-  tetap jalan, krisis selalu dibantu, sulk berakhir karena `/calmdown`, dua permintaan maaf, atau
-  waktu habis.
-- [x] Gate balasan memutuskan `reply`/`react`/`ignore` plus jumlah `bubbles` lewat LLM (mood +
-  drive + hubungan + 12 pesan terakhir); skor deterministik hanya prior/fallback. Tag/DM tidak
-  pernah di-ignore, dan tidak ada kuota/jeda paksa; gate juga memilih `mode` daily/professional
-  (daily = prompt obrolan + bubble pendek, professional = prompt kerja + laporan utuh), dan
-  `max_decisions_per_minute` membatasi biaya.
+- [x] Dua engine: emosi (`emotion-engine` di-vendor, MIT) dan percakapan (keputusan + balasan +
+  tool). `sanka/affect.py` menyimpan state PAD/trust/pulse per chat di `affect.state_dir` dan
+  relasi (`people`, `chat_people`, `topics`, `drives`) di `affect.db`; soul/karakter pindah ke
+  `SOUL.md` dan menjadi baseline personality engine.
+- [x] Keputusan dan penilaian emosi dalam satu panggilan: `sanka/decision.py` meminta
+  `addressed`/`act`/`mode`/`tone`/`bubbles`/`appraisal`/`relationship`, lalu harness menulis
+  `record_turn` (P/A/D + label + catatan) dan delta relasi. Tidak ada `LLM.appraise`, tidak ada
+  `classify_intent_fallback`, dan tidak ada `ReplyGate`/skor deterministik.
+- [x] Tanpa state diam: tidak ada sulk/nangis yang dipaksakan harness dan tidak ada janji "diam N
+  menit". Mention asli/DM/balasan ke pesan Sanka wajib dibalas (tone boleh dingin), obrolan lain
+  boleh di-ignore; `/calmdown` adalah repair turn (PAD ke baseline, kesal turun setengah).
+- [x] Keputusan per pesan memilih `act` (`reply`/`ignore`/`react`), `mode` daily/professional, dan
+  `tone` (warm/neutral/playful/curt/hurt/angry); command tidak memanggil keputusan dan tidak
+  mengubah emosi, krisis dibalas tanpa keputusan dan tanpa mengubah emosi.
 - [x] Balasan manusia: satu burst 1-3 bubble pendek (`human_chunks`, batas dari `humanize`), jeda
   mengetik dari panjang teks, chunk pertama mengutip pesan. Tidak ada double-text otomatis; pesan
   yang masuk sebelum burst terakhir dianggap terwakili sehingga tag beruntun dijawab sekali.
-- [x] Heartbeat 24/7: `AffectStore.pulse` men-decay mood, menumbuhkan drive, dan menghapus sulk
-  kedaluwarsa tiap `ambient.tick_seconds` untuk semua chat yang dikenal (live + `recent_chats`);
-  chime spontan bergerbang dorongan drive + cooldown + penilaian gate.
+- [x] Heartbeat 24/7: `AffectStore.pulse` menjalankan satu langkah decay (maks 1 per 5 menit) dan
+  menumbuhkan drive tiap `ambient.tick_seconds` untuk semua chat yang dikenal (live +
+  `recent_chats`); chime spontan bergerbang dorongan drive + cooldown harian.
 - [x] Profil gaya per chat dan per orang (`person_profile`) dari agregat arsip (median panjang,
   huruf kecil, partikel, emoji, tawa, tanda tanya) tanpa menyimpan teks, dengan seed acuan
   `references/*.md` bila sampel masih sedikit; orang yang dikenal hanya anggota chat itu.
-- [x] Otonomi terbatas (`ambient`): digest topik + fakta ke memori, riset `web_search` saat chat
-  sepi, chime grup sesekali dengan gate, dan sedih saat ditinggal. Tool context hanya `web_search`
-  dan tidak pernah DM.
+- [x] Otonomi terbatas (`ambient`): digest topik + fakta ke memori (baris pesan Sanka dibuang),
+  riset `web_search` saat chat sepi, chime grup sesekali. Tool context hanya `web_search` dan
+  tidak pernah DM.
 - [x] Persona laki-laki dengan ekspresi emosional feminin, bukan asisten; balasan pendek dan tidak
   mengaku AI. Command baru `/calmdown` (owner).
 

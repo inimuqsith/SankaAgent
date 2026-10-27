@@ -156,18 +156,25 @@ def test_help_detail_respects_role_and_accepts_alias() -> None:
 
 
 class FakeAffect:
-    def modes(self, chat_id: str, person_id: str) -> dict:
+    def status(self, chat_id: str, person_id: str) -> dict:
         return {
-            "label": "jahil",
-            "valence": 0.4,
+            "summary": "warm, playful, soft",
+            "pulse": "noticeable warmth pulse",
+            "pleasure": 0.4,
+            "arousal": 0.5,
+            "dominance": 0.4,
+            "trust_tier": "Familiar",
+            "trust": 0.42,
             "energy": 0.5,
             "boredom": 0.2,
             "loneliness": 0.1,
-            "level": 0,
-            "crying": False,
+            "turns": 12,
             "relation": "dekat",
             "person_name": "Muqsith",
         }
+
+    def calm(self, chat_id: str, person_id: str = "") -> bool:
+        return True
 
 
 def test_mood_reports_affect_state() -> None:
@@ -179,12 +186,23 @@ def test_mood_reports_affect_state() -> None:
 
     assert lines[0] == "💭 *Mood Sanka*"
     for fragment in (
-        "• Lagi: jahil",
-        "• Perasaan: senang",
-        "• Status: nggak ngambek",
+        "• Lagi: warm, playful, soft",
+        "• Perasaan: senang (P 0.4, A 0.5, D 0.4)",
+        "• Pulse: noticeable warmth pulse",
+        "• Trust: Familiar",
         "• Ke Muqsith: dekat",
     ):
         assert fragment in lines
+
+
+def test_calmdown_reports_repair() -> None:
+    from sanka.commands.calmdown import calmdown
+
+    fake_app = app()
+    fake_app.affect = FakeAffect()
+    ctx = SimpleNamespace(app=fake_app, chat_id="123@g.us", args="", sender="628123", role=RoleConfig("owner"))
+
+    assert asyncio.run(calmdown(ctx)) == "okeee... aku udah agak tenang 😌 makasih ya."
 
 
 def test_mood_without_affect_store() -> None:
