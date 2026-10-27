@@ -1030,3 +1030,72 @@ def test_command_does_not_consume_reply_budget(tmp_path) -> None:
         )
     )
     assert second.act == "reply"
+
+
+def command_reply(tmp_path: Path, text: str, is_dm: bool = False) -> str:
+    """Satu turn dengan semua command diizinkan untuk member; balasan pertama dikembalikan."""
+    roles = {"member": RoleConfig("member", tools=("read",), commands=("*",))}
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(
+            rich_config(tmp_path, roles=roles, require_mention=not is_dm),
+            AppraiseLLM(CASUAL),
+            FakeHub(),
+            Sessions(),
+        )
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event(text) if is_dm else group_event(text), app)
+        return sent
+
+    sent = asyncio.run(flow())
+    assert len(sent) == 1
+    return sent[0][1].extendedTextMessage.text
+
+
+def test_mentioned_command_runs_handler_instead_of_llm(tmp_path) -> None:
+    assert command_reply(tmp_path, "@Sanka /ping") == "🏓 Pong! Sanka hidup dan siap."
+
+
+def test_numeric_mention_before_command_runs_handler(tmp_path) -> None:
+    assert command_reply(tmp_path, "@628567770837 /ping") == "🏓 Pong! Sanka hidup dan siap."
+
+
+def test_mentioned_command_in_dm_reaches_handler(tmp_path) -> None:
+    assert command_reply(tmp_path, "@Sanka /mood", is_dm=True) == "state emosi belum aktif."
+
+
+def test_command_for_someone_else_is_not_a_command(tmp_path) -> None:
+    text = command_reply(tmp_path, "@Ilham /ping")
+
+    assert text != "🏓 Pong! Sanka hidup dan siap."
+    assert "Command" not in text
+
+
+def test_mentioned_mood_returns_card_not_persona_reply(tmp_path) -> None:
+    store, affect_config = affect_setup(tmp_path)
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(
+            rich_config(
+                tmp_path,
+                affect=affect_config,
+                roles={"member": RoleConfig("member", tools=("read",), commands=("*",))},
+            ),
+            AppraiseLLM(CASUAL),
+            FakeHub(),
+            Sessions(),
+            affect=store,
+        )
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("@Sanka /mood"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+    text = payload_text(sent[0])
+
+    assert len(sent) == 1
+    assert text.splitlines()[0] == "💭 *Mood Sanka*"
+    assert any(line.startswith("• Status:") for line in text.splitlines())
+    store.close()

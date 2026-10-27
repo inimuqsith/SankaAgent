@@ -339,6 +339,22 @@ def named(text: str, bot_name: str = "sanka") -> bool:
     return bool(re.search(rf"(?<!\w){_name_body(bot_name)}(?!\w)", body, re.IGNORECASE))
 
 
+MENTION_HEAD = re.compile(r"^@([^\s@]+)\s*")
+
+
+def command_body(text: str, bot_name: str, bots: set[str]) -> str:
+    """Buang mention bot di awal pesan: '@Sanka /mood' -> '/mood' (command tetap command)."""
+    body = str(text or "").lstrip()
+    while True:
+        match = MENTION_HEAD.match(body)
+        if match is None:
+            return body
+        handle = match.group(1).lstrip("+")
+        if handle.casefold() != str(bot_name or "").casefold() and digits(handle) not in bots:
+            return body
+        body = body[match.end() :]
+
+
 def should_process(
     ev,
     chat: str,
@@ -852,13 +868,14 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
     ):
         return
 
-    is_command = text.startswith("/")
+    body = command_body(text, app.config.whatsapp.bot_name, app.bot_digits)
+    is_command = body.startswith("/")
     if not is_command and not crisis and _stale(app, chat_id, message):
         log.info("pesan basi chat=%s: sudah terwakili burst sebelumnya", chat)
         return
-    head, _, rest = text[1:].partition(" ") if is_command else ("", "", "")
+    head, _, rest = body[1:].partition(" ") if is_command else ("", "", "")
     name = head.lower()
-    command_key = guard.command_name(text)
+    command_key = guard.command_name(body)
     safety_block = ""
 
     # Sulk: tetap menjawab (tag/DM tidak bisa diabaikan), tapi menolak membantu.
