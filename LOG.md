@@ -34,7 +34,10 @@
 - `sanka/ambient.py`: `prime()` mengisi `known_chats` dari `history.recent_chats(50)`;
   detak pertama untuk chat yang belum punya baris `drives` hanya menambatkan `last_pulse` (tidak
   melompat ke energi 0/gabut 1 seperti kalau `elapsed` dihitung dari epoch), dan pertumbuhan drive
-  dibatasi 24 jam agar downtime panjang/clock skew tidak memaksimalkan semua drive;
+  dibatasi 24 jam agar downtime panjang/clock skew tidak memaksimalkan semua drive. `last_decay`
+  hanya maju sejumlah langkah `decay_hours` yang benar-benar diterapkan (sisanya disimpan), jadi
+  tick 2 menit tetap meluruhkan PAD per jam; bagian kontinu (kesal/sedih/emosi aktif) memakai
+  `elapsed` sejak `last_pulse`, bukan sejak `last_decay`;
   `_tick` memanggil `pulse` tiap chat sebelum digest; chime bergerbang urge dari drive + mood,
   prompt chime memakai `affect.prompt`. `sanka/history.py`: `_human_rows` membawa `chat_id`,
   `style_sample` mengembalikan dict, `recent_chats`. `sanka/style.py`: `person_profile`

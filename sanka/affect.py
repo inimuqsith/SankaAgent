@@ -599,9 +599,10 @@ class AffectStore:
             dominance=float(mood["dominance"]),
         )
         if last and moment - last >= step:
-            for _ in range(min(24, int((moment - last) // step))):
+            steps = min(24, int((moment - last) // step))
+            for _ in range(steps):
                 pad = decay_mood(pad, PERSONALITY, person["stage"], float(mood["baseline"]))
-            mood["last_decay"] = moment
+            mood["last_decay"] = last + steps * step
         state = AffectState(
             mood=pad,
             personality=PERSONALITY,
@@ -861,23 +862,27 @@ class AffectStore:
                     dominance=float(mood["dominance"]),
                 )
                 step = max(60.0, float(self.config.decay_hours) * 3600.0)
+                steps = min(24, int((moment - last) // step))
                 stage = self._latest_stage(conn, chat_id)
-                for _ in range(min(24, int((moment - last) // step))):
+                for _ in range(steps):
                     pad = decay_mood(pad, PERSONALITY, stage, float(mood["baseline"]))
-                mood["valence"] = pad.valence
-                mood["arousal"] = pad.arousal
-                mood["dominance"] = pad.dominance
-                decay = 0.01 * ((moment - last) / 60.0)
+                if steps:  # sisa waktu < satu langkah disimpan agar tidak hilang tiap tick
+                    mood["valence"] = pad.valence
+                    mood["arousal"] = pad.arousal
+                    mood["dominance"] = pad.dominance
+                    mood["last_decay"] = last + steps * step
+                else:
+                    mood["last_decay"] = last
+                decay = 0.01 * (elapsed / 60.0)
                 mood["annoyance"] = _clamp(float(mood["annoyance"]) - decay)
                 mood["sadness"] = _clamp(float(mood["sadness"]) - decay)
-                factor = max(0.0, 1.0 - (moment - last) / 3600.0)
+                factor = max(0.0, 1.0 - elapsed / 3600.0)
                 active = {
                     key: value * factor
                     for key, value in self._active(mood).items()
                     if value * factor >= 0.05
                 }
                 mood["active"] = json.dumps(active)
-                mood["last_decay"] = moment
                 self._write_mood(conn, chat_id, mood)
             conn.execute("DELETE FROM sulks WHERE chat_id=? AND until<=?", (chat_id, moment))
             conn.commit()

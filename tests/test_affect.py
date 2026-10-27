@@ -202,6 +202,33 @@ def test_first_pulse_only_anchors_drives(tmp_path) -> None:
     store.close()
 
 
+def test_short_ticks_still_decay_mood_hourly(tmp_path) -> None:
+    store = make_store(tmp_path)
+    start = time.time()
+    store.observe(
+        CHAT,
+        FRIEND,
+        "Fahri",
+        "kamu culun",
+        directed=True,
+        is_dm=False,
+        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.8, "warmth": 0.0},
+        now=start,
+    )
+    anchored = store.drives(CHAT)
+    store.pulse(CHAT, now=start + 30)  # lebih rapat dari PULSE_MINUTES: no-op
+    assert store.drives(CHAT) == anchored
+
+    begin = abs(float(store.pulse(CHAT, now=start)["valence"]))
+    mood = {}
+    for minute in range(2, 181, 2):  # tick produksi 2 menit selama 3 jam
+        mood = store.pulse(CHAT, now=start + minute * 60)
+
+    assert abs(float(mood["valence"])) < begin  # PAD tetap meluruh per jam
+    assert store.sulk_until(CHAT, FRIEND) == 0.0  # sulk habis di menit ke-30
+    store.close()
+
+
 def test_drives_grow_when_idle(tmp_path) -> None:
     store = make_store(tmp_path)
     start = time.time()
