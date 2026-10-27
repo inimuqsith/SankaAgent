@@ -159,6 +159,13 @@ def stage_for(interactions: int, trust: float, affection: float) -> str:
     return "stranger"
 
 
+def _recent_log(state: dict, limit: int = LOG_LINES) -> list[dict]:
+    """Entri log yang punya pemicu nyata: decay internal bukan "yang terakhir kamu rasakan"."""
+    entries = [item for item in state.get("emotion_log", []) if isinstance(item, dict)]
+    real = [item for item in entries if str(item.get("event_type") or "") != "pre_turn_decay"]
+    return (real or entries)[-limit:]
+
+
 def _relation(affection: float, annoyance: float, trust: float, stage: str = "") -> str:
     """Label hubungan untuk prompt; stage arsip tetap dihormati agar orang lama bukan "baru"."""
     if annoyance >= 0.75:
@@ -313,7 +320,13 @@ class AffectStore:
             )
             engine.save_state(path, state)
             emotion = state["emotion"]
-            log_lines = state.get("emotion_log", [])[-LOG_LINES:]
+            log_lines = []
+            for item in _recent_log(state):
+                if not isinstance(item, dict):
+                    continue
+                entry = dict(item)
+                entry["other_chat"] = str(entry.get("chat_id") or "") not in ("", chat_id)
+                log_lines.append(entry)
             return {
                 "summary": engine.emotion_summary(state),
                 "pulse": engine.pulse_summary(state),
@@ -321,7 +334,7 @@ class AffectStore:
                 "arousal": float(emotion["arousal"]),
                 "dominance": float(emotion["dominance"]),
                 "trust_tier": engine.public_status(state)["trust_tier"],
-                "log": [dict(item) for item in log_lines if isinstance(item, dict)],
+                "log": log_lines,
             }
 
     def turn_end(
@@ -380,6 +393,14 @@ class AffectStore:
                     character_id=CHARACTER,
                     relationship_id=CHARACTER,
                 )
+                entries = state.get("emotion_log") or []
+                if (
+                    entries
+                    and isinstance(entries[-1], dict)
+                    and entries[-1].get("event_id") == message_id
+                ):
+                    entries[-1]["chat_id"] = chat_id
+                    entries[-1]["person_name"] = " ".join(str(name or "").split())[:80]
                 engine.save_state(path, state)
                 if str(result.get("status")) not in {"recorded", "state_only", "already_closed"}:
                     log.warning(
@@ -847,7 +868,7 @@ class AffectStore:
 
     # ------------------------------------------------------------------ prompt
 
-    def _payload(self, state: dict, drives: dict, person_id: str = "") -> dict:
+    def _payload(self, state: dict, drives: dict, person_id: str = "", chat_id: str = "") -> dict:
         emotion = state["emotion"]
         trust_tier = engine.public_status(state)["trust_tier"]
         person = None
@@ -856,9 +877,7 @@ class AffectStore:
                 person = next(
                     (
                         item
-                        for item in self.known_people(
-                            str(state["identity"].get("relationship_id") or ""), 50
-                        )
+                        for item in self.known_people(chat_id, 50)
                         if item["person_id"] == person_id
                     ),
                     None,
@@ -875,6 +894,7 @@ class AffectStore:
             "boredom": float(drives["boredom"]),
             "loneliness": float(drives["loneliness"]),
             "turns": int(state.get("total_turns", 0)),
+            "annoyance": float(person["annoyance"]) if person is not None else 0.0,
             "relation": (
                 _relation(
                     float(person["affection"]),
@@ -893,7 +913,7 @@ class AffectStore:
         with self._lock:
             _, state = self._state(chat_id)
             drives = self._drives(self._require(), chat_id)
-        return self._payload(state, drives, person_id)
+        return self._payload(state, drives, person_id, chat_id)
 
     def pad(self, chat_id: str) -> dict:
         """PAD saat ini: dipakai untuk menandai valence/arousal memori yang ditulis."""
@@ -923,7 +943,7 @@ class AffectStore:
             )
         ]
         log_lines: list[str] = []
-        for entry in state.get("emotion_log", [])[-LOG_LINES:]:
+        for entry in _recent_log(state):
             if not isinstance(entry, dict):
                 continue
             cue = str(entry.get("situation") or entry.get("cue") or "").strip()
@@ -931,7 +951,12 @@ class AffectStore:
             meaning = str(entry.get("relational_meaning") or "").strip()
             if not cue and not label:
                 continue
-            line = f"- {label or 'kejadian'}: {cue}"
+            who = str(entry.get("person_name") or "").strip()
+            other = str(entry.get("chat_id") or "") not in ("", chat_id)
+            tag = ""
+            if who or other:
+                tag = f" [{who or 'chat lain'}{', chat lain' if who and other else ''}]"
+            line = f"- {label or 'kejadian'}{tag}: {cue}"
             if meaning:
                 line += f" ({meaning})"
             log_lines.append(line)

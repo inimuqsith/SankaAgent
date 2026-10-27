@@ -246,7 +246,12 @@ def _emotion_block(emotion) -> str:
         meaning = str(entry.get("relational_meaning") or "").strip()
         if not cue and not label:
             continue
-        line = f"  - {label or 'kejadian'}: {cue}"
+        who = str(entry.get("person_name") or "").strip()
+        other = bool(entry.get("other_chat"))
+        tag = ""
+        if who or other:
+            tag = f" [{who or 'chat lain'}{', chat lain' if who and other else ''}]"
+        line = f"  - {label or 'kejadian'}{tag}: {cue}"
         if meaning:
             line += f" ({meaning})"
         log_lines.append(line)

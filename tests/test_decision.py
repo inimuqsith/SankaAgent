@@ -106,6 +106,34 @@ def test_context_includes_emotion_relationship_and_transcript() -> None:
     assert "mention asli ke kamu" in text
 
 
+def test_context_marks_who_and_other_chat_in_emotion_log() -> None:
+    text = build_context(
+        emotion={
+            "summary": "guarded, steady, soft",
+            "pleasure": -0.3,
+            "arousal": 0.5,
+            "dominance": 0.3,
+            "log": [
+                {
+                    "appraisal": "hostility",
+                    "situation": "dihina",
+                    "relational_meaning": "sakit",
+                    "person_name": "Fahri",
+                },
+                {
+                    "appraisal": "warmth",
+                    "situation": "halo",
+                    "person_name": "Anda",
+                    "other_chat": True,
+                },
+            ],
+        }
+    )
+
+    assert "hostility [Fahri]: dihina (sakit)" in text
+    assert "warmth [Anda, chat lain]: halo" in text
+
+
 def test_decision_uses_one_llm_call_with_full_context() -> None:
     llm = FakeLLM(
         [

@@ -53,7 +53,9 @@ async def mood(ctx: CommandContext) -> str:
     name = str(data.get("person_name") or "")
     relation = str(data.get("relation") or "")
     if name and relation:
-        lines.append(f"• Ke {name}: {relation}")
+        annoyance = float(data.get("annoyance") or 0.0)
+        extra = f", kesal {annoyance:.1f}" if annoyance > 0.05 else ""
+        lines.append(f"• Ke {name}: {relation}{extra}")
     return "\n".join(lines)
 
 

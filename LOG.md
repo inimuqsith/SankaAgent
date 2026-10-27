@@ -1,5 +1,29 @@
 # LOG
 
+## 2026-10-28 (arah kesal: /mood, log lintas chat, dan grup)
+
+- Bug: `AffectStore._payload` mencari orang lewat `state.identity.relationship_id` (`sanka`),
+  bukan chat id, sehingga `known_people("sanka")` selalu kosong dan `/mood` tidak pernah
+  menampilkan baris "Ke <nama>". Akibatnya PAD negatif tampil sebagai "kesal" tanpa subjek.
+  `_payload` sekarang menerima `chat_id` dari `status()`; payload menambah `annoyance`.
+- `sanka/commands/mood.py`: baris "Ke <nama>" menyertakan kadar kesal ke orang itu
+  (`kesal 0.2`) bila di atas 0.05. "Perasaan: kesal" tetap berasal dari PAD (P < -0.2) dan
+  "Pulse" tetap appraisal turn terakhir; keduanya sinyal berbeda, bukan state kedua.
+- `sanka/affect.py::turn_end`: entri `emotion_log` hasil turn diberi `chat_id` dan `person_name`.
+  `prompt(chat_id)` menampilkan pemicu sebagai `- hostility [Xavier]: ...`, dan pemicu dari chat
+  lain sebagai `[Xavier, chat lain]`; grup tetap mendapat daftar anggota dengan `kesal N`.
+  `turn_start` menandai entri lama dengan `other_chat` untuk blok keputusan
+  (`sanka/decision.py::_emotion_block`).
+- `sanka/affect.py::_recent_log`: `pre_turn_decay` (bookkeeping internal) tidak lagi tampil sebagai
+  "yang terakhir kamu rasakan", jadi tiga pemicu nyata terakhir bertahan di prompt.
+- Uji: `test_turn_end_moves_pad_and_relationship` mengunci `person_name`/`relation`/`annoyance`
+  dari `status()`; `test_mood_names_who_it_is_annoyed_with` mengunci baris arah kesal;
+  `test_prompt_log_names_person_and_skips_internal_decay` dan
+  `test_context_marks_who_and_other_chat_in_emotion_log` mengunci atribusi log.
+- Verifikasi: `pytest -q` 243 lulus; `python -m sanka selftest` SELFTEST OK; replay dua chat
+  menghasilkan `[Xavier, chat lain]` di DM dan `[Xavier]` di grup; replay 12 turn hostility pada
+  store sementara menghasilkan `person_name=Anda`, `relation=kenal`, `annoyance=0.2`.
+
 ## 2026-10-28 (anggaran prompt + harness ablasi)
 
 - `sanka/salience.py`: kompetisi blok ala global workspace. `MANDATORY` (`base`, `safety`, `away`,

@@ -115,6 +115,10 @@ def test_turn_end_moves_pad_and_relationship(tmp_path) -> None:
     assert after["pleasure"] < before["pleasure"]
     assert after["arousal"] > before["arousal"]
     assert "guarded" in after["summary"]
+    # Dibaca lewat chat_id, bukan identity.relationship_id: /mood harus bisa menyebut orangnya.
+    assert after["person_name"] == "Fahri"
+    assert after["relation"] == "baru"
+    assert after["annoyance"] == pytest.approx(0.15)
     people = store.known_people(CHAT, 5)
     assert people[0]["person_id"] == FRIEND
     assert people[0]["interactions"] == 1
@@ -137,6 +141,40 @@ def test_duplicate_message_id_is_idempotent(tmp_path) -> None:
     assert twice["pleasure"] == once["pleasure"]
     assert twice["turns"] == once["turns"] == 1
     assert store.known_people(CHAT, 5)[0]["annoyance"] == pytest.approx(0.15)
+    store.close()
+
+
+def test_prompt_log_names_person_and_skips_internal_decay(tmp_path) -> None:
+    store = make_store(tmp_path)
+    store.turn_start(CHAT, "A1")
+    turn(
+        store,
+        decision(dP=-0.2, label="hostility", note="dihina"),
+        text="dasar sampah",
+        message_id="A1",
+    )
+    store.turn_start(OTHER, "B1")
+    turn(
+        store,
+        decision(dP=0.1, label="warmth"),
+        text="halo",
+        person=OWNER,
+        name="Muqsith",
+        chat=OTHER,
+        message_id="B1",
+    )
+    store.turn_start(OTHER, "B2")
+
+    group = store.prompt(CHAT, FRIEND)
+    dm = store.prompt(OTHER, OWNER)
+
+    assert "hostility [Fahri]: dasar sampah (dihina)" in group
+    assert "[Muqsith, chat lain]: halo" in group  # pemicu dari chat lain tetap bernama
+    assert "[Fahri, chat lain]: dasar sampah" in dm
+    assert "quiet drift" not in group  # decay internal bukan pemicu
+    log = store.turn_start(OTHER, "B3")["log"]
+    assert log and all(entry.get("event_type") != "pre_turn_decay" for entry in log)
+    assert any(entry.get("other_chat") is True for entry in log)
     store.close()
 
 

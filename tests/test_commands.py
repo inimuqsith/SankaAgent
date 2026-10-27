@@ -156,6 +156,9 @@ def test_help_detail_respects_role_and_accepts_alias() -> None:
 
 
 class FakeAffect:
+    def __init__(self, annoyance: float = 0.0) -> None:
+        self.annoyance = annoyance
+
     def status(self, chat_id: str, person_id: str) -> dict:
         return {
             "summary": "warm, playful, soft",
@@ -169,6 +172,7 @@ class FakeAffect:
             "boredom": 0.2,
             "loneliness": 0.1,
             "turns": 12,
+            "annoyance": self.annoyance,
             "relation": "dekat",
             "person_name": "Muqsith",
         }
@@ -203,6 +207,16 @@ def test_calmdown_reports_repair() -> None:
     ctx = SimpleNamespace(app=fake_app, chat_id="123@g.us", args="", sender="628123", role=RoleConfig("owner"))
 
     assert asyncio.run(calmdown(ctx)) == "okeee... aku udah agak tenang 😌 makasih ya."
+
+
+def test_mood_names_who_it_is_annoyed_with() -> None:
+    fake_app = app()
+    fake_app.affect = FakeAffect(annoyance=0.4)
+    ctx = SimpleNamespace(app=fake_app, chat_id="123@g.us", sender="628123", role=RoleConfig("owner"))
+
+    lines = asyncio.run(mood(ctx)).splitlines()
+
+    assert "• Ke Muqsith: dekat, kesal 0.4" in lines
 
 
 def test_mood_without_affect_store() -> None:
