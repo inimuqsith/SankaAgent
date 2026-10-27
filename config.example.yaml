@@ -104,6 +104,7 @@ ambient:
   proactive: true
   chime_cooldown: 3600
   chime_per_day: 6
+  chime_urge: 0.45        # ambang dorongan emosi untuk menyelituk (kecilkan = lebih sering)
   research_cooldown: 21600
   research_per_day: 6
   research_results: 5

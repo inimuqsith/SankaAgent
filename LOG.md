@@ -47,6 +47,12 @@
   nilai di bawah `SOOTHE_FLOOR` 0.01. Hanya
   annoyance yang meluruh; trust/afeksi/respek tidak disentuh. Label `musuh` (>= 0.75) karena itu
   bisa turun sendiri tanpa `/calmdown`, dan `/calmdown` tetap jalur instan.
+- Chime ambient jadi pemicu emosional, bukan timer: `Ambient._urge` menghitung dorongan dari
+  loneliness/boredom/energy + arousal + sedih (pleasure negatif) + pending, dibandingkan
+  `ambient.chime_urge` (default 0.45); `random.random()` dan basis mati 0.10 dibuang. Gerbang
+  "chat baru aktif <30 menit" diganti "chat sepi >= `idle_minutes`" (maks `CHIME_QUIET_WINDOW`
+  12 jam) karena gate lama membuat drive selalu di-reset pesan sehingga komponen emosi mustahil
+  tumbuh. Cooldown/plafon harian tetap sebagai pengaman anti-spam.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

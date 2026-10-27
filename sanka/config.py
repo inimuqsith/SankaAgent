@@ -125,6 +125,7 @@ class AmbientConfig:
     proactive: bool = True
     chime_cooldown: int = 3600
     chime_per_day: int = 6
+    chime_urge: float = 0.45  # ambang dorongan (emosi) untuk menyelituk
     research_cooldown: int = 21600
     research_per_day: int = 6
     research_results: int = 5
@@ -480,6 +481,7 @@ def load_config(path: str | None = None) -> Config:
             proactive=_bool(ambient_raw.get("proactive"), True),
             chime_cooldown=int(_num(ambient_raw.get("chime_cooldown"), 3600)),
             chime_per_day=int(_num(ambient_raw.get("chime_per_day"), 6)),
+            chime_urge=_num(ambient_raw.get("chime_urge"), 0.45),
             research_cooldown=int(_num(ambient_raw.get("research_cooldown"), 21600)),
             research_per_day=int(_num(ambient_raw.get("research_per_day"), 6)),
             research_results=int(_num(ambient_raw.get("research_results"), 5)),

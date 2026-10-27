@@ -51,7 +51,7 @@ dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.
 | `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine per chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `grudge_half_life_hours` (kesal reda sendiri), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
 | `humanize` | bubble & jeda: `enabled`, `normal_chars`, `normal_parts`, `detail_chars`, `detail_parts`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles`, `reaction_stickers` |
 | `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
-| `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_cooldown`, `chime_per_day`, `research_cooldown`, `research_per_day`, `research_results` |
+| `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_urge`, `chime_cooldown`, `chime_per_day`, `research_cooldown`, `research_per_day`, `research_results` |
 | `mcp.servers` | per server: `command` + `args` + `env` (stdio) atau `url` (Streamable HTTP); tool diekspos sebagai `mcp__<server>__<tool>` |
 
 Path relatif (`workspace`, `session_db`, `history_db`, `memory.path`, `skills.dir`, `affect.path`,
@@ -277,9 +277,15 @@ huruf kecil).
 **Otonomi.** `sanka/ambient.py` berjalan tiap `tick_seconds`: memberi detak `pulse` ke setiap
 chat, meringkas topik dan mengekstrak fakta ke memori setelah `digest_every` pesan baru (baris
 pesan Sanka sendiri dibuang dari transkrip digest), meneliti pertanyaan yang menggantung saat chat
-sepi (`idle_minutes`, `research_*`), dan sesekali nimbrung (`chime_*`; hanya grup). Chime punya
-dorongan acak dari drive (`boredom`, `loneliness`, pleasure positif) sebelum cooldown harian
-berjalan, dan prompt chime memakai state emosi yang sedang berlangsung. Riset hanya memakai tool
+sepi (`idle_minutes`, `research_*`), dan sesekali nimbrung (`chime_*`; hanya grup).
+
+Menyelituk itu **bukan jadwal**: `Ambient._urge` menghitung dorongan dari keadaan
+(`0.35·kesepian + 0.20·gabut + 0.10·energi + 0.15·arousal + 0.15·sedih + 0.15·pertanyaan
+menggantung`), dan Sanka hanya bicara kalau dorongan itu melewati `ambient.chime_urge` (default
+0.45). Ruangan harus sudah sepi minimal `idle_minutes` (jangan menyela obrolan) tapi belum dingin
+(maks 12 jam), `chime_cooldown`/`chime_per_day` hanya pengaman anti-spam, dan prompt chime memakai
+state emosi yang sedang berlangsung. Konsekuensinya: chat ramai tanpa rasa apa-apa tidak akan
+diselituki sama sekali, sekencang apa pun tick berjalan. Riset hanya memakai tool
 `web_search` dengan `RoleConfig` khusus—tanpa `shell`, `write`, `sandbox`, atau kirim ke chat
 lain—dan tidak pernah DM. Isi krisis tidak diringkas, tidak dicatat, dan tidak masuk memori; pesan
 krisis selalu dibalas dengan arahan bantuan.

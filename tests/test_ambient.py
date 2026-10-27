@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -92,7 +93,13 @@ class PulseAffect:
         return 0
 
     def status(self, chat_id: str, person_id: str = "") -> dict:
-        return {"summary": "even, steady, balanced", "pulse": "quiet none pulse", "pleasure": 0.0}
+        return {
+            "summary": "even, steady, balanced",
+            "pulse": "quiet none pulse",
+            "pleasure": 0.0,
+            "arousal": 0.4,
+            "dominance": 0.5,
+        }
 
     def drives(self, chat_id: str) -> dict:
         return {"energy": 0.6, "boredom": 0.0, "loneliness": 0.0}
@@ -301,42 +308,96 @@ def test_digest_excludes_outgoing_messages(tmp_path) -> None:
     affect.close()
 
 
-def test_chime_candidate_uses_engine_status(tmp_path, monkeypatch) -> None:
-    class LonelyAffect(PulseAffect):
-        def status(self, chat_id: str, person_id: str = "") -> dict:
-            return {"summary": "guarded", "pulse": "quiet none pulse", "pleasure": -0.4}
+class LonelyAffect(PulseAffect):
+    """Perasaan yang mendorong menyelituk: sepi, gabut, gelisah, ada yang menggantung."""
 
-        def drives(self, chat_id: str) -> dict:
-            return {"energy": 0.4, "boredom": 1.0, "loneliness": 1.0}
+    def __init__(self, *, quiet_seconds: float = 3600.0, chime_age: float = 7200.0) -> None:
+        super().__init__()
+        self.quiet_seconds = quiet_seconds
+        self.chime_age = chime_age
 
-        def topic(self, chat_id: str) -> dict:
-            return {
-                "summary": "logistik",
-                "unresolved": [],
-                "last_message": 99000.0,
-                "last_digest": 0.0,
-                "last_research": 0.0,
-                "last_chime": 0.0,
-                "research_day": "",
-                "research_count": 0,
-                "chime_day": "",
-                "chime_count": 0,
-            }
+    def status(self, chat_id: str, person_id: str = "") -> dict:
+        return {
+            "summary": "guarded",
+            "pulse": "quiet none pulse",
+            "pleasure": -0.4,
+            "arousal": 0.6,
+            "dominance": 0.4,
+        }
 
-    ambient = Ambient(
+    def drives(self, chat_id: str) -> dict:
+        return {"energy": 0.4, "boredom": 1.0, "loneliness": 1.0}
+
+    def pending(self, chat_id: str) -> int:
+        return 0
+
+    def topic(self, chat_id: str) -> dict:
+        now = time.time()
+        return {
+            "summary": "logistik",
+            "unresolved": [],
+            "last_message": now - self.quiet_seconds,
+            "last_digest": 0.0,
+            "last_research": 0.0,
+            "last_chime": now - self.chime_age,
+            "research_day": "",
+            "research_count": 0,
+            "chime_day": "",
+            "chime_count": 0,
+        }
+
+
+def chime_ambient(tmp_path, affect, rows: list[ChatMessage] | None = None) -> Ambient:
+    return Ambient(
         make_config(tmp_path),
         FakeLLM(),
-        LonelyAffect(),
+        affect,
         None,
         None,
-        FakeHistory([message("sepi ya")]),
+        FakeHistory(rows or [message("sepi ya")]),
         sessions=None,
     )
 
-    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
 
-    assert asyncio.run(ambient._chime_candidate(CHAT, 100000.0)) is True
-    assert asyncio.run(ambient._chime_candidate(DM, 100000.0)) is False
+def test_chime_candidate_follows_emotional_urge(tmp_path) -> None:
+    ambient = chime_ambient(tmp_path, LonelyAffect())
+
+    assert ambient._urge(CHAT) >= 0.45
+    assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is True
+    assert asyncio.run(ambient._chime_candidate(DM, time.time())) is False  # DM tidak pernah diselituki
+
+
+def test_calm_room_keeps_sanka_quiet(tmp_path) -> None:
+    # Sejam sepi dan cooldown lewat, tapi perasaannya betah: diam adalah jawaban yang benar.
+    ambient = chime_ambient(tmp_path, PulseAffect())
+    quiet = time.time() - 3600
+
+    assert ambient._urge(CHAT) < 0.45
+    assert asyncio.run(ambient._chime_candidate(CHAT, quiet + 3600)) is False
+
+
+def test_chime_does_not_interrupt_busy_room(tmp_path) -> None:
+    ambient = chime_ambient(tmp_path, LonelyAffect(quiet_seconds=300))
+
+    assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is False
+
+
+def test_chime_cooldown_and_cold_topic_are_rails(tmp_path) -> None:
+    fresh = chime_ambient(tmp_path, LonelyAffect(chime_age=60))  # baru menyelituk semenit lalu
+    cold = chime_ambient(tmp_path, LonelyAffect(quiet_seconds=20 * 3600))  # topik 20 jam, bukan sepi
+    own = chime_ambient(tmp_path, LonelyAffect(), rows=[message("eh", outgoing=True)])
+
+    assert asyncio.run(fresh._chime_candidate(CHAT, time.time())) is False
+    assert asyncio.run(cold._chime_candidate(CHAT, time.time())) is False
+    assert asyncio.run(own._chime_candidate(CHAT, time.time())) is False
+
+
+def test_urge_is_zero_when_state_is_broken(tmp_path) -> None:
+    class Broken(PulseAffect):
+        def status(self, chat_id: str, person_id: str = "") -> dict:
+            raise RuntimeError("state rusak")
+
+    assert chime_ambient(tmp_path, Broken())._urge(CHAT) == 0.0
 
 
 def test_digest_parsing_rejects_secrets_and_junk() -> None:

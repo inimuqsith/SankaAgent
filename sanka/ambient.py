@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import time
 from datetime import date, datetime
 
@@ -21,7 +20,7 @@ from .tools.web_search import TOOL as WEB_SEARCH
 log = logging.getLogger(__name__)
 
 TRANSCRIPT_CHARS = 300
-CHIME_IDLE_WINDOW = 1800
+CHIME_QUIET_WINDOW = 12 * 3600  # di atas ini topiknya sudah dingin, bukan sepi
 AMBIENT_ROLE = ("web_search",)
 CHIME_SYSTEM = """Kamu Sanka, laki-laki dengan ekspresi emosional feminin, di grup WhatsApp yang sedang sepi.
 Tulis SATU pesan pendek (maks 200 karakter) yang natural dan menambah nilai, seperti manusia
@@ -171,6 +170,10 @@ class Ambient:
         return int(topic["research_count"]) < int(settings.research_per_day)
 
     async def _chime_candidate(self, chat_id: str, moment: float) -> bool:
+        """Boleh menyelituk bukan karena jadwal: ruangan sepi + dorongan perasaan cukup kuat.
+
+        Cooldown dan plafon harian tetap ada, tapi itu pengaman anti-spam, bukan pemicu.
+        """
         settings = self.settings
         if self.affect is None or not chat_id.endswith("@g.us"):
             return False
@@ -178,7 +181,10 @@ class Ambient:
             topic = self.affect.topic(chat_id)
         except Exception:
             return False
-        if moment - float(topic["last_message"]) > CHIME_IDLE_WINDOW:
+        quiet = moment - float(topic["last_message"])
+        if quiet < int(settings.idle_minutes) * 60:  # ruangan masih ramai: jangan menyela
+            return False
+        if quiet > CHIME_QUIET_WINDOW:  # topik sudah dingin, bukan sepi
             return False
         if moment - float(topic["last_chime"]) < int(settings.chime_cooldown):
             return False
@@ -187,18 +193,36 @@ class Ambient:
         rows = self._recent(chat_id, 3)
         if not rows or getattr(rows[-1], "outgoing", False):
             return False
+        urge = self._urge(chat_id)
+        if urge < float(settings.chime_urge):
+            log.debug("ambient chime ditahan chat=%s urge=%.2f", chat_id, urge)
+            return False
+        log.info("ambient chime dipicu chat=%s urge=%.2f", chat_id, urge)
+        return True
+
+    def _urge(self, chat_id: str) -> float:
+        """Dorongan untuk menyelituk, murni dari keadaan: 0 berarti betah diam.
+
+        Kesepian dan kebosanan tumbuh selama chat sepi; gelisah (arousal) dan sedih
+        (pleasure negatif) menambah keinginan bicara; pertanyaan yang menggantung
+        menambah penasaran. Energi tinggi berarti masih punya tenaga untuk memulai.
+        """
         try:
             status = self.affect.status(chat_id)
             drives = self.affect.drives(chat_id)
+            pending = self.affect.pending(chat_id)
         except Exception:
-            return False
+            log.debug("ambient: gagal membaca urge chat=%s", chat_id, exc_info=True)
+            return 0.0
         urge = (
-            0.10
-            + 0.35 * float(drives["boredom"])
-            + 0.30 * float(drives["loneliness"])
-            + 0.20 * max(0.0, float(status["pleasure"]))
+            0.35 * float(drives["loneliness"])
+            + 0.20 * float(drives["boredom"])
+            + 0.10 * float(drives["energy"])
+            + 0.15 * float(status["arousal"])
+            + 0.15 * max(0.0, -float(status["pleasure"]))
+            + 0.15 * min(1.0, float(pending) / 2.0)
         )
-        return random.random() <= urge
+        return min(1.0, urge)
 
     # ------------------------------------------------------------------ aksi
 
