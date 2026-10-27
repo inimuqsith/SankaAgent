@@ -1,12 +1,14 @@
 # LOG
 
-## 2026-10-28 (jiwa ganda: appraisal LLM, heartbeat, sulk yang tetap menjawab)
+## 2026-10-27 (jiwa ganda: appraisal LLM, heartbeat, sulk yang tetap menjawab)
 
 - `sanka/llm.py`: `APPRAISE_PROMPT` + `LLM.appraise` (tanpa tool, `llm.appraise_temperature`) dan
   `parse_appraisal` (intent 9 nilai, `directed` bool/"true", `hurt`/`warmth` 0..1, `sarcasm`, `why`
   <=80; field wajib invalid -> `{}`). `parse_decision` diganti `parse_verdict` -> `(act, bubbles)`.
   `LLM.run` memakai `llm.temperature`; `decide` memakai `gate.decide_temperature`; chime 0.9.
-  `LLM.followup`/`parse_followup`/`FOLLOWUP_WORDS` dihapus.
+  `LLM.followup`/`parse_followup`/`FOLLOWUP_WORDS` dihapus. `max_tokens` appraisal 300 -> 700
+  dan digest 500 -> 1200: model reasoning menghabiskan jatah dulu (`finish=length`), sehingga
+  appraisal jatuh ke fallback tanpa `hurt` dan digest tidak menulis topik.
 - `sanka/affect.py`: `classify_intent` -> `classify_intent_fallback` (cadangan, `hurt=0`, tidak
   pernah sulk). `observe(appraisal=...)` memakai hasil LLM: intent/arah/hurt/warmth, delta
   diskalakan intensitas, `_record_event` memakai intent yang sama, `_atmosphere` bergeser oleh
@@ -26,8 +28,11 @@
   saat burst terakhir disusun (snapshot id per chat), jadi tag beruntun dijawab sekali tanpa
   menelan pesan yang datang setelahnya. `system_prompt` menerima `person_style` + `sender`.
 - `sanka/gate.py`: `Decision.bubbles`, `score(named=...)` (+0.45, meniadakan penalti
-  `human_flow`), `_over_limit(attention, direct)` (cooldown hanya tanpa perhatian langsung; rate
-  limit per chat selalu, per orang hanya non-direct), keputusan LLM untuk setiap pesan non-command
+  `human_flow`), `_over_limit(attention, direct)`: pesan `direct` (tag/DM) lolos tanpa syarat,
+  cooldown hanya untuk non-attention, cap chat/orang hanya untuk non-direct. Ini hasil temuan
+  produksi: `@Sanka halooo ?` (score 0.65) di-ignore `reason=rate_limit` setelah 8 balasan/10
+  menit, jadi tag/DM tidak boleh terkena kuota. `reply_cooldown_seconds` diset 0 di contoh
+  (jeda paksa dimatikan; model yang memutuskan diam), keputusan LLM untuk setiap pesan non-command
   dengan pagar `gate.max_decisions_per_minute`, `_context` memuat status kiriman sendiri, nama
   pengirim, dan catatan "menyebut namamu tanpa men-tag". `_ignores`/`max_consecutive_ignores`
   dihapus; tag/DM `ignore` ditimpa `reply`.

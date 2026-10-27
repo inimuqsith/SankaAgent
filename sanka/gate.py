@@ -220,7 +220,13 @@ class ReplyGate:
         attention: bool,
         direct: bool,
     ) -> str:
-        """Pagar anti-flood: cooldown hanya untuk pesan tanpa perhatian langsung ke Sanka."""
+        """Pagar anti-flood hanya untuk pesan tanpa perhatian langsung.
+
+        Tag/DM (direct) tidak pernah diblokir: satu-satunya hal yang bisa membuat Sanka diam
+        pada pesan seperti itu adalah keputusan model sendiri, bukan cooldown/kuota. Cap chat
+        dan cap per orang tetap berlaku untuk pesan yang tidak ditujukan kepadanya supaya Sanka
+        tidak mendominasi grup.
+        """
         stamps = [stamp for stamp in self._sent.get(chat_id, []) if moment - stamp < RATE_WINDOW]
         self._sent[chat_id] = stamps
         person = [
@@ -229,12 +235,14 @@ class ReplyGate:
             if moment - stamp < RATE_WINDOW
         ]
         self._person_sent[(chat_id, sender_id)] = person
+        if direct:
+            return ""
         last = max([*stamps, *self._bot_stamps(chat_id)[-1:]], default=0.0)
         if not attention and last and moment - last < float(self.config.reply_cooldown_seconds):
             return "cooldown"
         if len(stamps) >= int(self.config.max_replies_per_10min):
             return "rate_limit"
-        if not direct and len(person) >= int(self.config.max_person_replies_per_10min):
+        if len(person) >= int(self.config.max_person_replies_per_10min):
             return "rate_limit"
         return ""
 

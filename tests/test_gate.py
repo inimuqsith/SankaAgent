@@ -161,14 +161,40 @@ def test_direct_question_replies() -> None:
     assert decision.act == "reply"
 
 
-def test_rate_limit_wins_even_for_mention() -> None:
-    gate = gate_of(max_replies_per_10min=8, max_person_replies_per_10min=99)
-    for index in range(8):
-        moment = 1000.0 + index * 60
-        assert decide(gate, text="halo", mentioned=True, now=moment).act == "reply"
+def test_direct_mention_bypasses_rate_limit() -> None:
+    gate = gate_of(
+        max_replies_per_10min=2, max_person_replies_per_10min=2, reply_cooldown_seconds=45
+    )
+    for index in range(5):
+        moment = 1000.0 + index * 30
+        assert decide(gate, text="sanka halo", mentioned=True, now=moment).act == "reply"
         gate.record_sent(CHAT, SENDER, now=moment)
 
-    decision = decide(gate, text="halo", mentioned=True, now=1000.0 + 8 * 60)
+    decision = decide(gate, text="@sanka halooo ?", mentioned=True, now=1000.0 + 5 * 30)
+
+    assert decision.act == "reply" and decision.reason == "mention"
+
+
+def test_dm_bypasses_rate_limit() -> None:
+    gate = gate_of(max_replies_per_10min=1, max_person_replies_per_10min=1)
+    for index in range(3):
+        moment = 1000.0 + index * 20
+        assert decide(gate, text="halo", is_dm=True, now=moment).act == "reply"
+        gate.record_sent(DM, SENDER, now=moment)
+
+    decision = decide(gate, text="halo lagi", is_dm=True, now=1000.0 + 3 * 20)
+
+    assert decision.act == "reply" and decision.reason == "direct"
+
+
+def test_rate_limit_hits_unprompted_reply() -> None:
+    gate = gate_of(max_replies_per_10min=2, max_person_replies_per_10min=99)
+    for index in range(2):
+        moment = 1000.0 + index * 60
+        assert decide(gate, text="kamu kok gitu sih?", replied=True, now=moment).act == "reply"
+        gate.record_sent(CHAT, SENDER, now=moment)
+
+    decision = decide(gate, text="kamu kok gitu sih?", replied=True, now=1000.0 + 2 * 60)
 
     assert decision.act == "ignore" and decision.reason == "rate_limit"
 

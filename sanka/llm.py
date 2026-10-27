@@ -432,7 +432,7 @@ class LLM:
         raw = await self.complete(
             APPRAISE_PROMPT,
             user,
-            max_tokens=300,
+            max_tokens=700,
             temperature=float(self.config.llm.appraise_temperature),
             session=f"{USER_AGENT}-appraise",
         )
@@ -451,7 +451,7 @@ class LLM:
             if part.strip()
         )
         raw = await self.complete(
-            DIGEST_PROMPT, user, max_tokens=500, temperature=0.2, session=f"{USER_AGENT}-digest"
+            DIGEST_PROMPT, user, max_tokens=1200, temperature=0.2, session=f"{USER_AGENT}-digest"
         )
         return parse_digest(raw)
 

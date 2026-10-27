@@ -220,10 +220,13 @@ status terakhirnya sendiri, dan pesan baru, lalu memilih sendiri (JSON
 `{"act": ..., "bubbles": 1-3}`); skor deterministik (mention, nama disebut, pertanyaan, kata kedua,
 topik, ledekan, kabar terakhir, dsb.) hanya prior/fallback saat LLM mati, `llm_decide` dimatikan,
 atau sebagai nilai untuk chime otonom. Tag `@`/DM tidak bisa di-ignore: `ignore` dari model
-ditimpa menjadi `reply` (sulk yang membuat balasannya menolak membantu). Cooldown hanya berlaku
-untuk pesan tanpa perhatian langsung; rate limit per chat dan per orang tetap pagar keras.
-`gate.max_decisions_per_minute` membatasi biaya keputusan. `humanize.reaction_stickers` diisi path
-stiker relatif workspace untuk mengizinkan `react`.
+ditimpa menjadi `reply` (sulk yang membuat balasannya menolak membantu), dan pesan seperti itu
+tidak pernah diblokir cooldown maupun kuota. Cooldown dan rate limit (`max_replies_per_10min`,
+`max_person_replies_per_10min`) hanya berlaku untuk pesan yang tidak ditujukan kepada Sanka, jadi
+Sanka bisa ikut nimbrung tanpa mendominasi; `reply_cooldown_seconds: 0` mematikan jeda paksa dan
+menyerahkan sepenuhnya ke penilaian model (konteks memuat pesan Sanka sendiri dan jumlah
+kirimannya). `gate.max_decisions_per_minute` membatasi biaya keputusan.
+`humanize.reaction_stickers` diisi path stiker relatif workspace untuk mengizinkan `react`.
 
 **Gaya chat.** `sanka/style.py` hanya menyimpan agregat (median panjang, rasio huruf kecil,
 partikel, emoji, tanda tanya) dari arsip `history.db`—tidak pernah isi pesan. Selama sampel kurang

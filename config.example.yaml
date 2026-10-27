@@ -119,7 +119,7 @@ gate:
   max_reviews_per_minute: 6
   max_replies_per_10min: 8
   max_person_replies_per_10min: 6
-  reply_cooldown_seconds: 45
+  reply_cooldown_seconds: 0   # 0 = tidak ada jeda paksa; model yang memilih kapan diam
 
 humanize:
   enabled: true
