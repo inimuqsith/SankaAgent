@@ -67,12 +67,27 @@ def test_human_chunks_keeps_fence() -> None:
     assert parts[0] == fence
 
 
-def test_bubbles_follow_blank_lines_from_model() -> None:
-    text = "bohong apanya sih 😭\n\nmasa aku ngambek terus, nanti kamu bosen loh"
+def test_bubbles_follow_explicit_marker_from_model() -> None:
+    text = "bohong apanya sih 😭\n---\nmasa aku ngambek terus, nanti kamu bosen loh"
 
     parts = humanize_reply(text, max_parts=3)
 
     assert parts == ["bohong apanya sih 😭", "masa aku ngambek terus, nanti kamu bosen loh"]
+
+
+def test_blank_lines_do_not_split_messages() -> None:
+    # Model suka memberi baris kosong sebelum daftar; itu bukan perintah memecah pesan.
+    text = "Alur kurasi foto\n\n1. Kumpulkan\n2. Sortir\n\nHafal: kumpul -> pilih -> setor"
+
+    assert humanize_reply(text, max_parts=3) == [text]
+
+
+def test_marker_inside_fence_does_not_split() -> None:
+    text = "contoh konfigurasi:\n```\na: 1\n---\nb: 2\n```\nselesai"
+
+    parts = humanize_reply(text, max_parts=3)
+
+    assert len(parts) == 1
 
 
 def test_structured_list_stays_one_message() -> None:
@@ -89,8 +104,8 @@ def test_structured_list_stays_one_message() -> None:
     assert "3. SETOR" in parts[0]
 
 
-def test_extra_paragraphs_are_merged_not_dropped() -> None:
-    text = "satu\n\ndua\n\ntiga\n\nempat"
+def test_extra_bubbles_are_merged_not_dropped() -> None:
+    text = "satu\n---\ndua\n---\ntiga\n---\nempat"
 
     parts = humanize_reply(text, max_parts=2)
 

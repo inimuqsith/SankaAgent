@@ -593,7 +593,7 @@ def test_bubbles_follow_the_model_not_a_byte_counter(tmp_path) -> None:
 
     assert [payload_text(item) for item in sent] == [long_answer]
 
-    llm.answer = "bohong apanya sih 😭\n\nmasa aku ngambek terus, nanti kamu bosen loh"
+    llm.answer = "bohong apanya sih 😭\n---\nmasa aku ngambek terus, nanti kamu bosen loh"
 
     async def flow_two() -> list[tuple]:
         client, sent, _ = transport()
