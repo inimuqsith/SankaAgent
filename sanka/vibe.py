@@ -87,6 +87,7 @@ class VibeRunner:
         if self._running:
             return True
         if self._classifier is None:
+            log.info("vibe: memuat model %s", self.config.model)
             try:
                 await asyncio.to_thread(self._load_model)
             except Exception:
