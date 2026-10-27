@@ -281,8 +281,12 @@ class AffectStore:
         return path, state
 
     def _session(self, state: dict, chat_id: str) -> tuple[dict, str]:
-        """Satu sesi berjalan terus untuk semua chat; tidak ada bentrok karena id-nya tetap."""
-        state, _ = engine.session_start(
+        """Satu sesi berjalan terus untuk semua chat.
+
+        State hasil migrasi bisa masih memegang sesi aktif lama (id chat); sesi itu dipakai lagi
+        supaya `record_turn` tidak ditolak sebagai `no_active_session` (emosi jadi beku).
+        """
+        state, result = engine.session_start(
             state,
             session_id=CHARACTER,
             event_id=f"session:{CHARACTER}",
@@ -290,6 +294,9 @@ class AffectStore:
             character_id=CHARACTER,
             relationship_id=CHARACTER,
         )
+        active = str(state.get("session", {}).get("active_session_id") or "")
+        if result.get("status") == "active_session_conflict" and active:
+            return state, active
         return state, CHARACTER
 
     def turn_start(self, chat_id: str, message_id: str) -> dict:
@@ -358,7 +365,7 @@ class AffectStore:
                     "dominance", float(emotion["dominance"]) + dD
                 )
                 meaning = str(self._meaning(decision)).strip()[:240]
-                state, _ = engine.record_turn(
+                state, result = engine.record_turn(
                     state,
                     pleasure,
                     arousal,
@@ -374,6 +381,13 @@ class AffectStore:
                     relationship_id=CHARACTER,
                 )
                 engine.save_state(path, state)
+                if str(result.get("status")) not in {"recorded", "state_only", "already_closed"}:
+                    log.warning(
+                        "turn emosi tidak diterapkan chat=%s status=%s aktif=%s",
+                        chat_id,
+                        result.get("status"),
+                        result.get("active_session_id"),
+                    )
             conn = self._require()
             person = self._touch_person(conn, person_id, name, role, moment)
             self._touch_chat_person(conn, chat_id, person_id, moment)

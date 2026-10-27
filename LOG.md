@@ -92,6 +92,11 @@
   atau ucapan lanjutan pendek tidak butuh mention; situasi ditutup saat pengirim beda, konteks
   pindah, atau kedaluwarsa. Petunjuk situasi ikut masuk konteks keputusan (`build_context`) dan
   system prompt.
+- Bekukan emosi setelah migrasi diperbaiki: state hasil adopsi masih memegang sesi aktif lama
+  (id chat), sehingga `record_turn(session_id="sanka")` ditolak `no_active_session` dan PAD tidak
+  pernah bergerak (gejala: `/mood` selalu baseline 0.1/0.3/0.5). `_session` sekarang memakai sesi
+  aktif yang ada saat `active_session_conflict`, dan status `record_turn` yang bukan
+  `recorded`/`state_only`/`already_closed` dicatat sebagai warning (`turn emosi tidak diterapkan`).
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

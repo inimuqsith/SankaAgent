@@ -470,3 +470,32 @@ def test_legacy_per_chat_state_and_drives_are_adopted(tmp_path) -> None:
         assert "energy" in reopened.drives(CHAT)
     finally:
         reopened.close()
+
+
+def test_migrated_state_with_stale_session_still_moves_emotion(tmp_path) -> None:
+    from sanka.vendor import emotion_engine as engine
+
+    state_dir = tmp_path / "emotions"
+    state_dir.mkdir()
+    soul = "aku sanka, laki-laki yang baper dan ekspresif"
+    legacy = engine.default_state(character_id="sanka", relationship_id=CHAT)
+    legacy = engine.apply_configuration(legacy, soul, source="soul")
+    legacy, _ = engine.session_start(
+        legacy,
+        session_id=CHAT,  # skema lama: sesi aktif ber-id chat
+        event_id=f"session:{CHAT}",
+        occurred_at=engine.now_iso(),
+        character_id="sanka",
+        relationship_id=CHAT,
+    )
+    engine.save_state(state_dir / "0123456789abcdef.json", legacy)
+
+    store = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True), soul=soul)
+    try:
+        before = store.status(CHAT)["pleasure"]
+        turn(store, decision(dP=-0.3, label="hostility"), message_id="MIGRATED1")
+        assert store.status(CHAT)["pleasure"] < before - 0.1  # emosi tidak lagi beku
+        _, state = store._state(CHAT)
+        assert state["session"]["active_session_id"] == CHAT  # sesi lama dipakai lagi
+    finally:
+        store.close()

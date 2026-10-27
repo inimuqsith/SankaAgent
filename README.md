@@ -236,7 +236,9 @@ personality dari `SOUL.md` (`apply_configuration`), `volatility_profile` dari `a
 (default `expressive`). Tiap pesan: `session_start` + `pre_turn_decay` sebelum keputusan, lalu
 `record_turn` dengan P/A/D baru (`emotion + dP/dA/dD`), `appraisal` sebagai label, `situation`
 sebagai 240 karakter pesan, dan `relational_meaning` dari catatan model. Kalau `sanka.json` belum
-ada (DB versi lama), state per chat yang paling baru diadopsi otomatis supaya mood tidak hilang.
+ada (DB versi lama), state per chat yang paling baru diadopsi otomatis supaya mood tidak hilang;
+sesi aktif yang masih ber-id chat lama tetap dipakai, karena `record_turn` menolak sesi yang tidak
+cocok dan emosi akan beku (log: `turn emosi tidak diterapkan`).
 Idempotensi tetap per id pesan (unik lintas chat), dan `pulse` memakai id global supaya banyak chat
 tidak mempercepat peluruhan.
 
