@@ -63,7 +63,7 @@ skills:
 affect:
   enabled: true
   path: ".sanka/affect.db"     # hubungan, orang, topik, drives
-  state_dir: ".sanka/emotions"  # satu file state emotion-engine per chat
+  state_dir: ".sanka/emotions"  # satu file state emotion-engine (sanka.json) untuk semua chat
   volatility: expressive        # steady | expressive | dramatic_test
   grudge_half_life_hours: 1.5   # kesal reda sendiri di detak jantung; 0 = mati
   vibe:

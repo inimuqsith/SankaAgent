@@ -60,6 +60,13 @@
 - Prompt chime menyebut nama grup, identitas tunggal (Sanka yang sama di ALD, grup tester, Sunan
   Dahlan, DM — hanya tempatnya beda), nilai dorongan, dan `memory.actions_context()` supaya tidak
   menyalin celetukan yang sama ke banyak chat.
+- Satu hati, bukan satu per ruangan: `_state_path` selalu `state_dir/sanka.json` dengan
+  `relationship_id=sanka`, sesi tetap satu, `drives` disimpan di baris `chat_id=sanka`, dan id
+  event `pulse`/`session` memakai `sanka` supaya banyak chat tidak mempercepat peluruhan. Migrasi
+  di `_migrate` mengadopsi state per chat terbaru + drive terbaru saat DB lama dibuka. Vibe tetap
+  per chat karena itu pembacaan suasana ruangan, bukan perasaan Sanka.
+- `_soothe` sekarang global (tanpa filter chat) dan paruh waktunya dikali kedekatan
+  `1 + 3*afeksi + 2*trust`: kesal pada orang dekat bertahan lebih lama, orang asing reda cepat.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

@@ -79,7 +79,7 @@ def test_turn_start_binds_state_and_applies_decay(tmp_path) -> None:
     state = json.loads(path.read_text(encoding="utf-8"))
     assert state["identity"]["status"] == "bound"
     assert state["identity"]["character_id"] == "sanka"
-    assert state["identity"]["relationship_id"] == CHAT
+    assert state["identity"]["relationship_id"] == "sanka"  # satu hati untuk semua chat
     assert state["volatility_profile"] == "expressive"
     assert start["summary"] and start["pulse"] and start["trust_tier"]
     assert -1.0 <= float(start["pleasure"]) <= 1.0
@@ -170,8 +170,8 @@ def test_calm_moves_pad_toward_baseline(tmp_path) -> None:
 
 def test_chat_people_membership(tmp_path) -> None:
     store = make_store(tmp_path)
-    turn(store, decision(), person=FRIEND, name="Fahri")
-    turn(store, decision(), person=OWNER, name="Muqsith", chat=OTHER)
+    turn(store, decision(), person=FRIEND, name="Fahri", message_id="MSG-A")
+    turn(store, decision(), person=OWNER, name="Muqsith", chat=OTHER, message_id="MSG-B")
 
     names = [item["name"] for item in store.known_people(CHAT, 5)]
 
@@ -342,7 +342,12 @@ def test_heartbeat_soothes_grudge_over_hours(tmp_path, monkeypatch) -> None:
     try:
         turn(store, decision(annoyance=0.2), message_id="SOOTHE0")
         conn = store._require()
-        conn.execute("UPDATE people SET annoyance=0.8 WHERE person_id=?", (FRIEND,))
+        # trust/afeksi 0 supaya paruh waktunya persis `grudge_half_life_hours` (tanpa pengali dekat)
+        conn.execute(
+            "UPDATE people SET annoyance=0.8, trust=0, affection=0, familiarity=0 "
+            "WHERE person_id=?",
+            (FRIEND,),
+        )
         conn.commit()
         assert "musuh" in store.prompt(CHAT)  # label awal dari 0.8
 
@@ -353,35 +358,42 @@ def test_heartbeat_soothes_grudge_over_hours(tmp_path, monkeypatch) -> None:
         store.pulse(CHAT)
 
         people = store.known_people(CHAT, 5)
-        assert people[0]["annoyance"] == pytest.approx(0.8 * 0.5 ** 0.5, rel=1e-3)
+        # afeksi/trust/familiarity dinolkan di atas: paruh waktu efektif = dasar
+        assert people[0]["annoyance"] == pytest.approx(0.8 * 0.5 ** (3 / 6.0), rel=1e-3)
         assert "musuh" not in store.prompt(CHAT)  # label ikut reda tanpa command
-        assert people[0]["trust"] == pytest.approx(0.1)  # hubungan baik tidak dikikis waktu
+        assert people[0]["trust"] == 0.0  # trust tidak dikikis waktu (tetap seperti disetel)
     finally:
         store.close()
 
 
-def test_heartbeat_soothe_is_per_chat(tmp_path, monkeypatch) -> None:
+def test_close_grudge_fades_slower_than_stranger(tmp_path, monkeypatch) -> None:
     import time
 
-    store = AffectStore(
-        tmp_path / "affect.db", AffectConfig(enabled=True, grudge_half_life_hours=6.0)
-    )
+    store = make_store(tmp_path)  # paruh dasar 1,5 jam
     try:
-        # annoyance melekat pada orang, jadi isolasi per chat diuji dengan dua orang berbeda.
-        turn(store, decision(annoyance=0.2), message_id="SOOTHE1", chat=CHAT, person=FRIEND)
-        turn(store, decision(annoyance=0.2), message_id="SOOTHE2", chat=OTHER, person=OWNER)
+        turn(store, decision(annoyance=0.2), message_id="SOOTHE1", person=FRIEND, name="Fahri")
+        turn(store, decision(annoyance=0.2), message_id="SOOTHE2", person=OWNER, name="Muqsith")
         conn = store._require()
         conn.execute("UPDATE people SET annoyance=0.8")
+        conn.execute(
+            "UPDATE people SET affection=0.9, trust=0.8, familiarity=1.0 WHERE person_id=?",
+            (OWNER,),
+        )
+        conn.execute(
+            "UPDATE people SET affection=0, trust=0, familiarity=0 WHERE person_id=?", (FRIEND,)
+        )
         conn.commit()
 
         moment = time.time()
         monkeypatch.setattr("sanka.affect.time.time", lambda: moment)
         store.pulse(CHAT)
-        monkeypatch.setattr("sanka.affect.time.time", lambda: moment + 6 * 3600)
+        monkeypatch.setattr("sanka.affect.time.time", lambda: moment + 2 * 3600)
         store.pulse(CHAT)
 
-        assert store.known_people(CHAT, 5)[0]["annoyance"] < 0.5  # orang di chat ini reda
-        assert store.known_people(OTHER, 5)[0]["annoyance"] == pytest.approx(0.8)  # chat lain utuh
+        rows = {item["person_id"]: item for item in store.known_people(CHAT, 5)}
+        assert rows[FRIEND]["annoyance"] < 0.35  # asing: cepat reda
+        assert rows[OWNER]["annoyance"] > 0.7  # dekat (sayang + sering ngobrol): bertahan lama
+        assert rows[OWNER]["annoyance"] > 2 * rows[FRIEND]["annoyance"]
     finally:
         store.close()
 
@@ -406,6 +418,55 @@ def test_default_half_life_clears_enemy_label_within_hour(tmp_path, monkeypatch)
         assert "musuh" not in store.prompt(CHAT)  # ~40 menit sudah bukan musuh
         monkeypatch.setattr("sanka.affect.time.time", lambda: moment + 6 * 3600)
         store.pulse(CHAT)
-        assert store.known_people(CHAT, 5)[0]["annoyance"] < 0.06  # 6 jam: hampir lunas
+        # trust bawaan 0.1 memperlambat sedikit; tetap tinggal sepersepuluh setelah 6 jam
+        assert store.known_people(CHAT, 5)[0]["annoyance"] < 0.12
     finally:
         store.close()
+
+
+def test_emotion_and_drives_are_one_heart(tmp_path) -> None:
+    store = make_store(tmp_path)
+    try:
+        turn(store, decision(dP=-0.4, annoyance=0.2), message_id="HEART1", chat=CHAT, person=FRIEND)
+        assert store.status(OTHER)["pleasure"] == store.status(CHAT)["pleasure"]  # satu hati
+
+        conn = store._require()
+        conn.execute("UPDATE drives SET boredom=0.5, loneliness=0.5")
+        conn.commit()
+        before = store.drives(OTHER)
+        turn(store, decision(), message_id="HEART2", chat=OTHER, person=OWNER)
+        after = store.drives(CHAT)
+        # pesan di chat lain memuaskan gabut/kesepian yang sama: drive milik Sanka, bukan ruangan
+        assert after["boredom"] < before["boredom"]
+        assert after["loneliness"] < before["loneliness"]
+    finally:
+        store.close()
+
+
+def test_legacy_per_chat_state_and_drives_are_adopted(tmp_path) -> None:
+    import sqlite3
+
+    state_dir = tmp_path / "emotions"
+    config = AffectConfig(enabled=True, state_dir=state_dir)
+    store = AffectStore(tmp_path / "affect.db", config)
+    store.turn_end(
+        CHAT, FRIEND, "Fahri", "dasar goblok", "member", "j@s.whatsapp.net",
+        decision(dP=-0.4), "LEG1",
+    )
+    mood = store.status(CHAT)["pleasure"]
+    store.close()
+
+    heart = state_dir / "sanka.json"
+    heart.rename(state_dir / "0123456789abcdef.json")  # meniru DB lama: state per chat
+    conn = sqlite3.connect(tmp_path / "affect.db")
+    conn.execute("UPDATE drives SET chat_id=?", (CHAT,))  # drive lama juga per chat
+    conn.commit()
+    conn.close()
+
+    reopened = AffectStore(tmp_path / "affect.db", config)
+    try:
+        assert heart.is_file()
+        assert reopened.status(OTHER)["pleasure"] == pytest.approx(mood, abs=0.05)
+        assert "energy" in reopened.drives(CHAT)
+    finally:
+        reopened.close()

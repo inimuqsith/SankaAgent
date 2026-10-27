@@ -48,7 +48,7 @@ dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.
 | `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
 | `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
-| `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine per chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `grudge_half_life_hours` (kesal reda sendiri), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
+| `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine, satu `sanka.json` untuk semua chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `grudge_half_life_hours` (kesal reda sendiri, lebih lama untuk yang dekat), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
 | `humanize` | bubble & jeda: `enabled`, `normal_chars`, `normal_parts`, `detail_chars`, `detail_parts`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles`, `reaction_stickers` |
 | `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
 | `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_urge`, `chime_gap_seconds`, `chime_cooldown`, `chime_per_day`, `chime_per_day_global`, `research_cooldown`, `research_per_day`, `research_results` |
@@ -207,21 +207,24 @@ kalimat dingin tanpa emoji, `hurt` singkat dan kecewa, `angry` ketus tanpa ancam
 `playful`, dan `neutral` mengikuti persona. Prompt juga melarang menjanjikan waktu diam ("aku
 diam 10 menit") karena diam adalah keputusan per pesan, bukan komitmen.
 
-**State emosi: emotion-engine.** `sanka/affect.py` membungkus `emotion-engine` (MIT, di-vendor di
-`sanka/vendor/emotion_engine.py`) apa adanya. State satu file JSON per chat di `affect.state_dir`
-(nama file = sha1 chat), dibuat dengan `identity.status = bound` (`character_id=sanka`,
-`relationship_id=<chat>`), baseline personality dari `SOUL.md` (`apply_configuration`), dan
-`volatility_profile` dari `affect.volatility` (default `expressive`). Tiap pesan: `session_start`
-+ `pre_turn_decay` sebelum keputusan, lalu `record_turn` dengan P/A/D baru
-(`emotion + dP/dA/dD`), `appraisal` sebagai label, `situation` sebagai 240 karakter pesan, dan
-`relational_meaning` dari catatan model. Engine yang menghitung decay, pulse, trust tier, dan
-idempotensi (`event_id` = id pesan, jadi event yang sama tidak pernah menggerakkan emosi dua kali).
+**State emosi: satu hati untuk semua chat.** `sanka/affect.py` membungkus `emotion-engine` (MIT, di
+vendor di `sanka/vendor/emotion_engine.py`) apa adanya. Hanya ada **satu** file state,
+`affect.state_dir/sanka.json` (identitas `character_id=sanka`, `relationship_id=sanka`), dipakai
+semua chat: perasaannya ikut ke mana pun dia pergi, seperti orang yang punya satu HP. Baseline
+personality dari `SOUL.md` (`apply_configuration`), `volatility_profile` dari `affect.volatility`
+(default `expressive`). Tiap pesan: `session_start` + `pre_turn_decay` sebelum keputusan, lalu
+`record_turn` dengan P/A/D baru (`emotion + dP/dA/dD`), `appraisal` sebagai label, `situation`
+sebagai 240 karakter pesan, dan `relational_meaning` dari catatan model. Kalau `sanka.json` belum
+ada (DB versi lama), state per chat yang paling baru diadopsi otomatis supaya mood tidak hilang.
+Idempotensi tetap per id pesan (unik lintas chat), dan `pulse` memakai id global supaya banyak chat
+tidak mempercepat peluruhan.
 
 **Relasi per orang.** `affect.db` (SQLite `0600`) menyimpan `people` (trust/afeksi/respek/kesal,
 interaksi, stage), `chat_people` (siapa yang benar-benar bicara di chat itu), `topics` (ringkasan,
 pertanyaan menggantung, pending, cooldown digest/riset/chime), dan `drives` (energi, kebosanan,
-kesepian). Delta hubungan dari keputusan dijumlahkan ke kolom itu dengan clamp 0..1, lalu `stage`
-dihitung ulang dari interaksi + trust + afeksi.
+kesepian) yang juga **satu baris milik Sanka** (`chat_id=sanka`), bukan per ruangan — pesan di grup
+mana pun memuaskan gabut/kesepian yang sama. Delta hubungan dari keputusan dijumlahkan ke kolom itu
+dengan clamp 0..1, lalu `stage` dihitung ulang dari interaksi + trust + afeksi.
 
 **Atensi, bukan ratchet.** Obrolan yang bukan untuk Sanka tidak menggerakkan hubungan: delta hanya
 diterapkan bila keputusan `addressed=me` dan `act` bukan `ignore`. Appraisal PAD ditimbang atensi
@@ -240,17 +243,18 @@ catatan kehadiran ("N pesan masuk saat kamu tidak aktif; itu arsip, bukan antrea
 yang dikenal (diisi dari pesan live dan `history.recent_chats` saat start): satu langkah
 `pre_turn_decay` per 5 menit, drive berubah (energi turun, kebosanan dan kesepian naik), dan tidak
 ada pesan yang dikirim. Pesan masuk memuaskan drive (kebosanan/kesepian turun, energi naik).
-Di detak yang sama `_soothe` meluruhkan `annoyance` orang-orang di chat itu dengan paruh waktu
-`affect.grudge_half_life_hours` (default 1,5 jam, `0` = mati): kesal 0.9 kehilangan label `musuh`
-dalam ~35 menit dan tinggal ~0.05 setelah 6 jam, tanpa `/calmdown`; trust, afeksi, dan respek tidak
-dikikis waktu, dan nilai di bawah 0.01 langsung dilunaskan. `/calmdown` tetap jalur instan
-(potong setengah).
+Di detak yang sama `_soothe` meluruhkan `annoyance` semua orang (tanpa `/calmdown`) dengan paruh
+waktu `affect.grudge_half_life_hours` (default 1,5 jam, `0` = mati) **dikali kedekatan**
+`1 + 3·afeksi + 2·trust`: orang asing reda dalam ~30 menit, orang yang dekat bisa bertahan
+berjam-jam karena sayang bukan berarti cepat lupa. Trust, afeksi, dan respek tidak dikikis waktu,
+dan nilai di bawah 0.01 langsung dilunaskan. `/calmdown` tetap jalur instan (potong setengah).
 
 **Vibe ruangan (ala anima).** `sanka/vibe.py` meniru dinamika anima-engine dengan classifier emosi
 Indonesia EmoSense-ID (`affect.vibe.model`) dan tanpa memakai dependency anima (paket itu tanpa
 lisensi): distribusi label dipetakan ke VAD, `attack` menarik mood satu langkah, `hold_seconds`
 menahan decay, lalu `current` meluruh ke `baseline` dan `baseline` ke netral dengan heartbeat
-`tick_seconds`. State per chat di `affect.vibe.state_path` (JSON `0600`), dan hasilnya masuk prompt
+`tick_seconds`. Vibe sengaja **per chat** karena ini pembacaan suasana ruangan, bukan perasaan Sanka
+(perasaannya global: satu `sanka.json`). State di `affect.vibe.state_path` (JSON `0600`), dan hasilnya masuk prompt
 sebagai "Vibe ruangan" (band dibaca dari `current`, mood cepat; `baseline` hanya penarik lambat, jadi
 satu pesan belum tentu menggeser band)—konteks ruangan, bukan pengganti emosi pribadi. Aktif
 secara default (`affect.vibe.enabled` default `true`, butuh extra `.[vibe]`: torch + transformers);
@@ -314,7 +318,7 @@ Sanka memakai enam lapis memori. Identitas dan aksi bersifat global; isi percaka
 | Semantik | fakta/preferensi tahan lama | global + chat | `memory.path` (SQLite, `0600`) |
 | Prosedural | prosedur/SOP | global | `skills.dir/<nama>/SKILL.md` |
 | Autografis | aksi lintas chat + alasan | global | `memory.path` tabel `actions` |
-| Afektif & relasional | state emotion-engine per chat, trust/afeksi/catatan trait per orang | chat + orang | `affect.state_dir` + `affect.path` |
+| Afektif & relasional | satu hati (state emotion-engine) + drive Sanka, trust/afeksi/catatan trait per orang | global + orang | `affect.state_dir/sanka.json` + `affect.path` |
 
 Pemetaan L1-L4 GenericAgent/Hermes tetap berlaku: L1 = indeks yang selalu masuk prompt (blok
 memori, aksi, dan indeks skill, dibatasi `max_chars`), L2 = `memory.db`, L3 = skill, L4 =

@@ -8,7 +8,6 @@ ditangkap pemanggil di `wa.py`; store tidak mematikan bot.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
@@ -211,7 +210,34 @@ class AffectStore:
             pass
 
     def _migrate(self) -> None:
-        """DB lama belum punya kolom jendela hubungan; tambahkan tanpa menyentuh baris."""
+        """Tambahkan kolom jendela hubungan dan adopsi state lama per chat jadi satu hati."""
+        heart = self.state_dir / f"{CHARACTER}.json"
+        if not heart.is_file():
+            legacy = sorted(
+                (path for path in self.state_dir.glob("*.json") if path.name != heart.name),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+            if legacy:
+                try:  # mood terakhir tidak hilang saat pindah dari per-chat ke satu hati
+                    state = engine.load_state(legacy[0])
+                    if state.get("identity", {}).get("status") == "bound":
+                        state["identity"]["relationship_id"] = CHARACTER
+                        engine.save_state(heart, state)
+                except Exception:
+                    log.warning("migrasi state emosi ke satu hati gagal", exc_info=True)
+        if self._conn.execute(
+            "SELECT 1 FROM drives WHERE chat_id=?", (CHARACTER,)
+        ).fetchone() is None:
+            row = self._conn.execute(
+                "SELECT * FROM drives ORDER BY last_pulse DESC LIMIT 1"
+            ).fetchone()
+            if row is not None:  # drive lama per chat jadi drive Sanka sendiri
+                self._conn.execute(
+                    "INSERT INTO drives(chat_id, energy, boredom, loneliness, last_pulse) "
+                    "VALUES(?, ?, ?, ?, ?)",
+                    (CHARACTER, row["energy"], row["boredom"], row["loneliness"], row["last_pulse"]),
+                )
         columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(people)")}
         for name in (
             "window_start",
@@ -239,15 +265,15 @@ class AffectStore:
     # ------------------------------------------------------------------ state engine
 
     def _state_path(self, chat_id: str) -> Path:
-        digest = hashlib.sha1(str(chat_id).encode("utf-8")).hexdigest()[:16]
-        return self.state_dir / f"{digest}.json"
+        """Satu hati untuk semua chat: PAD adalah perasaannya, bukan perasaan ruangan."""
+        return self.state_dir / f"{CHARACTER}.json"
 
     def _state(self, chat_id: str) -> tuple[Path, dict]:
-        """State v3 terikat untuk satu chat; dibuat sekali dengan baseline dari SOUL.md."""
+        """State v3 tunggal (dipakai semua chat); dibuat sekali dengan baseline dari SOUL.md."""
         path = self._state_path(chat_id)
         state = engine.load_state(path)
         if state.get("identity", {}).get("status") != "bound":
-            state = engine.default_state(character_id=CHARACTER, relationship_id=chat_id)
+            state = engine.default_state(character_id=CHARACTER, relationship_id=CHARACTER)
             if self.soul:
                 state = engine.apply_configuration(state, self.soul, source="soul")
             state["volatility_profile"] = self.config.volatility or "expressive"
@@ -255,20 +281,16 @@ class AffectStore:
         return path, state
 
     def _session(self, state: dict, chat_id: str) -> tuple[dict, str]:
-        """Satu sesi per chat; konflik sesi aktif memakai sesi yang sudah berjalan."""
-        payload = {
-            "session_id": chat_id,
-            "event_id": f"session:{chat_id}",
-            "occurred_at": engine.now_iso(),
-            "character_id": CHARACTER,
-            "relationship_id": chat_id,
-        }
-        state, result = engine.session_start(state, **payload)
-        if result["status"] != "active_session_conflict":
-            return state, chat_id
-        active = str(state["session"].get("active_session_id") or chat_id)
-        state, _ = engine.session_start(state, **{**payload, "session_id": active})
-        return state, active
+        """Satu sesi berjalan terus untuk semua chat; tidak ada bentrok karena id-nya tetap."""
+        state, _ = engine.session_start(
+            state,
+            session_id=CHARACTER,
+            event_id=f"session:{CHARACTER}",
+            occurred_at=engine.now_iso(),
+            character_id=CHARACTER,
+            relationship_id=CHARACTER,
+        )
+        return state, CHARACTER
 
     def turn_start(self, chat_id: str, message_id: str) -> dict:
         """Buka sesi + satu langkah decay sebelum keputusan LLM dibuat."""
@@ -280,7 +302,7 @@ class AffectStore:
                 session_id=session_id,
                 event_id=f"decay:{message_id}",
                 character_id=CHARACTER,
-                relationship_id=chat_id,
+                relationship_id=CHARACTER,
             )
             engine.save_state(path, state)
             emotion = state["emotion"]
@@ -349,7 +371,7 @@ class AffectStore:
                     event_id=message_id,
                     host_approved=True,
                     character_id=CHARACTER,
-                    relationship_id=chat_id,
+                    relationship_id=CHARACTER,
                 )
                 engine.save_state(path, state)
             conn = self._require()
@@ -465,8 +487,9 @@ class AffectStore:
         )
 
     def _drives(self, conn: sqlite3.Connection, chat_id: str) -> dict:
-        row = conn.execute("SELECT * FROM drives WHERE chat_id=?", (chat_id,)).fetchone()
-        return dict(row) if row is not None else {"chat_id": chat_id, **DRIVE_DEFAULTS}
+        """Drive milik Sanka sendiri, bukan milik ruangan: satu baris untuk semua chat."""
+        row = conn.execute("SELECT * FROM drives WHERE chat_id=?", (CHARACTER,)).fetchone()
+        return dict(row) if row is not None else {"chat_id": CHARACTER, **DRIVE_DEFAULTS}
 
     def _write_drives(self, conn: sqlite3.Connection, chat_id: str, data: dict) -> None:
         conn.execute(
@@ -475,7 +498,7 @@ class AffectStore:
             "energy=excluded.energy, boredom=excluded.boredom, "
             "loneliness=excluded.loneliness, last_pulse=excluded.last_pulse",
             (
-                chat_id,
+                CHARACTER,
                 _clamp(float(data["energy"])),
                 _clamp(float(data["boredom"])),
                 _clamp(float(data["loneliness"])),
@@ -514,7 +537,7 @@ class AffectStore:
     def pulse(self, chat_id: str) -> dict:
         """Detak 24/7: state meluruh (maks satu langkah per 5 menit) dan drive tumbuh."""
         moment = time.time()
-        event_id = f"pulse:{chat_id}:{int(moment // 300)}"
+        event_id = f"pulse:{CHARACTER}:{int(moment // 300)}"
         with self._lock:
             path, state = self._state(chat_id)
             if engine.event_already_processed(state, event_id):
@@ -526,7 +549,7 @@ class AffectStore:
                 session_id=session_id,
                 event_id=event_id,
                 character_id=CHARACTER,
-                relationship_id=chat_id,
+                relationship_id=CHARACTER,
             )
             engine.save_state(path, state)
             conn = self._require()
@@ -546,30 +569,34 @@ class AffectStore:
                 data["loneliness"] = _clamp(
                     float(data["loneliness"]) + (0.03 + 0.05 * attachment) * hours
                 )
-                self._soothe(conn, chat_id, hours)
+                self._soothe(conn, hours)
                 data["last_pulse"] = moment
                 self._write_drives(conn, chat_id, data)
                 conn.commit()
         return self._payload(state, data)
 
-    def _soothe(self, conn: sqlite3.Connection, chat_id: str, hours: float) -> None:
+    def _soothe(self, conn: sqlite3.Connection, hours: float) -> None:
         """Kesal reda sendiri saat tidak ada yang menyulut: label 'musuh' bukan hukuman seumur hidup.
 
-        Hanya annoyance yang meluruh (paruh waktu `grudge_half_life_hours`); trust/afeksi respek
-        tidak dikikis waktu, karena hubungan yang baik bukan pinjaman berjalan.
+        Paruh waktunya `grudge_half_life_hours` dikali kedekatan: makin sayang/percaya, makin lama
+        kesalnya bertahan (sayang bukan berarti cepat lupa). Hanya annoyance yang meluruh; trust,
+        afeksi, dan respek tidak dikikis waktu.
         """
-        life = float(self.config.grudge_half_life_hours or 0.0)
-        if life <= 0 or hours <= 0:
+        base = float(self.config.grudge_half_life_hours or 0.0)
+        if base <= 0 or hours <= 0:
             return
-        factor = 0.5 ** (hours / life)
         rows = conn.execute(
-            "SELECT p.person_id, p.annoyance FROM people p "
-            "JOIN chat_people cp ON cp.person_id = p.person_id "
-            "WHERE cp.chat_id=? AND p.annoyance > 0",
-            (chat_id,),
+            "SELECT person_id, annoyance, affection, trust, familiarity FROM people "
+            "WHERE annoyance > 0"
         ).fetchall()
         for row in rows:
-            value = float(row["annoyance"]) * factor
+            # Dekat = sayang, percaya, dan sering ngobrol; tiga-tiganya memperlambat pemaafan.
+            life = (
+                base
+                * (1.0 + 3.0 * float(row["affection"]) + 2.0 * float(row["trust"]))
+                * (1.0 + 2.0 * float(row["familiarity"]))
+            )
+            value = float(row["annoyance"]) * 0.5 ** (hours / life)
             conn.execute(
                 "UPDATE people SET annoyance=? WHERE person_id=?",
                 (0.0 if value < SOOTHE_FLOOR else _clamp(value), str(row["person_id"])),
@@ -633,7 +660,7 @@ class AffectStore:
                 event_id=f"calm:{time.time_ns()}",
                 host_approved=True,
                 character_id=CHARACTER,
-                relationship_id=chat_id,
+                relationship_id=CHARACTER,
             )
             engine.save_state(path, state)
         return bool(upset)
