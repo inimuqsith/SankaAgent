@@ -592,8 +592,8 @@ def test_long_answer_splits_into_short_bubbles(tmp_path) -> None:
     assert isinstance(sent[1][1], str)
 
 
-def test_unaddressed_group_decision_ignore_sends_nothing(tmp_path) -> None:
-    llm = DecisionLLM(decision=verdict("ignore", addressed="other", reason="bukan buat aku"))
+def test_unaddressed_group_skips_decision_and_reply(tmp_path) -> None:
+    llm = DecisionLLM(decision=verdict("reply", addressed="group", reason="nimbrung"))
 
     async def flow():
         client, sent, presence = transport()
@@ -605,11 +605,12 @@ def test_unaddressed_group_decision_ignore_sends_nothing(tmp_path) -> None:
     sent, presence = asyncio.run(flow())
 
     assert sent == [] and presence == []
-    assert llm.calls == []  # tidak ada panggilan balasan
-    assert len(llm.decisions) == 1  # semua pesan tetap dinilai
+    assert llm.decisions == []  # tanpa panggilan: model pun tidak ditanya
 
 
-def test_unaddressed_group_decision_reply_sends(tmp_path) -> None:
+def test_group_reply_policy_model_still_trusts_decision(tmp_path) -> None:
+    from dataclasses import replace
+
     llm = DecisionLLM(
         answer="jomblo itu status, bukan gelar wkwk",
         decision=verdict("reply", addressed="group", reason="nimbrung"),
@@ -617,7 +618,9 @@ def test_unaddressed_group_decision_reply_sends(tmp_path) -> None:
 
     async def flow():
         client, sent, _ = transport()
-        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        config = rich_config(tmp_path)
+        config = replace(config, whatsapp=replace(config.whatsapp, group_reply="model"))
+        app = App(config, llm, FakeHub(), Sessions())
         app.bot_digits = {"628567770837"}
         await handle_message(client, group_event("wujud aseli jomblo", mention=False), app)
         return sent
@@ -711,7 +714,8 @@ def test_ignore_still_records_emotion_without_typing(tmp_path) -> None:
             affect=store,
         )
         app.bot_digits = {"628567770837"}
-        await handle_message(client, group_event("dasar bot sampah", mention=False), app)
+        # disebut namanya = dipanggil, jadi keputusan tetap dibuat dan emosi tetap tercatat
+        await handle_message(client, group_event("dasar bot sampah sanka", mention=False), app)
         return sent, presence
 
     sent, presence = asyncio.run(flow())
@@ -1339,3 +1343,46 @@ def test_room_vibe_reaches_decision_and_reply(tmp_path) -> None:
     assert BLOCK in llm.decisions[0] and BLOCK in llm.system
     assert vibe.closed == 1
     assert payload_text(sent[0]) == "santai aja"
+
+
+def test_group_captionless_image_is_ignored(tmp_path) -> None:
+    llm = DecisionLLM(answer="aku nongol lagi")
+
+    def image_event() -> Message:
+        ev = Message()
+        ev.Info.ID = "3EB0IMG"
+        ev.Info.MessageSource.Chat.User = "1234567890"
+        ev.Info.MessageSource.Chat.Server = "g.us"
+        ev.Info.MessageSource.Sender.User = "628222222222"
+        ev.Info.MessageSource.Sender.Server = "s.whatsapp.net"
+        ev.Message.imageMessage.mimetype = "image/jpeg"
+        ev.Message.imageMessage.fileLength = 1024
+        return ev
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, image_event(), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert sent == []  # gambar tanpa caption bukan panggilan
+    assert llm.decisions == [] and llm.calls == []
+
+
+def test_group_message_that_calls_the_name_is_answered(tmp_path) -> None:
+    llm = DecisionLLM(answer="lagi di sini")
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("sanka lagi apa?", mention=False), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert len(llm.decisions) == 1  # nama disebut = panggilan tanpa tag
+    assert [payload_text(item) for item in sent] == ["lagi di sini"]

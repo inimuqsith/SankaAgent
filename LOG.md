@@ -67,6 +67,11 @@
   per chat karena itu pembacaan suasana ruangan, bukan perasaan Sanka.
 - `_soothe` sekarang global (tanpa filter chat) dan paruh waktunya dikali kedekatan
   `1 + 3*afeksi + 2*trust`: kesal pada orang dekat bertahan lebih lama, orang asing reda cepat.
+- Gate balasan grup: `whatsapp.group_reply` default `addressed` — tanpa mention asli, balasan ke
+  pesan Sanka, atau namanya disebut sebagai kata, pesan grup tidak memanggil `decide` sama sekali
+  (arsip + `decision(act=ignore, reason="grup tanpa panggilan")`), jadi tidak ada balasan dan emosi
+  tidak bergerak. `group_reply: model` mengembalikan perilaku lama (percaya keputusan). Nimbrung
+  tanpa panggilan tetap lewat chime yang berjatah.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

@@ -548,6 +548,15 @@ def _quote(ev, app: App, chat_id: str) -> Quote | None:
 MENTION_TOKEN = re.compile(r"@\+?\d[\d\s().-]{3,24}\d")
 
 
+def bot_named(text: str, name: str) -> bool:
+    """Namanya disebut sebagai kata utuh: panggilan tanpa tag (bukan bagian kata lain)."""
+    body = str(text or "").strip()
+    clean = str(name or "").strip()
+    if not body or not clean:
+        return False
+    return re.search(rf"(?<!\w){re.escape(clean)}(?!\w)", body, re.IGNORECASE) is not None
+
+
 def _resolve_mentions(text: str, app: App, chat_id: str) -> tuple[str, list[str]]:
     """`@<nomor>` di balasan -> mention asli (JID dari log chat); token tak dikenal dibiarkan."""
     if "@" not in text:
@@ -824,6 +833,16 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             except Exception:
                 log.exception("gagal membaca state emosi chat=%s", chat)
 
+        # Di grup, tanpa panggilan/kutipan/namanya disebut, Sanka tidak ikut bicara. Menyelituk
+        # tanpa konteks tetap mungkin, tapi lewat jalur chime yang berjatah.
+        called = is_mention or is_reply or bot_named(message.text, app.config.whatsapp.bot_name)
+        unprompted = (
+            not is_dm
+            and not is_command
+            and not crisis
+            and str(app.config.whatsapp.group_reply or "addressed") == "addressed"
+            and not called
+        )
         decision: Decision | None
         safety = ""
         fallback_only = False
@@ -841,6 +860,17 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             safety = CRISIS_SAFETY
         elif is_command:
             decision = None
+        elif unprompted:
+            decision = Decision(
+                addressed="group",
+                act="ignore",
+                mode="daily",
+                tone="neutral",
+                bubbles=1,
+                appraisal=Appraisal("neutral", 0.0, 0.0, 0.0),
+                relationship=RelationshipDelta(),
+                reason="grup tanpa panggilan",
+            )
         else:
             decision = await decide(
                 app.llm,

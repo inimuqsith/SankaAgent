@@ -41,7 +41,7 @@ dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.
 | `SOUL.md` | soul/karakter Sanka (root repo, di samping `config.yaml`); `persona` di YAML hanya fallback |
 | `llm` | `base_url`, `model`, `api_key_env`, `max_turns`, `timeout_seconds`, `temperature` (balasan; keputusan memakai 0.3) |
 | `workspace` | direktori kerja tool `read`/`write`/`shell`/`sandbox`; `read`/`write` menolak path di luarnya |
-| `whatsapp` | `session_db`, `history_db`, `bot_name`, `backlog_seconds` (pesan lebih tua = arsip), `quiet_seconds` (durasi default `/stop`) |
+| `whatsapp` | `session_db`, `history_db`, `bot_name`, `backlog_seconds` (pesan lebih tua = arsip), `quiet_seconds` (durasi default `/stop`), `group_reply` (`addressed` = hanya balas bila dipanggil, `model` = percayakan keputusan) |
 | `roles` | `users` (nomor), `tools`, `commands`; pola glob (`*`, `mcp__*`) |
 | `default_role` | role untuk nomor tak dikenal |
 | `sandbox` | `runtime` (`podman`/`docker`/kosong = autodetect), `image`, `timeout_seconds`, `network`, `host_workspace`, `env` |
@@ -225,6 +225,13 @@ pertanyaan menggantung, pending, cooldown digest/riset/chime), dan `drives` (ene
 kesepian) yang juga **satu baris milik Sanka** (`chat_id=sanka`), bukan per ruangan — pesan di grup
 mana pun memuaskan gabut/kesepian yang sama. Delta hubungan dari keputusan dijumlahkan ke kolom itu
 dengan clamp 0..1, lalu `stage` dihitung ulang dari interaksi + trust + afeksi.
+
+**Hanya balas bila dipanggil (grup).** `whatsapp.group_reply: addressed` (default) membuat pesan grup
+yang tidak memanggil Sanka — tidak ada mention asli, bukan balasan ke pesannya, dan namanya tidak
+disebut sebagai kata — dilewati tanpa memanggil LLM keputusan: masuk arsip, emosi tidak bergerak,
+tidak ada balasan. Gambar/stiker tanpa caption juga termasuk "bukan panggilan". Untuk nimbrung
+tanpa dipanggil, jalurnya chime yang berjatah (4 percobaan/24 jam, jeda 30 menit), bukan balasan.
+Set `group_reply: model` kalau mau keputusan model yang menentukan (perilaku lama).
 
 **Atensi, bukan ratchet.** Obrolan yang bukan untuk Sanka tidak menggerakkan hubungan: delta hanya
 diterapkan bila keputusan `addressed=me` dan `act` bukan `ignore`. Appraisal PAD ditimbang atensi
