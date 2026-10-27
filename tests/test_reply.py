@@ -463,6 +463,7 @@ def rich_config(
     affect=None,
     roles: dict | None = None,
     default_role: str = "member",
+    require_mention: bool = True,
 ) -> Config:
     from sanka.config import AffectConfig, GateConfig, HumanizeConfig
 
@@ -470,7 +471,9 @@ def rich_config(
         persona="p",
         llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
         workspace=tmp_path,
-        whatsapp=WhatsAppConfig(session_db=tmp_path / "wa.db"),
+        whatsapp=WhatsAppConfig(
+            session_db=tmp_path / "wa.db", require_mention=require_mention
+        ),
         roles=roles or {"member": RoleConfig("member", tools=("read",), commands=("help",))},
         default_role=default_role,
         sandbox=SandboxConfig(),
@@ -478,7 +481,7 @@ def rich_config(
         affect=affect or AffectConfig(enabled=False),
         gate=gate or GateConfig(enabled=False),
         humanize=humanize
-        or HumanizeConfig(enabled=True, min_delay=0, max_delay=0, between_delay=0, followup_delay=0),
+        or HumanizeConfig(enabled=True, normal_parts=2, min_delay=0, max_delay=0, between_delay=0),
     )
 
 
@@ -495,7 +498,7 @@ def test_long_answer_splits_into_short_bubbles(tmp_path) -> None:
     class LongLLM(FakeLLM):
         async def run(self, system, user_content, specs, ctx, session="") -> str:
             self.calls.append(user_content)
-            return long_text()
+            return long_text(70)
 
     async def flow():
         client, sent, _ = transport()
@@ -506,149 +509,315 @@ def test_long_answer_splits_into_short_bubbles(tmp_path) -> None:
 
     sent = asyncio.run(flow())
 
-    assert len(sent) == 3
+    assert len(sent) == 2
     assert all(len(payload_text(item)) <= 220 for item in sent)
     assert sent[0][1].extendedTextMessage.contextInfo.stanzaID == "3EB0DM"
-    assert isinstance(sent[1][1], str) and isinstance(sent[2][1], str)
+    assert isinstance(sent[1][1], str)
 
 
-class FollowLLM(FakeLLM):
-    def __init__(self, answer: str = "ih apasih sok asik banget") -> None:
+class AppraiseLLM(FakeLLM):
+    """LLM tiruan: appraisal emosi tetap, balasan tetap, dan system prompt terekam."""
+
+    def __init__(self, appraisal: dict | None = None, answer: str = "iya aku dengar") -> None:
         super().__init__()
+        self.appraisal = appraisal or {}
         self.answer = answer
-        self.followups = 0
+        self.system = ""
+        self.specs: list[list] = []
+        self.appraise_calls = 0
+
+    async def appraise(self, user: str) -> dict:
+        self.appraise_calls += 1
+        return dict(self.appraisal)
 
     async def run(self, system, user_content, specs, ctx, session="") -> str:
+        self.system = system
+        self.specs.append(list(specs))
         self.calls.append(user_content)
         return self.answer
 
-    async def followup(self, system, last_user, sent) -> str:
-        self.followups += 1
-        return "lagian kamu itu..." if len(sent) < 2 else "[DIAM]"
+
+ABUSE = {"intent": "ABUSE", "directed": True, "hurt": 0.7, "warmth": 0.0, "sarcasm": False}
+CASUAL = {"intent": "CASUAL", "directed": True, "hurt": 0.0, "warmth": 0.2, "sarcasm": False}
 
 
-def test_followup_adds_messages_until_diam(tmp_path) -> None:
-    from sanka.config import HumanizeConfig
+def affect_setup(tmp_path: Path):
+    from sanka.affect import AffectStore
+    from sanka.config import AffectConfig
+
+    config = AffectConfig(enabled=True)
+    return AffectStore(tmp_path / "affect.db", config), config
+
+
+def test_one_turn_sends_no_extra_bubble(tmp_path) -> None:
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), FakeLLM(), FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("halo sanka"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert [payload_text(item) for item in sent] == ["siap"]
+
+
+def test_gate_bubbles_cap_chunks(tmp_path) -> None:
+    from sanka.config import GateConfig
+    from sanka.gate import ReplyGate
+
+    class BubbleLLM(AppraiseLLM):
+        async def decide(self, system, user) -> str:
+            return '{"act":"reply","bubbles":3}'
 
     async def flow():
         client, sent, _ = transport()
-        llm = FollowLLM()
+        llm = BubbleLLM(answer="kalimat satu. " * 100)
         config = rich_config(
             tmp_path,
-            humanize=HumanizeConfig(
-                enabled=True,
-                followups=True,
-                max_followups=2,
-                max_bubbles=4,
-                min_delay=0,
-                max_delay=0,
-                between_delay=0,
-                followup_delay=0,
-            ),
+            require_mention=False,
+            gate=GateConfig(enabled=True, llm_decide=True, reply_cooldown_seconds=0),
         )
-        app = App(config, llm, FakeHub(), Sessions())
+        gate = ReplyGate(config.gate, llm, None, Sessions(), "sanka", ())
+        app = App(config, llm, FakeHub(), Sessions(), gate=gate)
         app.bot_digits = {"628567770837"}
-        await handle_message(client, group_event("halooo sanka"), app)
+        await handle_message(client, group_event("sanka tolong jelaskan", mention=False), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert len(sent) == 3  # maksimum 3 bubble walau jawaban butuh lebih
+    assert all(len(payload_text(item)) <= 420 for item in sent)
+
+
+def test_burst_of_mentions_replies_once(tmp_path) -> None:
+    import time as time_module
+
+    from sanka.config import GateConfig
+    from sanka.gate import ReplyGate
+
+    class SlowDecideLLM(FakeLLM):
+        async def decide(self, system, user) -> str:
+            await asyncio.sleep(0)  # beri kesempatan event lain masuk sebelum burst dikirim
+            self.calls.append(user)
+            return '{"act":"reply","bubbles":1}'
+
+    async def flow():
+        client, sent, _ = transport()
+        llm = SlowDecideLLM()
+        config = rich_config(
+            tmp_path, gate=GateConfig(enabled=True, llm_decide=True, reply_cooldown_seconds=0)
+        )
+        gate = ReplyGate(config.gate, llm, None, Sessions(), "sanka", ())
+        app = App(config, llm, FakeHub(), Sessions(), gate=gate)
+        app.bot_digits = {"628567770837"}
+        old = int(time_module.time()) - 30
+        events = []
+        for index in range(3):
+            ev = group_event("sanka halo", event_id=f"3EB0BURST{index}")
+            ev.Info.Timestamp = old + index
+            events.append(ev)
+        await asyncio.gather(*(handle_message(client, ev, app) for ev in events))
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert [payload_text(item) for item in sent] == ["siap"]  # satu burst untuk tag beruntun
+
+
+def test_named_group_message_reaches_gate(tmp_path) -> None:
+    from sanka.config import GateConfig
+    from sanka.gate import ReplyGate
+
+    class NamedLLM(FakeLLM):
+        async def decide(self, system, user) -> str:
+            self.calls.append(user)
+            return '{"act":"reply","bubbles":1}'
+
+    async def flow():
+        client, sent, _ = transport()
+        llm = NamedLLM()
+        config = rich_config(
+            tmp_path,
+            require_mention=False,
+            gate=GateConfig(enabled=True, llm_decide=True, reply_cooldown_seconds=0),
+        )
+        gate = ReplyGate(config.gate, llm, None, Sessions(), "sanka", ())
+        app = App(config, llm, FakeHub(), Sessions(), gate=gate)
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("sanka kalau ngantuk tidur aja", mention=False), app)
         return llm, sent
 
     llm, sent = asyncio.run(flow())
 
-    assert [payload_text(item) for item in sent] == [
-        "ih apasih sok asik banget",
-        "lagian kamu itu...",
-    ]
-    assert sent[0][1].extendedTextMessage.contextInfo.stanzaID == "3EB0GROUP"
-    assert isinstance(sent[1][1], str)
-    assert llm.followups == 2  # percobaan kedua dijawab [DIAM]
+    assert llm.calls and "sanka kalau ngantuk" in llm.calls[0]
+    assert [payload_text(item) for item in sent] == ["siap"]
 
 
-def test_followup_respects_max_bubbles(tmp_path) -> None:
-    from sanka.config import HumanizeConfig
-
-    class AlwaysFollow(FollowLLM):
-        async def followup(self, system, last_user, sent) -> str:
-            self.followups += 1
-            return f"tambahan {self.followups}"
-
-    async def flow():
-        client, sent, _ = transport()
-        llm = AlwaysFollow(answer=long_text())
-        config = rich_config(
-            tmp_path,
-            humanize=HumanizeConfig(
-                enabled=True,
-                followups=True,
-                max_followups=5,
-                max_bubbles=4,
-                normal_parts=3,
-                min_delay=0,
-                max_delay=0,
-                between_delay=0,
-                followup_delay=0,
-            ),
-        )
-        app = App(config, llm, FakeHub(), Sessions())
-        app.bot_digits = {"628567770837"}
-        await handle_message(client, group_event("halooo sanka"), app)
-        return llm, sent
-
-    llm, sent = asyncio.run(flow())
-
-    assert len(sent) == 4  # 3 bubble awal + 1 lanjutan, total = max_bubbles
-    assert llm.followups == 1
-
-
-def test_followup_skips_command(tmp_path) -> None:
-    from sanka.config import HumanizeConfig
-
-    async def flow():
-        client, sent, _ = transport()
-        llm = FollowLLM()
-        config = rich_config(
-            tmp_path,
-            humanize=HumanizeConfig(enabled=True, followups=True, followup_delay=0),
-        )
-        app = App(config, llm, FakeHub(), Sessions())
-        app.bot_digits = {"628567770837"}
-        await handle_message(client, group_event("/help"), app)
-        return llm, sent
-
-    llm, sent = asyncio.run(flow())
-
-    assert sent  # /help menjawab
-    assert llm.followups == 0
-
-
-def test_followup_stops_when_sulking(tmp_path) -> None:
+def test_llm_appraisal_makes_insult_sulk(tmp_path) -> None:
     from sanka import wa as wa_module
 
-    class StubAffect:
-        def silent(self, chat_id, person_id="") -> bool:
-            return True
-
-    class StubLLM:
-        def __init__(self) -> None:
-            self.followups = 0
-
-        async def followup(self, system, last_user, sent) -> str:
-            self.followups += 1
-            return "harusnya tidak dipakai"
+    store, affect_config = affect_setup(tmp_path)
+    llm = AppraiseLLM(ABUSE)
 
     async def flow():
         client, sent, _ = transport()
-        llm = StubLLM()
-        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions(), affect=StubAffect())
+        app = App(
+            rich_config(tmp_path, affect=affect_config),
+            llm,
+            FakeHub(),
+            Sessions(),
+            affect=store,
+        )
         app.bot_digits = {"628567770837"}
-        await wa_module._followups(client, app, "c@g.us", "628222222222", "halo", ["satu"], "", "")
-        return llm, sent
+        await handle_message(client, dm_event("kamu jelek banget sih"), app)
+        return sent
 
-    llm, sent = asyncio.run(flow())
+    sent = asyncio.run(flow())
 
-    assert sent == []
-    assert llm.followups == 0
+    assert store.silent("628999999999@s.whatsapp.net") is True
+    assert wa_module.SULK_PROMPT in llm.system
+    assert llm.specs[-1] == []  # tanpa tool saat menolak membantu
+    assert [payload_text(item) for item in sent] == ["iya aku dengar"]
+    store.close()
 
 
-def test_llm_decision_can_ignore_even_mention(tmp_path) -> None:
+def test_llm_appraisal_keeps_normal_chat_available(tmp_path) -> None:
+    from sanka import wa as wa_module
+
+    store, affect_config = affect_setup(tmp_path)
+    llm = AppraiseLLM(CASUAL)
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(
+            rich_config(tmp_path, affect=affect_config),
+            llm,
+            FakeHub(),
+            Sessions(),
+            affect=store,
+        )
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("halo sanka, kamu gimana?"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert store.silent("628999999999@s.whatsapp.net") is False
+    assert wa_module.SULK_PROMPT not in llm.system
+    assert [payload_text(item) for item in sent] == ["iya aku dengar"]
+    store.close()
+
+
+def test_sulk_mention_replies_without_tools(tmp_path) -> None:
+    from sanka import wa as wa_module
+
+    store, affect_config = affect_setup(tmp_path)
+    store.observe(
+        "1234567890@g.us",
+        "628222222222",
+        "Fahri",
+        "kamu culun",
+        directed=True,
+        is_dm=False,
+        appraisal=ABUSE,
+    )
+    llm = AppraiseLLM(CASUAL)
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(
+            rich_config(tmp_path, affect=affect_config),
+            llm,
+            FakeHub(),
+            Sessions(),
+            affect=store,
+        )
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("@sanka tolong rekap absen"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert llm.specs[-1] == []
+    assert wa_module.SULK_PROMPT in llm.system
+    assert len(sent) == 1  # satu bubble penolakan, bukan rekap
+    store.close()
+
+
+def test_sulk_command_is_refused(tmp_path) -> None:
+    from sanka import wa as wa_module
+
+    store, affect_config = affect_setup(tmp_path)
+    store.observe(
+        "1234567890@g.us",
+        "628222222222",
+        "Fahri",
+        "kamu culun",
+        directed=True,
+        is_dm=False,
+        appraisal=ABUSE,
+    )
+    llm = AppraiseLLM(CASUAL)
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(
+            rich_config(tmp_path, affect=affect_config),
+            llm,
+            FakeHub(),
+            Sessions(),
+            affect=store,
+        )
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("/tools"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert llm.calls == []  # handler command tidak dijalankan
+    assert payload_text(sent[0]) in wa_module.SULK_REPLIES
+    store.close()
+
+
+def test_crisis_bypasses_sulk(tmp_path) -> None:
+    from sanka import wa as wa_module
+
+    store, affect_config = affect_setup(tmp_path)
+    store.observe(
+        "628999999999@s.whatsapp.net",
+        "628999999999",
+        "Fahri",
+        "kamu culun",
+        directed=True,
+        is_dm=True,
+        appraisal=ABUSE,
+    )
+    llm = AppraiseLLM(CASUAL)
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(
+            rich_config(tmp_path, affect=affect_config),
+            llm,
+            FakeHub(),
+            Sessions(),
+            affect=store,
+        )
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("aku pengen mati aja rasanya"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert "krisis" in llm.system
+    assert wa_module.SULK_PROMPT not in llm.system
+    assert [payload_text(item) for item in sent] == ["iya aku dengar"]
+    assert store.silent("628999999999@s.whatsapp.net") is True
+    store.close()
+
+
+def test_llm_ignore_for_mention_still_replies(tmp_path) -> None:
     from sanka.config import GateConfig
     from sanka.gate import ReplyGate
 
@@ -670,38 +839,8 @@ def test_llm_decision_can_ignore_even_mention(tmp_path) -> None:
 
     llm, sent = asyncio.run(flow())
 
-    assert sent == []
-    assert llm.calls == []
-
-
-def test_sulking_refuses_command_without_tool(tmp_path) -> None:
-    from sanka.affect import AffectStore
-    from sanka.config import AffectConfig
-
-    async def flow():
-        client, sent, _ = transport()
-        llm = FakeLLM()
-        store = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
-        app = App(
-            rich_config(tmp_path, affect=AffectConfig(enabled=True)),
-            llm,
-            FakeHub(),
-            Sessions(),
-            affect=store,
-        )
-        app.bot_digits = {"628567770837"}
-        await handle_message(client, dm_event("goblok banget sih kamu"), app)
-        assert store.silent("628999999999@s.whatsapp.net")
-        second = dm_event("tolong rekap absen")
-        second.Info.ID = "3EB0DM2"
-        await handle_message(client, second, app)
-        return llm, sent, store
-
-    llm, sent, store = asyncio.run(flow())
-
-    assert llm.calls == []
-    assert sent == []
-    store.close()
+    assert [payload_text(item) for item in sent] == ["siap"]
+    assert llm.calls
 
 
 def test_calmdown_command_clears_for_owner_only(tmp_path) -> None:
@@ -724,6 +863,7 @@ def test_calmdown_command_clears_for_owner_only(tmp_path) -> None:
             directed=True,
             is_dm=False,
             role="owner",
+            appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.7, "warmth": 0.0},
         )
         app = App(
             rich_config(
@@ -818,8 +958,46 @@ def test_system_prompt_does_not_claim_bot_assistant() -> None:
     prompt = system_prompt(make_config(), "member", {"628567770837"})
 
     assert "bot WhatsApp" not in prompt
-    assert "Balas 1-3 pesan pendek" in prompt
+    assert "Balas seperti chat WhatsApp sungguhan" in prompt
     assert "jangan mengaku AI" in prompt
+
+
+def test_group_command_needs_open_gate(tmp_path) -> None:
+    async def reply(require_mention: bool, event_id: str) -> list:
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path, require_mention=require_mention), FakeLLM(), FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("/help", mention=False, event_id=event_id), app)
+        return sent
+
+    closed = asyncio.run(reply(True, "3EB0CMDCLOSED"))
+    opened = asyncio.run(reply(False, "3EB0CMDOPEN"))
+
+    assert closed == []  # require_mention: true -> command grup tanpa tag disaring
+    assert payload_text(opened[0]).startswith("🧭 *Command Sanka*")
+
+
+def test_person_style_is_in_prompt(tmp_path) -> None:
+    from sanka.config import StyleConfig
+    from sanka.style import StyleStore
+
+    llm = CaptureLLM()
+    style = StyleStore(tmp_path / "style.json", StyleConfig(enabled=True))
+    for _ in range(10):
+        style.learn("iyaa kok gitu sih wkwk", person_id="628222222222")
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions(), style=style)
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("halo sanka"), app)
+        return sent
+
+    asyncio.run(flow())
+
+    assert "Cara chat orang ini" in llm.system
+    assert "Pengirim sekarang: " in llm.system
+    style.close()
 
 
 def test_command_does_not_consume_reply_budget(tmp_path) -> None:

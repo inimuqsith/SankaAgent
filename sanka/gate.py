@@ -1,8 +1,9 @@
-"""Gate balasan: Sanka sendiri yang memutuskan reply/react/ignore, dengan pagar di harness.
+"""Gate balasan: Sanka sendiri yang memutuskan reply/react/ignore dan jumlah bubble.
 
-Keputusan utama datang dari `LLM.decide` (sadar mood dan hubungan). Skor deterministik di
-bawah adalah prior/fallback, dipakai saat LLM mati, saat `llm_decide` dimatikan, dan untuk
-memutuskan chime otonom di `ambient.py`. Rate limit selalu menang agar Sanka tidak spam.
+Keputusan utama datang dari `LLM.decide` (sadar mood, drive, dan hubungan); tag/DM tidak bisa
+di-ignore. Skor deterministik di bawah adalah prior/fallback, dipakai saat LLM mati, saat
+`llm_decide` dimatikan, dan untuk memutuskan chime otonom di `ambient.py`. Rate limit tetap pagar
+keras agar Sanka tidak spam; cooldown hanya berlaku untuk pesan tanpa perhatian langsung.
 """
 
 from __future__ import annotations
@@ -17,14 +18,21 @@ from . import guard
 
 log = logging.getLogger(__name__)
 
-DECIDE_PROMPT = """Kamu Sanka, laki-laki dengan ekspresi emosional feminin, sedang di grup WhatsApp.
-Baca percakapan dan pesan terakhir. Tentukan tindakanmu sendiri.
-Balas HANYA JSON: {"act":"reply|react|ignore","why":"<=80 char"}
+DECIDE_PROMPT = """Kamu Sanka, laki-laki dengan ekspresi emosional feminin, di grup WhatsApp.
+Baca percakapan, siapa yang bicara, hubungan, dan pesan terakhir. Kamu punya jiwa: keputusanmu
+boleh berubah karena mood, keakraban, dan apa yang baru terjadi. Tentukan tindakanmu sendiri.
+Balas HANYA JSON: {"act":"reply|react|ignore","bubbles":1,"why":"<=80 char"}
 - reply: kamu mau menanggapi.
 - react: cukup reaksi singkat/stiker; tidak perlu jawaban.
-- ignore: kamu pilih diam; percakapan bukan untukmu, kamu sedang males/kesal, atau tidak perlu.
-Pertimbangkan mood, hubungan dengan pengirim, apakah pesan ditujukan kepadamu, dan apakah
-kehadiranmu menambah nilai. Jangan menjelaskan proses, jangan menyebut AI."""
+- ignore: kamu pilih diam; percakapan bukan untukmu, atau tidak perlu.
+- bubbles: 1 untuk balasan biasa. Pakai 2-3 hanya bila perlu beberapa pesan terpisah; jangan
+  menambah bubble untuk mengulang atau memancing.
+- Baris "kamu (Sanka)" adalah pesanmu sendiri. Kalau baru mengirim beberapa pesan, pilih 1.
+- Kalau pesan men-tag atau membalas kamu, jangan pilih ignore.
+- Kalau orang lain menyebut namamu atau membicarakanmu tanpa men-tag, boleh reply/react;
+  pilih ignore kalau tidak ada nilai.
+Pertimbangkan mood, drive (gabut/kesepian/energi), hubungan, dan siapa yang aktif.
+Jangan menjelaskan proses, jangan menyebut AI."""
 
 JUDGE_PROMPT = """Kamu penilai percakapan grup WhatsApp. Bot bernama "Sanka" baru saja menerima pesan terakhir.
 Tugasmu: apakah Sanka perlu membalas?
@@ -38,7 +46,7 @@ Aturan:
 ACTS = frozenset({"reply", "react", "ignore"})
 SECOND_PERSON = re.compile(r"\b(kamu|lu|lo|kau|km|kmu|sanka|san)\b", re.IGNORECASE)
 REQUEST = re.compile(r"\b(tolong|coba|bantu|carikan|jelaskan|rekap|kirim|buat)\b", re.IGNORECASE)
-HISTORY_LINES = 6
+HISTORY_LINES = 12
 HISTORY_CHARS = 300
 PROMPT_CHARS = 700
 RATE_WINDOW = 600.0
@@ -50,6 +58,7 @@ class Decision:
     act: str
     reason: str
     score: float
+    bubbles: int = 1
 
 
 def contentless(text: str, has_media: bool) -> bool:
@@ -82,7 +91,7 @@ class ReplyGate:
         self.stickers = tuple(stickers)
         self._sent: dict[str, list[float]] = {}
         self._person_sent: dict[tuple[str, str], list[float]] = {}
-        self._ignores: dict[tuple[str, str], int] = {}
+        self._decisions: list[float] = []
         self._reviews: list[float] = []
 
     # ------------------------------------------------------------------ skor
@@ -118,6 +127,7 @@ class ReplyGate:
         has_media: bool,
         quote_sender_is_bot: bool,
         has_quote: bool = False,
+        named: bool = False,
         now: float | None = None,
     ) -> tuple[float, str]:
         """Skor deterministik 0..1 (prior/fallback) beserta alasan yang bisa dibaca log."""
@@ -125,6 +135,9 @@ class ReplyGate:
         body = str(text or "")
         points = 0.0
         tags: list[str] = []
+        if named:
+            points += 0.45
+            tags.append("named")
         if replied_to_bot:
             points += 0.25
             tags.append("replied")
@@ -176,7 +189,12 @@ class ReplyGate:
             points -= 0.25
             tags.append("to_other")
         recent = self._recent(chat_id)[-3:]
-        if recent and not mentioned and all(not getattr(item, "outgoing", False) for item in recent):
+        if (
+            recent
+            and not mentioned
+            and not named
+            and all(not getattr(item, "outgoing", False) for item in recent)
+        ):
             points -= 0.20
             tags.append("human_flow")
         if contentless(body, has_media):
@@ -193,7 +211,16 @@ class ReplyGate:
 
     # ------------------------------------------------------------------ keputusan
 
-    def _over_limit(self, chat_id: str, sender_id: str, moment: float) -> str:
+    def _over_limit(
+        self,
+        chat_id: str,
+        sender_id: str,
+        moment: float,
+        *,
+        attention: bool,
+        direct: bool,
+    ) -> str:
+        """Pagar anti-flood: cooldown hanya untuk pesan tanpa perhatian langsung ke Sanka."""
         stamps = [stamp for stamp in self._sent.get(chat_id, []) if moment - stamp < RATE_WINDOW]
         self._sent[chat_id] = stamps
         person = [
@@ -203,11 +230,11 @@ class ReplyGate:
         ]
         self._person_sent[(chat_id, sender_id)] = person
         last = max([*stamps, *self._bot_stamps(chat_id)[-1:]], default=0.0)
-        if last and moment - last < float(self.config.reply_cooldown_seconds):
+        if not attention and last and moment - last < float(self.config.reply_cooldown_seconds):
             return "cooldown"
         if len(stamps) >= int(self.config.max_replies_per_10min):
             return "rate_limit"
-        if len(person) >= int(self.config.max_person_replies_per_10min):
+        if not direct and len(person) >= int(self.config.max_person_replies_per_10min):
             return "rate_limit"
         return ""
 
@@ -224,6 +251,8 @@ class ReplyGate:
         quote_sender_is_bot: bool,
         crisis: bool = False,
         has_quote: bool = False,
+        named: bool = False,
+        sender_name: str = "",
         now: float | None = None,
     ) -> Decision:
         moment = time.time() if now is None else float(now)
@@ -237,80 +266,102 @@ class ReplyGate:
             has_media=has_media,
             quote_sender_is_bot=quote_sender_is_bot,
             has_quote=has_quote,
+            named=named,
             now=moment,
         )
         if crisis or guard.is_crisis(text):
             return self._log(Decision("reply", "crisis", 1.0))
         if not str(text or "").strip() and not has_media:
             return self._log(Decision("ignore", "empty", value))
-        blocked = self._over_limit(chat_id, sender_id, moment)
+
+        direct = is_dm or mentioned
+        attention = direct or replied_to_bot or named
+        blocked = self._over_limit(
+            chat_id, sender_id, moment, attention=attention, direct=direct
+        )
         if blocked:
             return self._log(Decision("ignore", blocked, value))
+
+        act, bubbles = "", 1
         if self.config.llm_decide and callable(getattr(self.llm, "decide", None)):
-            act = await self._ask(chat_id, text, sender_id)
-            if act:
-                return self._log(self._apply(act, chat_id, sender_id, is_dm, mentioned, value, "llm"))
-        if is_dm or mentioned:
-            return self._log(Decision("reply", "direct" if is_dm else "mention", value))
+            act, bubbles = await self._ask(
+                chat_id, text, sender_id, sender_name, named, moment
+            )
+
+        if direct:
+            if act in {"", "ignore"}:  # tag/DM tidak bisa diabaikan; sulk diurus wa.py
+                act = "reply"
+            if act == "react" and not self.stickers:
+                act = "reply"
+            return self._log(
+                Decision(act, "direct" if is_dm else "mention", value, min(bubbles, 2))
+            )
+
+        if act:
+            return self._log(self._apply(act, bubbles, value, "llm", chat_id))
+
+        if contentless(text, has_media):
+            return self._log(Decision("ignore", "contentless", value))
         if value >= float(self.config.reply_threshold):
-            return self._log(Decision("reply", f"score:{why}", value))
+            return self._log(Decision("reply", f"score:{why}", value, 1))
         if value >= float(self.config.react_threshold) and self.stickers:
-            return self._log(Decision("react", f"score:{why}", value))
+            return self._log(Decision("react", f"score:{why}", value, 1))
         if (
             self.config.llm_review
             and not self.config.llm_decide
             and float(self.config.review_low) <= value < float(self.config.review_high)
             and callable(getattr(self.llm, "judge", None))
         ):
-            verdict = await self._review(chat_id, text, sender_id, moment)
+            verdict = await self._review(chat_id, text, sender_id, sender_name, named, moment)
             if verdict:
-                return self._log(self._apply(verdict, chat_id, sender_id, is_dm, mentioned, value, "review"))
+                return self._log(self._apply(verdict, 1, value, "review", chat_id))
         return self._log(Decision("ignore", f"score:{why}", value))
 
-    def _apply(
+    def _apply(self, act: str, bubbles: int, value: float, source: str, chat_id: str) -> Decision:
+        """Keputusan model -> Decision; reaksi tanpa stiker tidak dikirim sama sekali."""
+        if act == "react" and not self.stickers:
+            log.info("gate react tanpa stiker chat=%s", chat_id)
+            return Decision("ignore", f"{source}:no_sticker", value)
+        return Decision(act, source, value, max(1, int(bubbles)))
+
+    async def _ask(
         self,
-        act: str,
         chat_id: str,
+        text: str,
         sender_id: str,
-        is_dm: bool,
-        mentioned: bool,
-        value: float,
-        source: str,
-    ) -> Decision:
-        key = (chat_id, sender_id)
-        if act == "reply":
-            self._ignores[key] = 0
-            return Decision("reply", source, value)
-        if act == "react":
-            if not self.stickers:
-                return Decision("ignore", f"{source}:no_sticker", value)
-            self._ignores[key] = 0
-            return Decision("react", source, value)
-        count = self._ignores.get(key, 0) + 1
-        self._ignores[key] = count
-        if (is_dm or mentioned) and count > int(self.config.max_consecutive_ignores):
-            self._ignores[key] = 0
-            return Decision("reply", "ignore_cap", value)
-        return Decision("ignore", source, value)
+        sender_name: str,
+        named: bool,
+        moment: float,
+    ) -> tuple[str, int]:
+        from .llm import parse_verdict
 
-    async def _ask(self, chat_id: str, text: str, sender_id: str) -> str:
-        from .llm import parse_decision
-
-        user = self._context(chat_id, text, sender_id)
+        self._decisions = [stamp for stamp in self._decisions if moment - stamp < 60]
+        if len(self._decisions) >= int(self.config.max_decisions_per_minute):
+            return "", 1
+        self._decisions.append(moment)
+        user = self._context(chat_id, text, sender_id, sender_name, named, moment)
         try:
             raw = await asyncio.wait_for(
                 self.llm.decide(DECIDE_PROMPT, user), timeout=DECIDE_TIMEOUT
             )
         except TimeoutError:
             log.warning("keputusan LLM timeout chat=%s", chat_id)
-            return ""
+            return "", 1
         except Exception:  # kegagalan LLM jatuh ke skor deterministik
             log.warning("keputusan LLM gagal chat=%s", chat_id, exc_info=True)
-            return ""
-        return parse_decision(raw)
+            return "", 1
+        return parse_verdict(raw)
 
-    async def _review(self, chat_id: str, text: str, sender_id: str, moment: float) -> str:
-        from .llm import parse_decision
+    async def _review(
+        self,
+        chat_id: str,
+        text: str,
+        sender_id: str,
+        sender_name: str,
+        named: bool,
+        moment: float,
+    ) -> str:
+        from .llm import parse_verdict
 
         self._reviews = [stamp for stamp in self._reviews if moment - stamp < 60]
         if len(self._reviews) >= int(self.config.max_reviews_per_minute):
@@ -318,7 +369,10 @@ class ReplyGate:
         self._reviews.append(moment)
         try:
             raw = await asyncio.wait_for(
-                self.llm.judge(JUDGE_PROMPT, self._context(chat_id, text, sender_id)),
+                self.llm.judge(
+                    JUDGE_PROMPT,
+                    self._context(chat_id, text, sender_id, sender_name, named, moment),
+                ),
                 timeout=DECIDE_TIMEOUT,
             )
         except TimeoutError:
@@ -327,9 +381,18 @@ class ReplyGate:
         except Exception:
             log.warning("penilaian LLM gagal chat=%s", chat_id, exc_info=True)
             return ""
-        return parse_decision(raw)
+        return parse_verdict(raw)[0]
 
-    def _context(self, chat_id: str, text: str, sender_id: str) -> str:
+    def _context(
+        self,
+        chat_id: str,
+        text: str,
+        sender_id: str,
+        sender_name: str,
+        named: bool,
+        moment: float,
+    ) -> str:
+        """Konteks keputusan: siapa, mood/drive/hubungan, dan percakapan yang sudah ada."""
         parts: list[str] = []
         if self.affect is not None:
             try:
@@ -343,23 +406,45 @@ class ReplyGate:
             body = " ".join(str(getattr(entry, "text", "") or "").split())
             if not body:
                 continue
-            who = getattr(entry, "sender_name", "") or getattr(entry, "sender_id", "") or "-"
+            if getattr(entry, "outgoing", False):
+                who = f"kamu ({self.bot_name})"
+            else:
+                who = (
+                    getattr(entry, "sender_name", "")
+                    or getattr(entry, "sender_id", "")
+                    or "-"
+                )
             lines.append(f"{who}: {body[:HISTORY_CHARS]}")
         if lines:
             parts.append("Percakapan terakhir:\n" + "\n".join(lines))
-        sender = sender_id or "-"
-        parts.append(f"Pesan terakhir dari {sender}: {' '.join(str(text or '').split())[:HISTORY_CHARS]}")
+        stamps = sorted(self._sent.get(chat_id, []))
+        recent = [stamp for stamp in stamps if moment - stamp < RATE_WINDOW]
+        bot = sorted(self._bot_stamps(chat_id))
+        last = max([*bot[-1:], *recent[-1:]], default=0.0)
+        status = f"Status: pesan terakhirmu {int(max(0, moment - last))} detik lalu"
+        status += f"; {len(recent)} pesanmu dalam 10 menit terakhir."
+        parts.append(status)
+        name = " ".join(str(sender_name or "").split()) or "-"
+        parts.append(f"Pengirim sekarang: {name} ({sender_id or '-'})")
+        if named:
+            parts.append("Catatan: pesan ini menyebut namamu tanpa men-tag.")
+        parts.append(
+            f"Pesan terakhir dari {name}: {' '.join(str(text or '').split())[:HISTORY_CHARS]}"
+        )
         return "\n\n".join(parts)
 
     def record_sent(self, chat_id: str, person_id: str, now: float | None = None) -> None:
         moment = time.time() if now is None else float(now)
         self._sent.setdefault(chat_id, []).append(moment)
         self._person_sent.setdefault((chat_id, person_id), []).append(moment)
-        self._ignores[(chat_id, person_id)] = 0
 
     @staticmethod
     def _log(decision: Decision) -> Decision:
         log.info(
-            "gate act=%s score=%.2f reason=%s", decision.act, decision.score, decision.reason
+            "gate act=%s score=%.2f bubbles=%d reason=%s",
+            decision.act,
+            decision.score,
+            decision.bubbles,
+            decision.reason,
         )
         return decision

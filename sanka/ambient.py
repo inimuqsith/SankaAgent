@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 from datetime import date, datetime
 
@@ -27,7 +28,9 @@ CHIME_SYSTEM = """Kamu Sanka, laki-laki dengan ekspresi emosional feminin, di gr
 Tulis SATU pesan pendek (maks 200 karakter) yang natural dan menambah nilai, seperti manusia
 yang nimbrung: tanya lanjutan, tanggapi topik yang menggantung, atau celetuk jahil ringan.
 Jangan mengulang pertanyaan, jangan minta izin, jangan menjelaskan proses, jangan menyebut AI,
-jangan mengarang fakta. Jika tidak ada nilai, balas [DIAM]."""
+jangan mengarang fakta. Kadang kamu penasaran dan ingin tahu kelanjutan; kadang kamu gabut atau
+kesepian dan meratapi chat yang sepi. Jangan menuduh, jangan memancing dengan pertanyaan berulang.
+Jika tidak ada nilai, balas [DIAM]."""
 
 
 class Ambient:
@@ -65,7 +68,19 @@ class Ambient:
 
     def start(self) -> None:
         if self._task is None:
+            self.prime()
             self._task = asyncio.create_task(self._loop())
+
+    def prime(self) -> None:
+        """Chat lama ikut berdetak setelah restart, bukan hanya chat yang baru lewat."""
+        if self.history is None:
+            return
+        try:
+            chats = self.history.recent_chats(50)
+        except Exception:
+            log.debug("ambient: gagal membaca chat terakhir", exc_info=True)
+            return
+        self.known_chats.update(str(chat_id) for chat_id in chats if str(chat_id))
 
     async def stop(self) -> None:
         pending = [task for task in (self._task, *self.tasks) if task is not None]
@@ -111,6 +126,11 @@ class Ambient:
         moment = time.time() if now is None else float(now)
         settings = self.settings
         chats = sorted(self.known_chats)
+        for chat_id in chats:
+            try:  # heartbeat: mood meluruh dan drive tumbuh walau tidak ada pesan
+                self.affect.pulse(chat_id, moment)
+            except Exception:
+                log.debug("heartbeat pulse gagal chat=%s", chat_id, exc_info=True)
         for chat_id in chats:
             if chat_id in self.busy:
                 continue
@@ -168,6 +188,21 @@ class Ambient:
             return False
         rows = self._recent(chat_id, 3)
         if not rows or getattr(rows[-1], "outgoing", False):
+            return False
+        try:
+            modes = self.affect.modes(chat_id)
+            drives = self.affect.drives(chat_id)
+        except Exception:
+            return False
+        if modes["level"] or modes["crying"]:
+            return False
+        urge = (
+            0.10
+            + 0.35 * float(drives["boredom"])
+            + 0.30 * float(drives["loneliness"])
+            + 0.20 * max(0.0, float(modes["valence"]))
+        )
+        if random.random() > urge:
             return False
         unresolved = [item for item in topic["unresolved"] if str(item).strip()]
         last = rows[-1]
@@ -312,6 +347,12 @@ class Ambient:
                 parts.append(self.style.profile(chat_id))
             except Exception:
                 pass
+        try:
+            affect_block = self.affect.prompt(chat_id)
+        except Exception:
+            affect_block = ""
+        if affect_block:
+            parts.append(affect_block)
         parts.append("Percakapan terakhir:\n" + "\n".join(self._line(row) for row in rows))
         text = await self.llm.chime(CHIME_SYSTEM, "\n\n".join(parts))
         if not text:

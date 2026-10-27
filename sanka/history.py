@@ -614,7 +614,7 @@ class HistoryStore:
         size = max(1, min(int(limit or 2000), 20_000))
         cutoff = time.time() - max(1, int(days)) * 86400
         sql = (
-            "SELECT sender_id, sender_name, sender_jid, text, ts FROM messages "
+            "SELECT chat_id, sender_id, sender_name, sender_jid, text, ts FROM messages "
             "WHERE outgoing=0 AND text<>'' AND ts>=? ORDER BY ts DESC, id DESC LIMIT ?"
         )
         with self._lock:
@@ -625,9 +625,19 @@ class HistoryStore:
         """Contoh pesan manusia untuk membangun profil orang saat DB emosi masih kosong."""
         return self._human_rows(limit, days)
 
-    def style_sample(self, limit: int = 2000) -> list[str]:
-        """Teks pesan manusia untuk statistik gaya; isi hanya dipakai agregat, tidak disimpan."""
-        return [str(row["text"]) for row in self._human_rows(limit, 365)]
+    def style_sample(self, limit: int = 2000) -> list[dict]:
+        """Pesan manusia untuk statistik gaya; isi hanya dipakai agregat, tidak disimpan."""
+        return self._human_rows(limit, 365)
+
+    def recent_chats(self, limit: int = 50) -> list[str]:
+        """Chat yang punya aktivitas terakhir; dipakai heartbeat agar state ikut menua."""
+        with self._lock:
+            rows = self._require().execute(
+                "SELECT chat_id, MAX(ts) AS last FROM messages GROUP BY chat_id "
+                "ORDER BY last DESC LIMIT ?",
+                (max(1, int(limit)),),
+            ).fetchall()
+        return [str(row["chat_id"]) for row in rows if str(row["chat_id"])]
 
     def needs_full_sync(self) -> bool:
         with self._lock:

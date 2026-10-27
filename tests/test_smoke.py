@@ -398,7 +398,10 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
     target = tmp_path / "config.yaml"
     target.write_text(
         "persona: p\n"
-        "llm:\n  api_key_env: SANKA_TEST_KEY\n"
+        "llm:\n"
+        "  api_key_env: SANKA_TEST_KEY\n"
+        "  temperature: 0.7\n"
+        "  appraise_temperature: 0.2\n"
         f"workspace: \"{tmp_path / 'ws'}\"\n"
         f"whatsapp:\n  session_db: \"{tmp_path / 's.db'}\"\n"
         "roles:\n  member: {}\n"
@@ -410,16 +413,19 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
         "  silence_max_ignores: 5\n"
         "  allow_owner_sulk: false\n"
         "  decay_hours: 2.5\n"
+        "  max_appraisals_per_minute: 4\n"
         "gate:\n"
         "  enabled: true\n"
         "  reply_threshold: 0.5\n"
         "  llm_decide: true\n"
+        "  decide_temperature: 0.4\n"
+        "  max_decisions_per_minute: 7\n"
         "  reply_cooldown_seconds: 12\n"
         "humanize:\n"
         "  enabled: true\n"
         "  normal_chars: 180\n"
+        "  normal_parts: 2\n"
         "  max_bubbles: 5\n"
-        "  followups: true\n"
         "  reaction_stickers: [\"stickers/a.webp\"]\n"
         "style:\n"
         "  enabled: true\n"
@@ -440,13 +446,21 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
     assert config.affect.silence_max_ignores == 5
     assert config.affect.allow_owner_sulk is False
     assert config.affect.decay_hours == 2.5
+    assert config.affect.max_appraisals_per_minute == 4
     assert config.gate.reply_threshold == 0.5
     assert config.gate.llm_decide is True
+    assert config.gate.decide_temperature == 0.4
+    assert config.gate.max_decisions_per_minute == 7
     assert config.gate.reply_cooldown_seconds == 12
     assert config.humanize.normal_chars == 180
+    assert config.humanize.normal_parts == 2
     assert config.humanize.max_bubbles == 5
-    assert config.humanize.followups is True
     assert config.humanize.reaction_stickers == ("stickers/a.webp",)
+    assert not hasattr(config.humanize, "followups")
+    assert not hasattr(config.humanize, "max_followups")
+    assert not hasattr(config.gate, "max_consecutive_ignores")
+    assert config.llm.temperature == 0.7
+    assert config.llm.appraise_temperature == 0.2
     assert config.style.path == tmp_path / ".sanka/style.json"
     assert config.style.max_chars == 640
     assert config.ambient.research_per_day == 3

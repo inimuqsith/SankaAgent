@@ -53,11 +53,55 @@ def message(text: str, *, sender: str = "Fahri", outgoing: bool = False) -> Chat
 
 
 class FakeHistory:
-    def __init__(self, rows: list[ChatMessage]) -> None:
+    def __init__(self, rows: list[ChatMessage], chats: list[str] | None = None) -> None:
         self.rows = rows
+        self.chats = chats or []
 
     def recent(self, chat_id: str, limit: int) -> list[ChatMessage]:
         return self.rows[-limit:]
+
+    def recent_chats(self, limit: int = 50) -> list[str]:
+        return self.chats[:limit]
+
+
+class PulseAffect:
+    """Affect tiruan: cukup mencatat detak dan menjawab state netral."""
+
+    def __init__(self) -> None:
+        self.pulses: list[tuple[str, float | None]] = []
+
+    def pulse(self, chat_id: str, now: float | None = None) -> dict:
+        self.pulses.append((chat_id, now))
+        return {}
+
+    def topic(self, chat_id: str) -> dict:
+        return {
+            "summary": "",
+            "unresolved": [],
+            "last_message": 0.0,
+            "last_digest": 0.0,
+            "last_research": 0.0,
+            "last_chime": 0.0,
+            "research_day": "",
+            "research_count": 0,
+            "chime_day": "",
+            "chime_count": 0,
+        }
+
+    def pending(self, chat_id: str) -> int:
+        return 0
+
+    def modes(self, chat_id: str, person_id: str = "") -> dict:
+        return {"level": 0, "crying": False, "valence": 0.0}
+
+    def drives(self, chat_id: str) -> dict:
+        return {"energy": 0.6, "boredom": 0.0, "loneliness": 0.0}
+
+    def silent(self, chat_id: str, person_id: str = "") -> bool:
+        return False
+
+    def neglect(self, chat_id: str, now: float | None = None) -> bool:
+        return False
 
 
 class FakeLLM:
@@ -84,6 +128,34 @@ def test_ambient_tool_context_is_web_search_only(tmp_path) -> None:
     assert ctx.allowed == ("web_search",)
     assert ctx.role.tools == ("web_search",)
     assert ctx.chat_id == CHAT
+
+
+def test_tick_pulses_affect(tmp_path) -> None:
+    affect = PulseAffect()
+    ambient = Ambient(
+        make_config(tmp_path), FakeLLM(), affect, None, None, FakeHistory([message("sepi ya")]), None
+    )
+    ambient.note(CHAT, message("sepi ya"))
+
+    asyncio.run(ambient._tick(now=1000.0))
+
+    assert affect.pulses == [(CHAT, 1000.0)]
+
+
+def test_prime_loads_history_chats(tmp_path) -> None:
+    ambient = Ambient(
+        make_config(tmp_path),
+        FakeLLM(),
+        None,
+        None,
+        None,
+        FakeHistory([], chats=[CHAT, DM]),
+        None,
+    )
+
+    ambient.prime()
+
+    assert ambient.known_chats == {CHAT, DM}
 
 
 def test_digest_stores_topic_and_person_note(tmp_path) -> None:
@@ -174,7 +246,15 @@ def test_chime_skips_dm_and_sulk(tmp_path) -> None:
     assert sent == []
 
     ambient.note(CHAT, message("halo"))
-    affect.observe(CHAT, PERSON, "Fahri", "goblok", directed=True, is_dm=False)
+    affect.observe(
+        CHAT,
+        PERSON,
+        "Fahri",
+        "kamu culun",
+        directed=True,
+        is_dm=False,
+        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.8, "warmth": 0.0},
+    )
     asyncio.run(ambient._chime(CHAT))
     assert sent == []
     assert llm.chime_calls == 0

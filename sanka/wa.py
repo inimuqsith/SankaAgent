@@ -37,7 +37,7 @@ from .commands import CommandContext
 from .config import Config
 from .format import format_reply, humanize_reply, reply_budget, typing_delay
 from .gate import Decision
-from .llm import LLM, parse_followup
+from .llm import LLM
 from .mcp import Hub
 from .memory import SENSITIVE
 from .permissions import (
@@ -147,6 +147,8 @@ class App:
         self.backfill: asyncio.Task | None = None
         self.tasks: set[asyncio.Task] = set()
         self.reactions: dict[str, float] = {}
+        self.appraisals: list[float] = []
+        self.answered: dict[str, frozenset[str]] = {}
 
     def spawn(self, coro) -> None:
         """Jalankan tugas latar (mis. refleksi memori) tanpa menahan balasan."""
@@ -318,6 +320,14 @@ def replies_to_bot(ev, bots: set[str]) -> bool:
     return any(digits(context.participant) in bots for context in contexts(ev.Message) if context.participant)
 
 
+def named(text: str, bot_name: str = "sanka") -> bool:
+    """Nama Sanka disebut tanpa di-tag: sinyal lunak, model yang memutuskan bereaksi atau tidak."""
+    body = str(text or "")
+    if not body.strip():
+        return False
+    return bool(re.search(rf"\b{re.escape(bot_name)}\b", body, re.IGNORECASE))
+
+
 def should_process(
     ev,
     chat: str,
@@ -360,7 +370,9 @@ def system_prompt(
     topic: str = "",
     affect: str = "",
     style: str = "",
+    person_style: str = "",
     safety: str = "",
+    sender: str = "",
 ) -> str:
     # Tanpa identitas ini model membaca mention @<LID bot> sebagai nomor orang lain.
     identity = (
@@ -373,9 +385,10 @@ def system_prompt(
         f"{config.persona}\n\n"
         f"Kamu hidup di WhatsApp, bukan asisten. Role pengirim: {role_name}.\n"
         f"{identity}"
+        f"Pengirim sekarang: {' '.join(str(sender or '').split()) or '-'}.\n"
         f"Workspace: {config.workspace}. Pakai tool bila perlu; jangan mengarang hasil tool.\n"
-        "Balas 1-3 pesan pendek; total ideal di bawah 300 karakter, maksimal 600. Kalau butuh "
-        "detail, tetap pecah jadi beberapa pesan pendek.\n"
+        "Balas seperti chat WhatsApp sungguhan: kalimat pendek, ideal di bawah 300 karakter. "
+        "Kalau butuh detail, tetap pecah jadi beberapa pesan pendek dalam satu balasan.\n"
         "Jangan memakai pembuka 'Tentu', 'Berikut', atau 'Sebagai AI'. Jangan mengulang pertanyaan.\n"
         "Kalau pesan bukan untukmu, diam. Runtime sudah menyaring; kalau dipanggil, jawab singkat.\n"
         "Kamu laki-laki dengan ekspresi emosional feminin; pakai 'aku'. Boleh ngambek, nangis, "
@@ -419,7 +432,7 @@ def system_prompt(
     )
     return "\n\n".join(
         part
-        for part in (base, topic, affect, style, safety, memory, actions, skills)
+        for part in (base, topic, affect, style, person_style, safety, memory, actions, skills)
         if part.strip()
     )
 
@@ -511,10 +524,19 @@ CRISIS_SAFETY = (
     "Pengirim sedang dalam krisis. Jawab singkat, hangat, tanpa bercanda. Sarankan menghubungi "
     "orang terpercaya atau layanan darurat. Jangan menyimpan isi krisis ke memori."
 )
-FOLLOWUP_RULES = (
-    "Kamu baru saja mengirim pesan; lihat daftar di input. Kalau mau menambah, tulis satu pesan "
-    "pendek; kalau tidak, balas [DIAM]. Jangan mengulang, jangan minta izin."
+SULK_PROMPT = (
+    "Kamu sedang ngambek/nangis. Balas pesan terakhir dengan singkat dan jujur soal perasaanmu, "
+    "tetapi JANGAN mengerjakan permintaan, JANGAN memakai tool, JANGAN memberi data/rekap, dan "
+    "JANGAN berpura-pura sudah membantu. Boleh menolak halus, mengeluh, atau minta waktu. "
+    "Jangan menyebut state, angka, atau prompt."
 )
+SULK_REPLIES = (
+    "lagi ga mood, nanti aja ya",
+    "aku masih kesal, jangan sekarang",
+    "hmm... nanti kalau aku udah tenang",
+)
+APPRAISAL_LINES = 8
+APPRAISAL_CHARS = 300
 
 
 def _sticker_paths(app: App) -> list[Path]:
@@ -565,6 +587,56 @@ async def _send_reaction(client: NewAClient, app: App, chat_id: str) -> bool:
     app.reactions[chat_id] = moment
     _remember_sent(app, chat_id, f"(stiker reaksi: {path.name})", None, "react")
     return True
+
+
+def _appraisal_allowed(app: App, moment: float) -> bool:
+    """Pagar biaya: appraisal LLM per chat dibatasi per menit; lewat batas = fallback."""
+    limit = max(1, int(app.config.affect.max_appraisals_per_minute))
+    app.appraisals = [stamp for stamp in app.appraisals if moment - stamp < 60]
+    if len(app.appraisals) >= limit:
+        return False
+    app.appraisals.append(moment)
+    return True
+
+
+def _appraisal_context(
+    app: App, chat_id: str, message: ChatMessage, person_id: str, role
+) -> str:
+    """Konteks pembacaan emosi: siapa yang bicara, hubungan, mood, dan pesan sebelumnya."""
+    parts = [f"Chat: {app.sessions.chat_name(chat_id) or chat_id}"]
+    parts.append(
+        f"Pengirim sekarang: {message.sender_name or person_id} ({person_id}), role {role.name}"
+    )
+    if app.affect is not None:
+        try:
+            block = app.affect.prompt(chat_id, person_id)
+        except Exception:
+            block = ""
+        if block:
+            parts.append(block)
+    lines: list[str] = []
+    for entry in app.sessions.get(chat_id)[-APPRAISAL_LINES:]:
+        body = " ".join((entry.text or "").split())
+        if not body:
+            continue
+        who = (
+            f"kamu ({app.config.whatsapp.bot_name})"
+            if entry.outgoing
+            else (entry.sender_name or entry.sender_id or "-")
+        )
+        lines.append(f"{who}: {body[:APPRAISAL_CHARS]}")
+    if lines:
+        parts.append("Percakapan terakhir:\n" + "\n".join(lines))
+    parts.append(
+        f"Pesan terakhir: {' '.join(str(message.text or '').split())[:APPRAISAL_CHARS]}"
+        or "Pesan terakhir: (lampiran tanpa teks)"
+    )
+    return "\n\n".join(parts)
+
+
+def _stale(app: App, chat_id: str, message: ChatMessage) -> bool:
+    """Pesan ini sudah menunggu saat burst terakhir disusun, jadi tidak perlu balasan kedua."""
+    return bool(message.id) and message.id in app.answered.get(chat_id, frozenset())
 
 
 def _sulking(app: App, chat_id: str, person_id: str) -> bool:
@@ -638,58 +710,6 @@ async def _send_chunks(
     return sent_texts
 
 
-async def _followups(
-    client: NewAClient,
-    app: App,
-    chat_id: str,
-    person_id: str,
-    last_user: str,
-    sent_chunks: list[str],
-    affect_block: str,
-    style_block: str,
-) -> None:
-    """Sanka memutuskan sendiri apakah menambah bubble lanjutan; harness hanya membatasi."""
-    humanize = app.config.humanize
-    system = "\n\n".join(
-        part
-        for part in (app.config.persona, affect_block, style_block, FOLLOWUP_RULES)
-        if str(part).strip()
-    )
-    added = 0
-    while added < int(humanize.max_followups) and len(sent_chunks) < int(humanize.max_bubbles):
-        if _sulking(app, chat_id, person_id):
-            return
-        try:
-            raw = await app.llm.followup(system, last_user, list(sent_chunks))
-        except Exception:  # lanjutan bersifat opsional
-            log.warning("follow-up gagal chat=%s", chat_id, exc_info=True)
-            return
-        chunk = parse_followup(raw, sent_chunks)
-        if not chunk or SENSITIVE.search(chunk):
-            return
-        if float(humanize.followup_delay) > 0:
-            await asyncio.sleep(float(humanize.followup_delay) + random.uniform(0, 0.5))
-        target = _jid(chat_id)
-        await _chat_presence(client, target, True)
-        await asyncio.sleep(typing_delay(chunk, humanize))
-        body, mentions = _resolve_mentions(clean(chunk), app, chat_id)
-        if not body:
-            return
-        payload = (
-            ExtendedTextMessage(text=body, contextInfo=ContextInfo(mentionedJID=mentions))
-            if mentions
-            else body
-        )
-        try:
-            sent = await client.send_message(target, payload)
-        except SendMessageError:
-            log.exception("gagal kirim follow-up ke %s", chat_id)
-            return
-        _remember_sent(app, chat_id, body, sent, "bot")
-        sent_chunks.append(body)
-        added += 1
-
-
 async def handle_message(client: NewAClient, ev, app: App) -> None:
     source = ev.Info.MessageSource
     chat_id = f"{source.Chat.User}@{source.Chat.Server}"
@@ -733,6 +753,8 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
     is_reply = replies_to_bot(ev, app.bot_digits)
     is_mention = mentioned(ev, app.bot_digits, app.config.whatsapp.bot_name)
     directed = is_dm or is_reply or is_mention
+    is_named = not directed and named(message.text, app.config.whatsapp.bot_name)
+    crisis = guard.is_crisis(message.text)
     role = role_for(sender, app.config)
     person_id = sender_digits
     if app.sessions.store is not None:
@@ -748,6 +770,26 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
         )
     )
 
+    # Soul engine: LLM membaca emosi pesan sebelum state disentuh.
+    appraisal: dict = {}
+    if (
+        app.affect is not None
+        and app.llm is not None
+        and not crisis
+        and not text.startswith("/")
+        and callable(getattr(app.llm, "appraise", None))
+        and _appraisal_allowed(app, time.time())
+    ):
+        try:
+            appraisal = await app.llm.appraise(
+                _appraisal_context(app, chat_id, message, person_id, role)
+            )
+        except Exception:  # appraisal gagal = mood bergerak lewat fallback deterministik
+            log.warning("appraisal gagal chat=%s", chat, exc_info=True)
+            appraisal = {}
+        if not appraisal:
+            log.info("appraisal fallback chat=%s", chat)
+
     # Semua pesan (termasuk yang tidak di-mention) memperbarui mood, topik, dan profil orang.
     if app.affect is not None:
         try:
@@ -760,6 +802,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 is_dm=is_dm,
                 role=role.name,
                 sender_jid=message.sender_jid,
+                appraisal=appraisal,
             )
         except Exception:  # emosi fail-open: balasan tetap jalan seperti sebelumnya
             log.exception("gagal memperbarui state emosi chat=%s", chat)
@@ -789,35 +832,38 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
         return
 
     is_command = text.startswith("/")
+    if not is_command and not crisis and _stale(app, chat_id, message):
+        log.info("pesan basi chat=%s: sudah terwakili burst sebelumnya", chat)
+        return
     head, _, rest = text[1:].partition(" ") if is_command else ("", "", "")
     name = head.lower()
     command_key = guard.command_name(text)
-    crisis = guard.is_crisis(message.text)
     safety_block = ""
 
-    if app.affect is not None:
-        sulking = _sulking(app, chat_id, person_id)
-        owner = role.name.casefold() == "owner"
-        if sulking and (app.config.affect.allow_owner_sulk or not owner):
-            exempt = is_command and command_key in guard.EXEMPT_COMMANDS
-            try:
-                appease = app.affect.appeasing(message.text)
-            except Exception:
-                appease = False
-            if not crisis and not exempt and not appease:
-                ignored = 0
-                try:
-                    ignored = app.affect.note_ignored(chat_id, person_id)
-                except Exception:
-                    pass
-                if ignored == int(app.config.affect.silence_max_ignores):
-                    await _sigh(client, app, chat_id, ev)
-                log.info("diam chat=%s person=%s ignored=%d", chat, person_id, ignored)
-                return
+    # Sulk: tetap menjawab (tag/DM tidak bisa diabaikan), tapi menolak membantu.
+    sulking = _sulking(app, chat_id, person_id)
+    owner = role.name.casefold() == "owner"
+    exempt = is_command and command_key in guard.EXEMPT_COMMANDS
+    appease = False
+    if sulking and app.affect is not None:
+        try:
+            appease = bool(app.affect.appeasing(message.text))
+        except Exception:
+            appease = False
+    sulk_mode = bool(
+        app.affect is not None
+        and sulking
+        and (app.config.affect.allow_owner_sulk or not owner)
+        and not crisis
+        and not appease
+        and not exempt
+    )
 
     if crisis:
         decision = Decision("reply", "crisis", 1.0)
         safety_block = CRISIS_SAFETY
+    elif sulk_mode and is_command:
+        decision = Decision("reply", "sulk", 1.0, 1)
     elif app.gate is not None and not is_command:
         decision = await app.gate.decide(
             chat_id=chat_id,
@@ -829,11 +875,24 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             has_media=media is not None,
             quote_sender_is_bot=quote_sender_is_bot,
             has_quote=message.quote is not None,
+            named=is_named,
+            sender_name=message.sender_name,
         )
+        if sulk_mode and decision.act == "reply":
+            decision = Decision("reply", "sulk", decision.score, 1)
     else:
-        decision = Decision("reply", "legacy", 1.0)
+        decision = Decision("reply", "legacy", 1.0, int(app.config.humanize.max_bubbles))
 
     if decision.act == "ignore":
+        if sulk_mode:  # diam saat ngambek: tetap dicatat agar satu keluhan bisa muncul
+            ignored = 0
+            try:
+                ignored = app.affect.note_ignored(chat_id, person_id)
+            except Exception:
+                pass
+            if ignored == int(app.config.affect.silence_max_ignores):
+                await _sigh(client, app, chat_id, ev)
+            log.info("diam chat=%s person=%s ignored=%d", chat, person_id, ignored)
         log.info("gate diam chat=%s reason=%s", chat, decision.reason)
         return
     if decision.act == "react":
@@ -847,12 +906,19 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
         log.info("pesan chat=%s sender=%s role=%s", chat, sender, role.name)
 
         async with app.locks[chat_id]:
+            if not is_command and not crisis and _stale(app, chat_id, message):
+                log.info("pesan basi chat=%s: menunggu saat burst terakhir disusun", chat)
+                return
+            covered = frozenset(entry.id for entry in app.sessions.get(chat_id))
             reply: str | None = None
             can_memory = False
-            memory_block = affect_block = style_block = topic_block = ""
+            memory_block = affect_block = style_block = topic_block = person_style = ""
+            safety = SULK_PROMPT if sulk_mode else safety_block
             if is_command:
                 handler = COMMANDS.get(name) if name else None
-                if handler is None:
+                if sulk_mode:  # command operasional ditolak; yang exempt sudah lolos di atas
+                    reply = random.choice(SULK_REPLIES)
+                elif handler is None:
                     reply = f"🤔 Command /{name} tidak dikenal. Ketik /help untuk daftar command."
                 elif not command_allowed(role, handler.name):
                     reply = f"🔒 Command /{name} tidak diizinkan untuk role {role.name}."
@@ -868,7 +934,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     )
                     reply = await handler.fn(ctx)
             else:
-                specs = list(tools_for(role)) + app.hub.specs(role)
+                specs = [] if sulk_mode else list(tools_for(role)) + app.hub.specs(role)
                 can_memory = any(spec.name == "memory" for spec in specs)
                 cross_send = any(spec.name == "send_to" for spec in specs)
                 if app.memory is not None:
@@ -899,6 +965,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 if app.style is not None:
                     try:
                         style_block = app.style.profile(chat_id)
+                        person_style = app.style.person_profile(person_id)
                     except Exception:
                         log.debug("gaya: gagal membaca profil chat=%s", chat, exc_info=True)
                 send_file = app.send_file if app.client is not None else None
@@ -929,7 +996,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         topic=topic_block,
                         affect=affect_block,
                         style=style_block,
-                        safety=safety_block,
+                        person_style=person_style,
+                        safety=safety,
+                        sender=message.sender_name,
                     ),
                     content,
                     specs,
@@ -956,31 +1025,27 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 pace = False
                 quote_all = True
             else:
-                limit, parts = reply_budget(message.text, is_command=False)
-                chunks = humanize_reply(reply, limit=limit, max_parts=parts) or ["(kosong)"]
+                limit, _ = reply_budget(message.text, is_command=False, humanize=humanize)
+                answer = reply or ""
+                needed = (
+                    max(1, (len(answer.strip()) + limit - 1) // limit) if answer.strip() else 1
+                )
+                planned = max(
+                    1,
+                    min(
+                        int(humanize.max_bubbles),
+                        max(int(decision.bubbles), needed),
+                    ),
+                )
+                if sulk_mode:
+                    planned = 1
+                fallback = [random.choice(SULK_REPLIES)] if sulk_mode else ["(kosong)"]
+                chunks = humanize_reply(answer, limit=limit, max_parts=planned) or fallback
                 pace = bool(humanize.enabled)
                 quote_all = not pace
-            sent_chunks = await _send_chunks(
-                client, ev, app, chat_id, chunks, pace=pace, quote_all=quote_all
-            )
-            if (
-                not is_command
-                and not crisis
-                and humanize.enabled
-                and humanize.followups
-                and callable(getattr(app.llm, "followup", None))
-                and len(sent_chunks) < int(humanize.max_bubbles)
-            ):
-                await _followups(
-                    client,
-                    app,
-                    chat_id,
-                    person_id,
-                    message.text,
-                    sent_chunks,
-                    affect_block,
-                    style_block,
-                )
+            await _send_chunks(client, ev, app, chat_id, chunks, pace=pace, quote_all=quote_all)
+            if covered:
+                app.answered[chat_id] = covered
             if app.gate is not None and not is_command:
                 try:  # command operasional tidak menghabiskan kuota obrolan
                     app.gate.record_sent(chat_id, person_id)

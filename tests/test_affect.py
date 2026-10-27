@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import time
+
 import pytest
 
 from sanka import guard
-from sanka.affect import AffectStore, classify_intent, mine_notes
+from sanka.affect import AffectStore, classify_intent_fallback, mine_notes
 from sanka.config import AffectConfig
 
 CHAT = "120363415422117951@g.us"
@@ -20,7 +22,16 @@ def make_store(tmp_path: Path) -> AffectStore:
 
 
 def insult(store: AffectStore, *, person: str = OWNER, text: str = "goblok banget sih kamu", chat: str = CHAT) -> None:
-    store.observe(chat, person, "Muqsith", text, directed=True, is_dm=False, role="owner")
+    store.observe(
+        chat,
+        person,
+        "Muqsith",
+        text,
+        directed=True,
+        is_dm=False,
+        role="owner",
+        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.75, "warmth": 0.0},
+    )
 
 
 def test_insult_makes_her_sulk_and_apology_calms(tmp_path) -> None:
@@ -73,9 +84,137 @@ def test_classify_intent() -> None:
         "tolong rekap absen": "CASUAL",  # ada "tolong" -> bukan perintah ke Sanka
     }
     for text, expected in cases.items():
-        assert classify_intent(text, directed=True, is_dm=True) == expected, text
+        assert classify_intent_fallback(text, directed=True, is_dm=True) == expected, text
     # hinaan hanya dihitung bila pesan ditujukan ke Sanka
-    assert classify_intent("dasar goblok", directed=False, is_dm=False) == "CASUAL"
+    assert classify_intent_fallback("dasar goblok", directed=False, is_dm=False) == "CASUAL"
+
+
+def test_llm_appraisal_overrides_fallback(tmp_path) -> None:
+    store = make_store(tmp_path)
+
+    # "jelek" tidak ada di regex ABUSE; hanya pembacaan LLM yang membuatnya hinaan.
+    store.observe(
+        CHAT,
+        FRIEND,
+        "Fahri",
+        "kamu jelek banget sih",
+        directed=True,
+        is_dm=False,
+        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.7, "warmth": 0.0},
+    )
+
+    assert store.silent(CHAT, FRIEND) is True
+    store.close()
+
+
+def test_fallback_appraisal_never_sulks(tmp_path) -> None:
+    store = make_store(tmp_path)
+
+    # tanpa appraisal, regex hanya menggerakkan mood; hurt=0 sehingga tidak ada sulk.
+    store.observe(CHAT, FRIEND, "Fahri", "goblok banget sih", directed=True, is_dm=False)
+
+    assert store.silent(CHAT, FRIEND) is False
+    store.close()
+
+
+def test_appraisal_promotes_untagged_message(tmp_path) -> None:
+    store = make_store(tmp_path)
+
+    # Pesan tidak men-tag Sanka, tapi LLM menilai pesan itu diarahkan kepadanya.
+    store.observe(
+        CHAT,
+        FRIEND,
+        "Fahri",
+        "dasar yang tadi itu jelek",
+        directed=False,
+        is_dm=False,
+        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.8, "warmth": 0.0},
+    )
+
+    assert store.silent(CHAT, FRIEND) is True
+    store.close()
+
+
+def test_many_teases_do_not_sulk(tmp_path) -> None:
+    store = make_store(tmp_path)
+
+    for _ in range(30):
+        store.observe(
+            CHAT,
+            FRIEND,
+            "Fahri",
+            "wkwk dasar",
+            directed=True,
+            is_dm=False,
+            appraisal={"intent": "TEASE", "directed": True, "hurt": 0.1, "warmth": 0.3},
+        )
+
+    assert store.silent(CHAT, FRIEND) is False
+    store.close()
+
+
+def test_chat_people_membership(tmp_path) -> None:
+    store = make_store(tmp_path)
+    other = "120363000000000000@g.us"
+    store.observe(CHAT, FRIEND, "Fahri", "halo", directed=False, is_dm=False)
+    store.observe(other, OWNER, "Muqsith", "halo", directed=False, is_dm=False)
+
+    names = [item["name"] for item in store.known_people(CHAT, 5)]
+
+    assert names == ["Fahri"]
+    assert [item["name"] for item in store.known_people(other, 5)] == ["Muqsith"]
+    store.close()
+
+
+def test_pulse_decays_mood_and_expires_sulk(tmp_path) -> None:
+    store = make_store(tmp_path)
+    start = time.time()
+    store.observe(
+        CHAT,
+        FRIEND,
+        "Fahri",
+        "kamu culun",
+        directed=True,
+        is_dm=False,
+        appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.9, "warmth": 0.0},
+        now=start,
+    )
+    before = abs(float(store.pulse(CHAT, now=start)["valence"]))
+    assert store.sulk_until(CHAT, FRIEND) > start
+
+    mood = store.pulse(CHAT, now=start + 3 * 3600)
+
+    assert store.sulk_until(CHAT, FRIEND) == 0.0
+    assert abs(float(mood["valence"])) <= before
+    store.close()
+
+
+def test_first_pulse_only_anchors_drives(tmp_path) -> None:
+    store = make_store(tmp_path)
+    start = time.time()
+
+    store.pulse(CHAT, now=start)  # belum ada baris drives: cukup tambatkan waktu
+    anchored = store.drives(CHAT)
+
+    assert anchored == {"energy": 0.6, "boredom": 0.2, "loneliness": 0.0}
+    store.pulse(CHAT, now=start + 2 * 3600)
+    assert store.drives(CHAT)["boredom"] > anchored["boredom"]
+    store.close()
+
+
+def test_drives_grow_when_idle(tmp_path) -> None:
+    store = make_store(tmp_path)
+    start = time.time()
+    store.observe(CHAT, FRIEND, "Fahri", "halo", directed=False, is_dm=False, now=start)
+    before = store.drives(CHAT)
+
+    store.pulse(CHAT, now=start + 2 * 3600)
+    after = store.drives(CHAT)
+
+    assert after["boredom"] > before["boredom"]
+    assert after["loneliness"] > before["loneliness"]
+    assert after["energy"] < before["energy"]
+    store.close()
 
 
 def test_mine_notes_detects_bossy_and_teasing() -> None:

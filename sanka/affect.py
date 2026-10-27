@@ -37,7 +37,7 @@ GOALS = AppraisalGoals(rapport=0.85, intellectual=0.75, autonomy=0.60, respect=0
 EVENTS_KEEP = 200
 NOTES_KEEP = 4
 NOTES_TEXT = 120
-PROMPT_CHARS = 900
+PROMPT_CHARS = 1200
 TOPIC_CHARS = 400
 
 APOLOGY = re.compile(
@@ -179,6 +179,20 @@ CREATE TABLE IF NOT EXISTS events (
   summary TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS drives (
+  chat_id TEXT PRIMARY KEY,
+  energy REAL NOT NULL DEFAULT 0.6,
+  boredom REAL NOT NULL DEFAULT 0.2,
+  loneliness REAL NOT NULL DEFAULT 0.0,
+  last_pulse REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS chat_people (
+  chat_id TEXT NOT NULL,
+  person_id TEXT NOT NULL,
+  last_seen REAL NOT NULL DEFAULT 0,
+  interactions INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (chat_id, person_id)
+);
 """
 
 MOOD_DEFAULTS: dict = {
@@ -208,10 +222,41 @@ PERSON_DEFAULTS: dict = {
     "last_seen": 0.0,
     "notes": "[]",
 }
+DRIVE_DEFAULTS: dict = {
+    "energy": 0.6,
+    "boredom": 0.2,
+    "loneliness": 0.0,
+    "last_pulse": 0.0,
+}
+PULSE_MINUTES = 1.0  # heartbeat lebih rapat dari ini tidak mengubah apa pun
+PULSE_MAX_HOURS = 24.0  # batas pertumbuhan drive setelah lama mati/clock skew
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, float(value)))
+
+
+def _unit(value: object, default: float = 0.0) -> float:
+    """Intensitas 0..1 dari data LLM/db; nilai aneh jatuh ke default, bukan meledak."""
+    if isinstance(value, bool):
+        return default
+    try:
+        return _clamp(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _ago(stamp: float, moment: float) -> str:
+    """Jarak waktu kasar untuk prompt; angka mentah tidak pernah ditampilkan."""
+    age = float(stamp or 0.0)
+    if age <= 0:
+        return "belum diketahui"
+    delta = max(0.0, moment - age)
+    if delta < 3600:
+        return "baru saja"
+    if delta < 86400:
+        return f"{int(delta // 3600)} jam lalu"
+    return f"{int(delta // 86400)} hari lalu"
 
 
 def _load(raw: str, default: object) -> object:
@@ -222,8 +267,8 @@ def _load(raw: str, default: object) -> object:
     return value if isinstance(value, type(default)) else default
 
 
-def classify_intent(text: str, *, directed: bool, is_dm: bool) -> str:
-    """Pesan -> intent; urutan deterministik supaya perilaku bisa dites tanpa DB/LLM."""
+def classify_intent_fallback(text: str, *, directed: bool, is_dm: bool) -> str:
+    """Cadangan saat appraisal LLM kosong: hanya menggerakkan mood, tidak pernah memicu sulk."""
     body = str(text or "")
     if APOLOGY.search(body):
         return "APOLOGY"
@@ -376,6 +421,7 @@ class AffectStore:
             mood = self._mood(conn, chat_id)
             person = self._person(conn, person_id)
             intent = self._intent(conn, chat_id, person_id)
+            drives = self._drives(conn, chat_id)
             sulk = self._sulk(conn, chat_id, person_id) if person_id else None
         mood["trust"] = float(person["trust"])
         active = self._active(mood)
@@ -394,6 +440,9 @@ class AffectStore:
             "crush": crush,
             "level": level,
             "crying": crying,
+            "energy": float(drives["energy"]),
+            "boredom": float(drives["boredom"]),
+            "loneliness": float(drives["loneliness"]),
         }
 
     # ------------------------------------------------------------------ tulis state
@@ -409,21 +458,30 @@ class AffectStore:
         is_dm: bool,
         role: str = "member",
         sender_jid: str = "",
+        appraisal: dict | None = None,
         now: float | None = None,
     ) -> None:
         """Satu pesan masuk: upsert orang, appraisal bila ditujukan, atmosfer grup, topik."""
         moment = time.time() if now is None else float(now)
         body = str(text or "")
         crisis = guard.is_crisis(body)
+        intent, hurt, warmth, directed = self._read_appraisal(
+            appraisal, fallback_directed=directed, is_dm=is_dm, body=body
+        )
         with self._lock:
             conn = self._require()
             person = self._touch_person(conn, person_id, name, role, moment)
+            self._touch_chat_person(conn, chat_id, person_id, moment)
+            self._touch_drives(conn, chat_id, moment, activity=True)
             mood = self._mood(conn, chat_id)
             if not crisis and directed:
-                person, mood = self._appraise(conn, chat_id, person_id, person, mood, body, moment)
-                self._record_event(conn, chat_id, person_id, person, mood, body, moment)
+                person, mood = self._appraise(
+                    conn, chat_id, person_id, person, mood, body, moment,
+                    intent=intent, hurt=hurt, warmth=warmth,
+                )
+                self._record_event(conn, chat_id, person_id, mood, intent, body, moment)
             elif not crisis:
-                self._atmosphere(conn, chat_id, mood, body)
+                self._atmosphere(conn, chat_id, mood, body, hurt=hurt, warmth=warmth)
             topic = conn.execute("SELECT * FROM topics WHERE chat_id=?", (chat_id,)).fetchone()
             pending = (int(topic["pending"]) if topic is not None else 0) + 1
             conn.execute(
@@ -460,6 +518,64 @@ class AffectStore:
         )
         return person
 
+    def _read_appraisal(
+        self, appraisal: dict | None, *, fallback_directed: bool, is_dm: bool, body: str
+    ) -> tuple[str, float, float, bool]:
+        """(intent, hurt, warmth, directed) dari LLM; tanpa appraisal valid -> regex, hurt 0."""
+        data = appraisal if isinstance(appraisal, dict) else {}
+        intent = str(data.get("intent") or "").upper()
+        if intent in INTENTS:
+            directed = True if is_dm else bool(data.get("directed", fallback_directed))
+            return intent, _unit(data.get("hurt")), _unit(data.get("warmth")), directed
+        return (
+            classify_intent_fallback(body, directed=fallback_directed, is_dm=is_dm),
+            0.0,
+            0.0,
+            fallback_directed,
+        )
+
+    def _touch_chat_person(
+        self, conn: sqlite3.Connection, chat_id: str, person_id: str, moment: float
+    ) -> None:
+        """Keanggotaan chat: siapa yang benar-benar ikut bicara di sini, bukan global."""
+        conn.execute(
+            "INSERT INTO chat_people(chat_id, person_id, last_seen, interactions) "
+            "VALUES(?, ?, ?, 1) ON CONFLICT(chat_id, person_id) DO UPDATE SET "
+            "last_seen=excluded.last_seen, interactions=chat_people.interactions+1",
+            (chat_id, person_id, moment),
+        )
+
+    def _drives(self, conn: sqlite3.Connection, chat_id: str) -> dict:
+        row = conn.execute("SELECT * FROM drives WHERE chat_id=?", (chat_id,)).fetchone()
+        return dict(row) if row is not None else {"chat_id": chat_id, **DRIVE_DEFAULTS}
+
+    def _write_drives(self, conn: sqlite3.Connection, chat_id: str, data: dict) -> None:
+        conn.execute(
+            "INSERT INTO drives(chat_id, energy, boredom, loneliness, last_pulse) "
+            "VALUES(?, ?, ?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET "
+            "energy=excluded.energy, boredom=excluded.boredom, "
+            "loneliness=excluded.loneliness, last_pulse=excluded.last_pulse",
+            (
+                chat_id,
+                _clamp(float(data["energy"])),
+                _clamp(float(data["boredom"])),
+                _clamp(float(data["loneliness"])),
+                float(data["last_pulse"]),
+            ),
+        )
+
+    def _touch_drives(
+        self, conn: sqlite3.Connection, chat_id: str, moment: float, *, activity: bool
+    ) -> None:
+        """Pesan masuk memuaskan drive; jam yang lewat dilakukan `pulse`."""
+        data = self._drives(conn, chat_id)
+        if activity:
+            data["boredom"] = _clamp(float(data["boredom"]) - 0.15)
+            data["loneliness"] = _clamp(float(data["loneliness"]) - 0.20)
+            data["energy"] = _clamp(float(data["energy"]) + 0.03)
+        data["last_pulse"] = moment
+        self._write_drives(conn, chat_id, data)
+
     def _appraise(
         self,
         conn: sqlite3.Connection,
@@ -469,8 +585,11 @@ class AffectStore:
         mood: dict,
         body: str,
         moment: float,
+        *,
+        intent: str,
+        hurt: float,
+        warmth: float,
     ) -> tuple[dict, dict]:
-        intent = classify_intent(body, directed=True, is_dm=not chat_id.endswith("@g.us"))
         # Time decay: mood ditarik ke baseline tiap jam penuh (maks 24) sebelum impulse baru.
         last = float(mood["last_decay"] or 0.0)
         step = max(1.0, float(self.config.decay_hours) * 3600.0)
@@ -503,12 +622,16 @@ class AffectStore:
         result = appraise_turn(state, KERNEL_INTENT[intent], message=body)
         active = {name: float(value) for name, value in result.active_emotions.items()}
         trust, affection, respect, annoyance, sadness = DELTAS[intent]
+        intensity = 0.3 + 0.7 * max(hurt, warmth, 0.2)
+        trust, affection, respect, annoyance, sadness = (
+            value * intensity for value in DELTAS[intent]
+        )
         minutes = max(0.0, (moment - float(mood["last_ts"] or moment)) / 60.0)
         decay = 0.01 * minutes
         person["trust"] = _clamp(float(person["trust"]) + trust)
         person["affection"] = _clamp(float(person["affection"]) + affection)
         person["respect"] = _clamp(float(person["respect"]) + respect)
-        person["annoyance"] = _clamp(float(person["annoyance"]) + annoyance)
+        person["annoyance"] = _clamp(float(person["annoyance"]) - decay + annoyance)
         if intent == "APOLOGY":
             person["appease"] = int(person["appease"]) + 1
         person["stage"] = stage_for(
@@ -526,7 +649,7 @@ class AffectStore:
         mood["last_decay"] = mood["last_decay"] or moment
         self._write_person(conn, person_id, person)
         self._write_mood(conn, chat_id, mood)
-        self._update_sulk(conn, chat_id, person_id, person, mood, active, intent, moment)
+        self._update_sulk(conn, chat_id, person_id, person, mood, active, intent, hurt, moment)
         return person, mood
 
     def _write_person(self, conn: sqlite3.Connection, person_id: str, person: dict) -> None:
@@ -576,18 +699,18 @@ class AffectStore:
         mood: dict,
         active: dict[str, float],
         intent: str,
+        hurt: float,
         moment: float,
     ) -> None:
         valence = float(mood["valence"])
         anger = 0.6 * active.get("reproach", 0.0) + 0.4 * max(0.0, -valence)
         sadness_score = 0.6 * active.get("distress", 0.0) + 0.4 * float(mood["sadness"])
         annoyance = float(person["annoyance"])
+        abuse = intent == "ABUSE"
         level = 0
-        if annoyance >= 0.40 or anger >= 0.65:
-            level = 1
-        if annoyance >= 0.75 or anger >= 0.85:
-            level = 2
-        cry = sadness_score >= 0.70 and valence <= -0.30
+        if abuse and hurt >= 0.35:
+            level = 2 if hurt >= 0.70 or annoyance >= 0.75 or anger >= 0.85 else 1
+        cry = (abuse and hurt >= 0.85) or (sadness_score >= 0.70 and valence <= -0.30)
         existing = self._sulk(conn, chat_id, person_id)
         active_sulk = bool(existing) and moment < float(existing["until"]) and (
             int(existing["level"]) or int(existing["crying"])
@@ -624,7 +747,16 @@ class AffectStore:
             (chat_id, person_id, level, int(cry), since, until, reason, ignored),
         )
 
-    def _atmosphere(self, conn: sqlite3.Connection, chat_id: str, mood: dict, body: str) -> None:
+    def _atmosphere(
+        self,
+        conn: sqlite3.Connection,
+        chat_id: str,
+        mood: dict,
+        body: str,
+        *,
+        hurt: float = 0.0,
+        warmth: float = 0.0,
+    ) -> None:
         valence = float(mood["valence"])
         arousal = float(mood["arousal"])
         if guard.TENSION.search(body):
@@ -633,6 +765,8 @@ class AffectStore:
         if guard.FUN.search(body):
             valence += 0.02
             arousal += 0.01
+        valence -= 0.02 * hurt
+        valence += 0.02 * warmth
         mood["valence"] = _clamp(valence, -1.0, 1.0)
         mood["arousal"] = _clamp(arousal, -1.0, 1.0)
         mood["last_ts"] = mood["last_ts"] or time.time()
@@ -643,8 +777,8 @@ class AffectStore:
         conn: sqlite3.Connection,
         chat_id: str,
         person_id: str,
-        person: dict,
         mood: dict,
+        intent: str,
         body: str,
         moment: float,
     ) -> None:
@@ -657,7 +791,7 @@ class AffectStore:
                 moment,
                 chat_id,
                 person_id,
-                classify_intent(body, directed=True, is_dm=not chat_id.endswith("@g.us")),
+                intent,
                 float(mood["valence"]),
                 float(mood["arousal"]),
                 active.get("reproach", 0.0),
@@ -669,6 +803,85 @@ class AffectStore:
             "DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)",
             (EVENTS_KEEP,),
         )
+
+    # ------------------------------------------------------------------ heartbeat
+
+    def drives(self, chat_id: str) -> dict:
+        """Drive publik (energi, kebosanan, kesepian) untuk prompt dan chime."""
+        with self._lock:
+            data = self._drives(self._require(), chat_id)
+        return {key: float(data[key]) for key in ("energy", "boredom", "loneliness")}
+
+    def _latest_stage(self, conn: sqlite3.Connection, chat_id: str) -> str:
+        row = conn.execute(
+            "SELECT p.stage FROM chat_people cp JOIN people p ON p.person_id=cp.person_id "
+            "WHERE cp.chat_id=? ORDER BY cp.last_seen DESC LIMIT 1",
+            (chat_id,),
+        ).fetchone()
+        return str(row["stage"]) if row is not None else "acquaintance"
+
+    def _latest_affection(self, conn: sqlite3.Connection, chat_id: str) -> float:
+        row = conn.execute(
+            "SELECT p.affection FROM chat_people cp JOIN people p ON p.person_id=cp.person_id "
+            "WHERE cp.chat_id=? ORDER BY cp.last_seen DESC LIMIT 1",
+            (chat_id,),
+        ).fetchone()
+        return _unit(row["affection"], 0.2) if row is not None else 0.2
+
+    def pulse(self, chat_id: str, now: float | None = None) -> dict:
+        """Detak 24/7: mood meluruh, drive tumbuh, sulk kedaluwarsa. Tidak mengirim pesan."""
+        moment = time.time() if now is None else float(now)
+        with self._lock:
+            conn = self._require()
+            mood = self._mood(conn, chat_id)
+            last = float(mood["last_decay"] or mood["last_ts"] or 0.0)
+            data = self._drives(conn, chat_id)
+            last_pulse = float(data["last_pulse"] or 0.0)
+            if last_pulse <= 0:  # chat lama/DB baru: detak pertama hanya menambatkan waktu
+                data["last_pulse"] = moment
+                self._write_drives(conn, chat_id, data)
+                conn.commit()
+                return mood
+            elapsed = min(max(0.0, moment - last_pulse), PULSE_MAX_HOURS * 3600.0)
+            if elapsed < PULSE_MINUTES * 60:
+                return mood
+            hours = elapsed / 3600.0
+            data["energy"] = _clamp(float(data["energy"]) - 0.06 * hours)
+            data["boredom"] = _clamp(float(data["boredom"]) + 0.08 * hours)
+            attachment = self._latest_affection(conn, chat_id)
+            data["loneliness"] = _clamp(
+                float(data["loneliness"]) + (0.03 + 0.05 * attachment) * hours
+            )
+            data["last_pulse"] = moment
+            self._write_drives(conn, chat_id, data)
+            if last and moment > last:
+                pad = PADMood(
+                    valence=float(mood["valence"]),
+                    arousal=float(mood["arousal"]),
+                    dominance=float(mood["dominance"]),
+                )
+                step = max(60.0, float(self.config.decay_hours) * 3600.0)
+                stage = self._latest_stage(conn, chat_id)
+                for _ in range(min(24, int((moment - last) // step))):
+                    pad = decay_mood(pad, PERSONALITY, stage, float(mood["baseline"]))
+                mood["valence"] = pad.valence
+                mood["arousal"] = pad.arousal
+                mood["dominance"] = pad.dominance
+                decay = 0.01 * ((moment - last) / 60.0)
+                mood["annoyance"] = _clamp(float(mood["annoyance"]) - decay)
+                mood["sadness"] = _clamp(float(mood["sadness"]) - decay)
+                factor = max(0.0, 1.0 - (moment - last) / 3600.0)
+                active = {
+                    key: value * factor
+                    for key, value in self._active(mood).items()
+                    if value * factor >= 0.05
+                }
+                mood["active"] = json.dumps(active)
+                mood["last_decay"] = moment
+                self._write_mood(conn, chat_id, mood)
+            conn.execute("DELETE FROM sulks WHERE chat_id=? AND until<=?", (chat_id, moment))
+            conn.commit()
+        return mood
 
     # ------------------------------------------------------------------ sulk / calm
 
@@ -917,9 +1130,14 @@ class AffectStore:
         return None
 
     def known_people(self, chat_id: str, limit: int = 8) -> list[dict]:
+        """Orang yang benar-benar ikut chat ini, terbaru dulu; chat lain tidak bocor ke sini."""
         with self._lock:
             rows = self._require().execute(
-                "SELECT * FROM people ORDER BY last_seen DESC LIMIT ?", (max(1, int(limit)),)
+                "SELECT p.*, cp.interactions AS chat_interactions, "
+                "cp.last_seen AS chat_last_seen FROM chat_people cp "
+                "JOIN people p ON p.person_id=cp.person_id WHERE cp.chat_id=? "
+                "ORDER BY cp.last_seen DESC LIMIT ?",
+                (chat_id, max(1, int(limit))),
             ).fetchall()
         people: list[dict] = []
         for row in rows:
@@ -958,9 +1176,22 @@ class AffectStore:
             )
         ]
         if modes["level"] >= 1 or modes["crying"]:
-            parts.append("Kamu sedang diam karena kesal; kamu tidak wajib membalas.")
+            parts.append(
+                "Kamu sedang ngambek/nangis: balas singkat dan jujur, "
+                "tapi jangan mengerjakan permintaan siapa pun."
+            )
         elif float(mood["valence"]) > 0.3:
             parts.append("Kamu sedang senang dan terbuka.")
+        urges: list[str] = []
+        if modes["boredom"] >= 0.65:
+            urges.append("gabut")
+        if modes["loneliness"] >= 0.65:
+            urges.append("kesepian")
+        if modes["energy"] <= 0.25:
+            urges.append("capek")
+        if urges:
+            parts.append(f"Kamu sedang {', '.join(urges)}; itu boleh kelihatan di caramu bicara.")
+        moment = time.time()
         people = self.known_people(chat_id, 6)
         ordered = [item for item in people if item["person_id"] == person_id]
         ordered += [item for item in people if item["person_id"] != person_id]
@@ -968,18 +1199,22 @@ class AffectStore:
         for item in ordered[:6]:
             if not str(item["name"]).strip():
                 continue
-            labels = [str(item["role"]) or "member"]
-            labels += [str(note) for note in item["notes"][:4]]
             relation = _relation(
                 float(item["affection"]),
                 float(item["annoyance"]),
                 float(item["trust"]),
                 str(item["stage"]),
             )
-            lines.append(
-                f"- {item['name']} ({', '.join(labels)}): {relation}, "
-                f"sayang {float(item['affection']):.1f}, kesal {float(item['annoyance']):.1f}."
+            line = (
+                f"- {item['name']} ({str(item['role']) or 'member'}): {relation}, "
+                f"sayang {float(item['affection']):.1f}, kesal {float(item['annoyance']):.1f}, "
+                f"{int(item['chat_interactions'])} interaksi, "
+                f"terakhir {_ago(item['chat_last_seen'], moment)}."
             )
+            notes = [str(note) for note in item["notes"][:3] if str(note).strip()]
+            if notes:
+                line += f" Catatan: {'; '.join(notes)}."
+            lines.append(line)
         if lines:
             parts.append("Sikapmu:")
             parts.extend(lines)
@@ -1015,15 +1250,23 @@ class AffectStore:
             if not person_id:
                 continue
             text = str(item.get("text") or "")
-            bucket = grouped.setdefault(person_id, {"names": {}, "texts": [], "last": 0.0})
+            stamp = float(item.get("ts") or 0.0)
+            bucket = grouped.setdefault(
+                person_id, {"names": {}, "texts": [], "last": 0.0, "chats": {}}
+            )
             name = str(item.get("sender_name") or "").strip()
             if name:
                 bucket["names"][name] = bucket["names"].get(name, 0) + 1
             bucket["texts"].append(text)
-            bucket["last"] = max(bucket["last"], float(item.get("ts") or 0.0))
+            bucket["last"] = max(bucket["last"], stamp)
+            chat_id = str(item.get("chat_id") or "")
+            if chat_id:
+                seen, count = bucket["chats"].get(chat_id, (0.0, 0))
+                bucket["chats"][chat_id] = (max(seen, stamp), count + 1)
         with self._lock:
             conn = self._require()
             for person_id, bucket in grouped.items():
+                self._seed_chat_rows(conn, person_id, bucket["chats"])
                 if conn.execute(
                     "SELECT 1 FROM people WHERE person_id=?", (person_id,)
                 ).fetchone() is not None:
@@ -1051,6 +1294,58 @@ class AffectStore:
             )
             conn.commit()
         return len(grouped)
+
+    @staticmethod
+    def _seed_chat_rows(conn: sqlite3.Connection, person_id: str, chats: dict) -> None:
+        for chat_id, (seen, count) in chats.items():
+            conn.execute(
+                "INSERT INTO chat_people(chat_id, person_id, last_seen, interactions) "
+                "VALUES(?, ?, ?, ?) ON CONFLICT(chat_id, person_id) DO UPDATE SET "
+                "last_seen=max(chat_people.last_seen, excluded.last_seen), "
+                "interactions=max(chat_people.interactions, excluded.interactions)",
+                (chat_id, person_id, float(seen), int(count)),
+            )
+
+    def seed_chat_people(self, history) -> int:
+        """Sekali saja untuk DB emosi lama: lengkapi anggota tiap chat dari arsip."""
+        with self._lock:
+            conn = self._require()
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key='chat_people_seeded'"
+            ).fetchone()
+            if row is not None and row["value"] == "1":
+                return 0
+        try:
+            rows = history.people_seed(5000) if history is not None else []
+        except Exception:
+            log.exception("gagal membaca arsip untuk seed keanggotaan chat")
+            rows = []
+        grouped: dict[str, dict[str, tuple[float, int]]] = {}
+        for item in rows:
+            chat_id = str(item.get("chat_id") or "")
+            jid = str(item.get("sender_jid") or "")
+            person_id = ""
+            try:
+                person_id = history.resolve_person(jid) if history is not None and jid else ""
+            except Exception:
+                person_id = ""
+            person_id = person_id or str(item.get("sender_id") or "")
+            if not chat_id or not person_id:
+                continue
+            stamp = float(item.get("ts") or 0.0)
+            chats = grouped.setdefault(person_id, {})
+            seen, count = chats.get(chat_id, (0.0, 0))
+            chats[chat_id] = (max(seen, stamp), count + 1)
+        with self._lock:
+            conn = self._require()
+            for person_id, chats in grouped.items():
+                self._seed_chat_rows(conn, person_id, chats)
+            conn.execute(
+                "INSERT INTO meta(key, value) VALUES('chat_people_seeded', '1') "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+            )
+            conn.commit()
+        return sum(len(chats) for chats in grouped.values())
 
     def stats(self) -> dict:
         with self._lock:

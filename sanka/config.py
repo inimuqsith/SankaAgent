@@ -19,6 +19,8 @@ class LLMConfig:
     api_key_env: str
     max_turns: int = 20
     timeout_seconds: float = 120.0
+    temperature: float = 0.9  # balasan utama
+    appraise_temperature: float = 0.3  # pembacaan emosi
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,7 @@ class AffectConfig:
     silence_max_ignores: int = 3
     allow_owner_sulk: bool = True
     decay_hours: float = 1.0
+    max_appraisals_per_minute: int = 12
 
 
 @dataclass(frozen=True)
@@ -85,13 +88,14 @@ class GateConfig:
     reply_threshold: float = 0.45
     react_threshold: float = 0.25
     llm_decide: bool = False
-    max_consecutive_ignores: int = 2
+    decide_temperature: float = 0.5
+    max_decisions_per_minute: int = 12
     llm_review: bool = True
     review_low: float = 0.25
     review_high: float = 0.60
     max_reviews_per_minute: int = 6
     max_replies_per_10min: int = 8
-    max_person_replies_per_10min: int = 4
+    max_person_replies_per_10min: int = 6
     reply_cooldown_seconds: float = 45.0
 
 
@@ -99,17 +103,14 @@ class GateConfig:
 class HumanizeConfig:
     enabled: bool = False
     normal_chars: int = 220
-    normal_parts: int = 3
+    normal_parts: int = 2
     detail_chars: int = 420
-    detail_parts: int = 4
+    detail_parts: int = 3
     cpms: float = 25.0
     min_delay: float = 0.5
     max_delay: float = 5.0
     between_delay: float = 0.7
-    followups: bool = False
-    max_followups: int = 2
-    max_bubbles: int = 4
-    followup_delay: float = 1.2
+    max_bubbles: int = 3
     reaction_stickers: tuple[str, ...] = ()
 
 
@@ -386,11 +387,13 @@ def load_config(path: str | None = None) -> Config:
             api_key_env=api_key_env,
             max_turns=int(llm_raw.get("max_turns") or 20),
             timeout_seconds=float(llm_raw.get("timeout_seconds") or 120),
+            temperature=_num(llm_raw.get("temperature"), 0.9),
+            appraise_temperature=_num(llm_raw.get("appraise_temperature"), 0.3),
         ),
         workspace=workspace,
         whatsapp=WhatsAppConfig(
             session_db=session_db,
-            require_mention=bool(wa_raw.get("require_mention", True)),
+            require_mention=_bool(wa_raw.get("require_mention"), True),
             bot_name=str(wa_raw.get("bot_name") or "sanka"),
             history_db=history_db,
         ),
@@ -428,37 +431,38 @@ def load_config(path: str | None = None) -> Config:
             silence_max_ignores=int(_num(affect_raw.get("silence_max_ignores"), 3)),
             allow_owner_sulk=_bool(affect_raw.get("allow_owner_sulk"), True),
             decay_hours=_num(affect_raw.get("decay_hours"), 1.0),
+            max_appraisals_per_minute=int(
+                _num(affect_raw.get("max_appraisals_per_minute"), 12)
+            ),
         ),
         gate=GateConfig(
             enabled=_bool(gate_raw.get("enabled"), False),
             reply_threshold=_num(gate_raw.get("reply_threshold"), 0.45),
             react_threshold=_num(gate_raw.get("react_threshold"), 0.25),
             llm_decide=_bool(gate_raw.get("llm_decide"), False),
-            max_consecutive_ignores=int(_num(gate_raw.get("max_consecutive_ignores"), 2)),
+            decide_temperature=_num(gate_raw.get("decide_temperature"), 0.5),
+            max_decisions_per_minute=int(_num(gate_raw.get("max_decisions_per_minute"), 12)),
             llm_review=_bool(gate_raw.get("llm_review"), True),
             review_low=_num(gate_raw.get("review_low"), 0.25),
             review_high=_num(gate_raw.get("review_high"), 0.60),
             max_reviews_per_minute=int(_num(gate_raw.get("max_reviews_per_minute"), 6)),
             max_replies_per_10min=int(_num(gate_raw.get("max_replies_per_10min"), 8)),
             max_person_replies_per_10min=int(
-                _num(gate_raw.get("max_person_replies_per_10min"), 4)
+                _num(gate_raw.get("max_person_replies_per_10min"), 6)
             ),
             reply_cooldown_seconds=_num(gate_raw.get("reply_cooldown_seconds"), 45.0),
         ),
         humanize=HumanizeConfig(
             enabled=_bool(humanize_raw.get("enabled"), False),
             normal_chars=int(_num(humanize_raw.get("normal_chars"), 220)),
-            normal_parts=int(_num(humanize_raw.get("normal_parts"), 3)),
+            normal_parts=int(_num(humanize_raw.get("normal_parts"), 2)),
             detail_chars=int(_num(humanize_raw.get("detail_chars"), 420)),
-            detail_parts=int(_num(humanize_raw.get("detail_parts"), 4)),
+            detail_parts=int(_num(humanize_raw.get("detail_parts"), 3)),
             cpms=_num(humanize_raw.get("cpms"), 25.0),
             min_delay=_num(humanize_raw.get("min_delay"), 0.5),
             max_delay=_num(humanize_raw.get("max_delay"), 5.0),
             between_delay=_num(humanize_raw.get("between_delay"), 0.7),
-            followups=_bool(humanize_raw.get("followups"), False),
-            max_followups=int(_num(humanize_raw.get("max_followups"), 2)),
-            max_bubbles=int(_num(humanize_raw.get("max_bubbles"), 4)),
-            followup_delay=_num(humanize_raw.get("followup_delay"), 1.2),
+            max_bubbles=int(_num(humanize_raw.get("max_bubbles"), 3)),
             reaction_stickers=_str_tuple(humanize_raw.get("reaction_stickers")),
         ),
         style=StyleConfig(

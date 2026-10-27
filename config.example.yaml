@@ -41,6 +41,8 @@ llm:
   api_key_env: OPENCODE_GO_API_KEY
   max_turns: 20
   timeout_seconds: 120
+  temperature: 0.9          # balasan utama
+  appraise_temperature: 0.3 # pembacaan emosi
 
 # Path relatif di-resolve dari folder config.yaml, jadi data tetap di dalam project.
 workspace: ".sanka/workspace"
@@ -48,7 +50,7 @@ workspace: ".sanka/workspace"
 whatsapp:
   session_db: ".sanka/whatsapp.db"
   history_db: ".sanka/history.db"
-  require_mention: true
+  require_mention: false    # gate yang menyaring, bukan mention
   bot_name: sanka
 
 roles:
@@ -102,35 +104,34 @@ affect:
   silence_max_ignores: 3
   allow_owner_sulk: true
   decay_hours: 1.0
+  max_appraisals_per_minute: 12
 
 gate:
   enabled: true
   reply_threshold: 0.45
   react_threshold: 0.25
   llm_decide: true
-  max_consecutive_ignores: 2
+  decide_temperature: 0.5
+  max_decisions_per_minute: 12
   llm_review: true
   review_low: 0.25
   review_high: 0.60
   max_reviews_per_minute: 6
   max_replies_per_10min: 8
-  max_person_replies_per_10min: 4
+  max_person_replies_per_10min: 6
   reply_cooldown_seconds: 45
 
 humanize:
   enabled: true
   normal_chars: 220
-  normal_parts: 3
+  normal_parts: 2
   detail_chars: 420
-  detail_parts: 4
+  detail_parts: 3
   cpms: 25.0
   min_delay: 0.5
   max_delay: 5.0
   between_delay: 0.7
-  followups: true
-  max_followups: 2
-  max_bubbles: 4
-  followup_delay: 1.2
+  max_bubbles: 3
   reaction_stickers: ["stickers/aku-punya-ide.webp"]
 
 style:

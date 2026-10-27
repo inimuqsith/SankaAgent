@@ -55,15 +55,20 @@ SHORT = re.compile(
 FENCE_START = "```"
 
 
-def reply_budget(user_text: str, *, is_command: bool) -> tuple[int, int]:
+def reply_budget(user_text: str, *, is_command: bool, humanize=None) -> tuple[int, int]:
     """(batas karakter per bubble, jumlah bubble maksimal) sesuai permintaan pengguna."""
     if is_command:
         return 3500, 20
-    if SHORT.search(str(user_text or "")):
-        return 220, 3
-    if DETAIL.search(str(user_text or "")):
-        return 420, 4
-    return 220, 3
+    normal_chars = max(1, int(getattr(humanize, "normal_chars", 220) or 220))
+    normal_parts = max(1, int(getattr(humanize, "normal_parts", 2) or 2))
+    body = str(user_text or "")
+    if SHORT.search(body):
+        return normal_chars, normal_parts
+    if DETAIL.search(body):
+        detail_chars = max(1, int(getattr(humanize, "detail_chars", 420) or 420))
+        detail_parts = max(1, int(getattr(humanize, "detail_parts", 3) or 3))
+        return detail_chars, detail_parts
+    return normal_chars, normal_parts
 
 
 def _hard(text: str, limit: int) -> list[str]:

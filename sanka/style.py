@@ -38,6 +38,7 @@ SEED = {
     "emojis": ("😭", "🗿", "🙏", "😹", "😂", "😊"),
 }
 SEED_MIN = 20
+PERSON_MIN = 8
 
 
 def _empty() -> dict:
@@ -190,13 +191,27 @@ class StyleStore:
             log.exception("gagal membaca sampel gaya dari arsip")
             rows = []
         with self._lock:
-            for text in rows:
-                body = str(text or "")
+            for row in rows:
+                item = row if isinstance(row, dict) else {"text": row}
+                body = str(item.get("text") or "")
                 if not body.strip() or body.startswith("/") or len(body) > MAX_TEXT:
                     continue
                 if any(marker in body for marker in PLACEHOLDERS):
                     continue
                 self._count(self._data["global"], body)
+                chat_id = str(item.get("chat_id") or "")
+                if chat_id:
+                    self._count(self._data["chats"].setdefault(chat_id, _empty()), body)
+                person_id = ""
+                jid = str(item.get("sender_jid") or "")
+                if jid and history is not None:
+                    try:
+                        person_id = history.resolve_person(jid)
+                    except Exception:
+                        person_id = ""
+                person_id = person_id or str(item.get("sender_id") or "")
+                if person_id:
+                    self._count(self._data["people"].setdefault(person_id, _empty()), body)
             self._data["seeded"] = True
             self._flush()
         return True
@@ -214,6 +229,43 @@ class StyleStore:
                     return bucket
             bucket = self._data["global"]
             return bucket if bucket["n"] >= SEED_MIN else {}
+
+    def _person_bucket(self, person_id: str) -> dict:
+        with self._lock:
+            bucket = self._data["people"].get(person_id) if person_id else None
+        return bucket if bucket is not None and bucket["n"] >= PERSON_MIN else {}
+
+    def person_profile(self, person_id: str) -> str:
+        """Blok prompt ritme satu orang; kosong bila sampelnya belum cukup."""
+        bucket = self._person_bucket(person_id)
+        if not bucket:
+            return ""
+        lengths = [int(value) for value in bucket["lengths"]]
+        median = _percentile(lengths, 0.5)
+        p90 = _percentile(lengths, 0.9)
+        total = max(1, int(bucket["n"]))
+        particles = [
+            name for name, _ in sorted(bucket["particles"].items(), key=lambda item: -item[1])[:5]
+        ]
+        emojis = [
+            name for name, _ in sorted(bucket["emojis"].items(), key=lambda item: -item[1])[:3]
+        ]
+        lines = [
+            "Cara chat orang ini (tiru ritme, bukan isi/opini):",
+            (
+                f"- median {median} karakter; 90% di bawah {p90}; "
+                f"{round(bucket['lower'] / total * 100)}% huruf kecil."
+            ),
+            f"- partikel: {', '.join(particles) or '-'}.",
+            f"- emoji sesekali: {' '.join(emojis) or '-'}.",
+            (
+                f"- {round(bucket['laugh'] / total * 100)}% pesan mengandung tawa; "
+                f"{round(bucket['question'] / total * 100)}% bertanya."
+            ),
+        ]
+        text = "\n".join(lines)
+        limit = max(200, int(self.config.max_chars))
+        return text if len(text) <= limit else text[: limit - 1] + "…"
 
     def profile(self, chat_id: str = "") -> str:
         """Blok prompt gaya chat; kosong tidak pernah terjadi (seed jadi acuan minimal)."""

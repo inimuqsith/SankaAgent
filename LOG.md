@@ -1,5 +1,65 @@
 # LOG
 
+## 2026-10-28 (jiwa ganda: appraisal LLM, heartbeat, sulk yang tetap menjawab)
+
+- `sanka/llm.py`: `APPRAISE_PROMPT` + `LLM.appraise` (tanpa tool, `llm.appraise_temperature`) dan
+  `parse_appraisal` (intent 9 nilai, `directed` bool/"true", `hurt`/`warmth` 0..1, `sarcasm`, `why`
+  <=80; field wajib invalid -> `{}`). `parse_decision` diganti `parse_verdict` -> `(act, bubbles)`.
+  `LLM.run` memakai `llm.temperature`; `decide` memakai `gate.decide_temperature`; chime 0.9.
+  `LLM.followup`/`parse_followup`/`FOLLOWUP_WORDS` dihapus.
+- `sanka/affect.py`: `classify_intent` -> `classify_intent_fallback` (cadangan, `hurt=0`, tidak
+  pernah sulk). `observe(appraisal=...)` memakai hasil LLM: intent/arah/hurt/warmth, delta
+  diskalakan intensitas, `_record_event` memakai intent yang sama, `_atmosphere` bergeser oleh
+  hurt/warmth. Sulk hanya dari `ABUSE` dengan `hurt>=0.35` (level 2 bila `hurt>=0.70`/kesal/anger
+  tinggi) atau kesedihan nyata; pemicu `annoyance>=0.40` dihapus sehingga ledekan main-main tidak
+  lagi membuat diam. Tabel `drives` + `pulse` (decay mood, drive tumbuh, sulk kedaluwarsa), tabel
+  `chat_people` (keanggotaan chat) + `known_people(chat_id)` yang hanya anggota chat itu,
+  `seed_chat_people` untuk DB lama, prompt memuat drive dan interaksi/terakhir terlihat.
+- `sanka/wa.py`: appraisal dikumpulkan sebelum `observe` (`_appraisal_context`: chat, pengirim,
+  role, prompt affect, 8 pesan terakhir, pesan terakhir) dengan pagar
+  `affect.max_appraisals_per_minute`; gagal/limit -> fallback. `sulk_mode`: command non-exempt
+  ditolak dengan `SULK_REPLIES`, balasan LLM memakai `SULK_PROMPT` tanpa `specs`/memori/skill,
+  satu bubble; krisis tidak pernah sulk; gate `ignore` saat sulk mencatat `note_ignored` dan
+  mengirim satu `hmm` pada ambang. `is_named` (nama disebut tanpa tag) diteruskan ke gate.
+  Balasan: satu burst, `planned = min(max_bubbles, max(gate.bubbles, kebutuhan teks))`;
+  `_followups`/`FOLLOWUP_RULES` dihapus. `_stale` menyerap pesan yang sudah menunggu di jendela
+  saat burst terakhir disusun (snapshot id per chat), jadi tag beruntun dijawab sekali tanpa
+  menelan pesan yang datang setelahnya. `system_prompt` menerima `person_style` + `sender`.
+- `sanka/gate.py`: `Decision.bubbles`, `score(named=...)` (+0.45, meniadakan penalti
+  `human_flow`), `_over_limit(attention, direct)` (cooldown hanya tanpa perhatian langsung; rate
+  limit per chat selalu, per orang hanya non-direct), keputusan LLM untuk setiap pesan non-command
+  dengan pagar `gate.max_decisions_per_minute`, `_context` memuat status kiriman sendiri, nama
+  pengirim, dan catatan "menyebut namamu tanpa men-tag". `_ignores`/`max_consecutive_ignores`
+  dihapus; tag/DM `ignore` ditimpa `reply`.
+- `sanka/ambient.py`: `prime()` mengisi `known_chats` dari `history.recent_chats(50)`;
+  detak pertama untuk chat yang belum punya baris `drives` hanya menambatkan `last_pulse` (tidak
+  melompat ke energi 0/gabut 1 seperti kalau `elapsed` dihitung dari epoch), dan pertumbuhan drive
+  dibatasi 24 jam agar downtime panjang/clock skew tidak memaksimalkan semua drive;
+  `_tick` memanggil `pulse` tiap chat sebelum digest; chime bergerbang urge dari drive + mood,
+  prompt chime memakai `affect.prompt`. `sanka/history.py`: `_human_rows` membawa `chat_id`,
+  `style_sample` mengembalikan dict, `recent_chats`. `sanka/style.py`: `person_profile`
+  (`PERSON_MIN=8`), seed per chat/orang. `sanka/format.py`: `reply_budget(humanize=...)` membaca
+  `normal_*`/`detail_*`.
+- Config: `llm.temperature`/`appraise_temperature`, `affect.max_appraisals_per_minute`,
+  `gate.decide_temperature`/`max_decisions_per_minute`; `humanize.normal_parts=2`,
+  `detail_parts=3`, `max_bubbles=3`; `followups`/`max_followups`/`followup_delay`/
+  `max_consecutive_ignores` dihapus (YAML, dataclass, loader). Contoh config memakai
+  `require_mention: false` supaya gate yang menyaring, bukan mention.
+- Upgrade aman tanpa reset: tabel `drives`/`chat_people` dibuat `IF NOT EXISTS`; DB emosi lama
+  tetap dipakai dan keanggotaan chat diisi sekali lewat `seed_chat_people` (flag
+  `chat_people_seeded`). Yang perlu disegarkan hanya `.sanka/style.json` (agregat turunan, aman
+  dihapus) supaya profil per orang/chat langsung terisi dari arsip, bukan menunggu sampel live.
+- Verifikasi: `pytest -q` 170 lulus (baru: appraisal->sulk, sulk menolak tool/command, krisis
+  bypass sulk, burst tag, gate bubbles, chat_people, pulse/drives + anchor detak pertama, chime
+  urge, person style, command grup mengikuti gate mention);
+  `python -m sanka selftest` -> `PASS affect`, `PASS style`, `SELFTEST OK`.
+- Risiko/sisa: kualitas appraisal dan keputusan gate bergantung model; biaya LLM naik karena
+  setiap pesan non-command dinilai dua kali (appraisal + gate) — ditekan lewat
+  `affect.max_appraisals_per_minute`, `gate.max_decisions_per_minute`, atau `gate.llm_decide:
+  false`. Test memakai LLM tiruan; smoke di grup nyata (hinaan halus, tag saat sulk, heartbeat
+  setelah 20 menit diam) masih perlu dijalankan di server.
+
+
 ## 2026-10-27 (emosi, gaya pendek, gate, otonomi)
 
 - `sanka/affect.py`: `AffectStore` (SQLite `affect.path`, 0600/WAL/busy_timeout) menyimpan mood PAD +

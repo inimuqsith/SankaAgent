@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import sys
+import time
 from pathlib import Path
 
 from neonize.aioze.client import NewAClient
@@ -121,11 +122,22 @@ async def selftest(config: Config) -> int:
         try:
             affect = AffectStore(affect_path, config.affect)
             affect.observe(
-                "selftest", "p1", "Tester", "goblok banget sih kamu", directed=True, is_dm=True
+                "selftest",
+                "p1",
+                "Tester",
+                "goblok banget sih kamu",
+                directed=True,
+                is_dm=True,
+                appraisal={"intent": "ABUSE", "directed": True, "hurt": 0.7, "warmth": 0.0},
             )
             sulking = affect.silent("selftest", "p1")
             affect.calm("selftest")
-            passed = sulking and not affect.silent("selftest", "p1")
+            affect.pulse("selftest", now=time.time() + 3600)
+            passed = (
+                sulking
+                and not affect.silent("selftest", "p1")
+                and affect.drives("selftest")["boredom"] > 0
+            )
             results.append(_report("affect", "PASS" if passed else "FAIL", "" if passed else "sulk tidak konsisten"))
         except Exception as exc:
             results.append(_report("affect", "FAIL", f"{type(exc).__name__}: {exc}"))
@@ -215,6 +227,9 @@ async def run_bot(config: Config) -> None:
                 seeded = affect.seed_from_history(store)
                 if seeded:
                     log.info("profil orang dari arsip: %d", seeded)
+                members = affect.seed_chat_people(store)
+                if members:
+                    log.info("keanggotaan chat dari arsip: %d", members)
             except Exception:
                 log.exception("gagal seed people dari arsip")
         if style is not None and store is not None:

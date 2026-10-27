@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sanka.config import StyleConfig
+from sanka.config import HumanizeConfig, StyleConfig
 from sanka.format import human_chunks, humanize_reply, reply_budget
 from sanka.style import StyleStore
 
@@ -67,10 +67,19 @@ def test_human_chunks_keeps_fence() -> None:
 
 
 def test_reply_budget() -> None:
-    assert reply_budget("halo", is_command=False) == (220, 3)
-    assert reply_budget("tolong jelaskan detail", is_command=False) == (420, 4)
-    assert reply_budget("singkat aja", is_command=False) == (220, 3)
+    assert reply_budget("halo", is_command=False) == (220, 2)
+    assert reply_budget("tolong jelaskan detail", is_command=False) == (420, 3)
+    assert reply_budget("singkat aja", is_command=False) == (220, 2)
     assert reply_budget("halo", is_command=True) == (3500, 20)
+
+
+def test_reply_budget_follows_humanize_config() -> None:
+    humanize = HumanizeConfig(
+        normal_chars=180, normal_parts=1, detail_chars=300, detail_parts=2
+    )
+
+    assert reply_budget("halo", is_command=False, humanize=humanize) == (180, 1)
+    assert reply_budget("tolong jelaskan detail", is_command=False, humanize=humanize) == (300, 2)
 
 
 def test_humanize_reply_splits_sentences() -> None:
@@ -78,6 +87,22 @@ def test_humanize_reply_splits_sentences() -> None:
 
     assert 1 <= len(parts) <= 2
     assert all(len(part) <= 121 for part in parts)
+
+
+def test_person_profile_learns_individual_style(tmp_path) -> None:
+    store = make_store(tmp_path)
+    for _ in range(10):
+        store.learn("iyaa kok gitu sih wkwk", person_id="628111")
+    for _ in range(10):
+        store.learn("BAIK PAK, SIAP LAPORAN NYA SAYA KIRIM SEKARANG", person_id="628222")
+
+    short = store.person_profile("628111")
+    long = store.person_profile("628222")
+
+    assert "median" in short and "huruf kecil" in short
+    assert short != long
+    assert store.person_profile("628999") == ""
+    store.close()
 
 
 def test_profile_uses_live_stats_after_enough_samples(tmp_path) -> None:

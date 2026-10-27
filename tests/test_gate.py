@@ -38,7 +38,18 @@ def gate_of(llm=None, *, stickers: tuple[str, ...] = (), **kwargs) -> ReplyGate:
     return ReplyGate(GateConfig(**options), llm, None, None, "sanka", stickers)
 
 
-def decide(gate: ReplyGate, *, text="halo", is_dm=False, mentioned=False, replied=False, now=1000.0, **kwargs):
+def decide(
+    gate: ReplyGate,
+    *,
+    text="halo",
+    is_dm=False,
+    mentioned=False,
+    replied=False,
+    named=False,
+    sender_name="Tester",
+    now=1000.0,
+    **kwargs,
+):
     return asyncio.run(
         gate.decide(
             chat_id=DM if is_dm else CHAT,
@@ -49,6 +60,8 @@ def decide(gate: ReplyGate, *, text="halo", is_dm=False, mentioned=False, replie
             sender_id=SENDER,
             has_media=False,
             quote_sender_is_bot=False,
+            named=named,
+            sender_name=sender_name,
             now=now,
             **kwargs,
         )
@@ -67,30 +80,65 @@ def test_mention_replies_when_llm_decide_off() -> None:
     assert decision.act == "reply" and decision.reason == "mention"
 
 
-def test_llm_can_ignore_mention() -> None:
+def test_llm_ignore_mention_is_overridden() -> None:
     llm = FakeLLM('{"act":"ignore","why":"bukan buat aku"}')
 
     decision = decide(gate_of(llm, llm_decide=True), text="wkwk boong", mentioned=True)
 
-    assert decision.act == "ignore" and llm.decide_calls == 1
+    assert decision.act == "reply" and decision.reason == "mention"
+    assert llm.decide_calls == 1
 
 
-def test_llm_can_ignore_dm() -> None:
+def test_llm_ignore_dm_is_overridden() -> None:
     llm = FakeLLM('{"act":"ignore","why":"males"}')
 
     decision = decide(gate_of(llm, llm_decide=True), text="halo", is_dm=True)
 
+    assert decision.act == "reply" and decision.reason == "direct"
+
+
+def test_direct_mention_bypasses_cooldown() -> None:
+    gate = gate_of(reply_cooldown_seconds=45)
+    assert decide(gate, text="halo", mentioned=True, now=1000.0).act == "reply"
+    gate.record_sent(CHAT, SENDER, now=1000.0)
+
+    decision = decide(gate, text="halo lagi", mentioned=True, now=1005.0)
+
+    assert decision.act == "reply"
+
+
+def test_named_message_is_judged_by_llm() -> None:
+    llm = FakeLLM('{"act":"ignore","why":"tidak perlu"}')
+
+    decision = decide(gate_of(llm, llm_decide=True), text="sanka gimana", named=True)
+
+    assert llm.decide_calls == 1
     assert decision.act == "ignore"
 
 
-def test_ignore_cap_forces_reply() -> None:
-    llm = FakeLLM('{"act":"ignore"}')
-    gate = gate_of(llm, llm_decide=True, max_consecutive_ignores=2)
+def test_named_message_can_reply() -> None:
+    llm = FakeLLM('{"act":"reply","bubbles":1}')
 
-    decisions = [decide(gate, text="halo", is_dm=True, now=1000.0 + index) for index in range(3)]
+    decision = decide(gate_of(llm, llm_decide=True), text="sanka gimana", named=True)
 
-    assert [item.act for item in decisions] == ["ignore", "ignore", "reply"]
-    assert decisions[-1].reason == "ignore_cap"
+    assert decision.act == "reply" and decision.reason == "llm"
+
+
+def test_verdict_bubbles_are_clamped() -> None:
+    llm = FakeLLM('{"act":"reply","bubbles":9}')
+
+    decision = decide(gate_of(llm, llm_decide=True), text="sanka gimana", named=True)
+
+    assert decision.bubbles == 3
+    assert decide(gate_of(FakeLLM('{"act":"reply","bubbles":0}'), llm_decide=True), text="sanka", named=True).bubbles == 1
+
+
+def test_invalid_verdict_falls_back_to_score() -> None:
+    llm = FakeLLM("ngawur")
+
+    decision = decide(gate_of(llm, llm_decide=True), text="sanka gimana", named=True)
+
+    assert decision.act == "reply" and decision.reason.startswith("score:")
 
 
 def test_invalid_decision_falls_back_to_score() -> None:
@@ -129,10 +177,11 @@ def test_person_rate_limit() -> None:
     gate = gate_of(max_person_replies_per_10min=2)
     for index in range(2):
         moment = 1000.0 + index * 60
-        assert decide(gate, text="halo", is_dm=True, now=moment).act == "reply"
-        gate.record_sent(DM, SENDER, now=moment)
+        decision = decide(gate, text="kamu kok gitu sih?", replied=True, now=moment)
+        assert decision.act == "reply"
+        gate.record_sent(CHAT, SENDER, now=moment)
 
-    decision = decide(gate, text="halo", is_dm=True, now=1190.0)
+    decision = decide(gate, text="kamu kok gitu sih?", replied=True, now=1190.0)
 
     assert decision.act == "ignore" and decision.reason == "rate_limit"
 
