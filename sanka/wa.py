@@ -904,13 +904,14 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
         typing = asyncio.create_task(_keep_typing(client, jid))
         try:
             log.info(
-                "pesan chat=%s sender=%s role=%s act=%s mode=%s tone=%s",
+                "pesan chat=%s sender=%s role=%s act=%s mode=%s tone=%s addressed=%s",
                 chat,
                 sender,
                 role.name,
                 getattr(decision, "act", "command"),
                 getattr(decision, "mode", "-"),
                 getattr(decision, "tone", "-"),
+                getattr(decision, "addressed", "-"),
             )
             covered = frozenset({message.id})  # hanya pesan yang benar-benar dijawab turn ini
             reply: str | None = None
