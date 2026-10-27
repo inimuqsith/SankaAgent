@@ -141,7 +141,7 @@ style:
 
 ambient:
   enabled: true
-  tick_seconds: 120
+  tick_seconds: 10
   digest_every: 12
   digest_cooldown: 900
   history_window: 30
