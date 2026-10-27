@@ -53,6 +53,13 @@
   "chat baru aktif <30 menit" diganti "chat sepi >= `idle_minutes`" (maks `CHIME_QUIET_WINDOW`
   12 jam) karena gate lama membuat drive selalu di-reset pesan sehingga komponen emosi mustahil
   tumbuh. Cooldown/plafon harian tetap sebagai pengaman anti-spam.
+- Chime tidak deterministik dan berjatah: peluang = `(urge - chime_urge) / (1 - chime_urge)`, jadi
+  makin kuat perasaannya makin mungkin menyelituk, dan model tetap bisa memutuskan `[DIAM]`.
+  Ditambah rail global `chime_gap_seconds` (default 1800) dan `chime_per_day_global` (default 4
+  percobaan / 24 jam untuk semua chat) di samping cooldown + plafon per chat.
+- Prompt chime menyebut nama grup, identitas tunggal (Sanka yang sama di ALD, grup tester, Sunan
+  Dahlan, DM — hanya tempatnya beda), nilai dorongan, dan `memory.actions_context()` supaya tidak
+  menyalin celetukan yang sama ke banyak chat.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 from datetime import date, datetime
 
@@ -29,6 +30,10 @@ Jangan mengulang pertanyaan, jangan minta izin, jangan menjelaskan proses, janga
 jangan mengarang fakta. Kadang kamu penasaran dan ingin tahu kelanjutan; kadang kamu gabut atau
 kesepian dan meratapi chat yang sepi. Jangan menuduh, jangan memancing dengan pertanyaan berulang.
 Jika tidak ada nilai, balas [DIAM].
+Kamu satu orang yang sama di semua chat WhatsApp: bukan akun lain, bukan persona lain. Yang beda
+hanya tempatnya, jadi kamu boleh memilih chat mana yang ingin kamu selituki, tapi jangan menyalin
+celetukan yang sama ke banyak chat, jangan mengaku sedang di tempat lain, dan jangan membocorkan isi
+chat lain yang tidak relevan di sini.
 Kamu tidak punya tubuh fisik; jangan mengarang kondisi tubuh."""
 
 
@@ -61,6 +66,8 @@ class Ambient:
         self.busy: set[str] = set()
         self.tasks: set[asyncio.Task] = set()
         self._last_human: dict[str, float] = {}
+        self._last_chime = 0.0  # jeda global: satu menyelituk untuk semua chat
+        self._chime_log: list[float] = []  # percobaan chime 24 jam terakhir (plafon global)
         self._task: asyncio.Task | None = None
 
     # ------------------------------------------------------------------ lifecycle
@@ -190,15 +197,32 @@ class Ambient:
             return False
         if int(topic["chime_count"]) >= int(settings.chime_per_day):
             return False
+        if moment - self._last_chime < float(settings.chime_gap_seconds):
+            return False  # baru menyelituk di chat mana pun: jangan beruntun
+        if len(self._recent_chimes(moment)) >= int(settings.chime_per_day_global):
+            return False  # jatah 24 jam seluruh chat sudah habis
         rows = self._recent(chat_id, 3)
         if not rows or getattr(rows[-1], "outgoing", False):
             return False
         urge = self._urge(chat_id)
-        if urge < float(settings.chime_urge):
+        floor = float(settings.chime_urge)
+        if urge <= floor:
             log.debug("ambient chime ditahan chat=%s urge=%.2f", chat_id, urge)
             return False
-        log.info("ambient chime dipicu chat=%s urge=%.2f", chat_id, urge)
+        chance = min(1.0, (urge - floor) / (1.0 - floor))
+        if random.random() >= chance:
+            log.debug(
+                "ambient chime ditahan chat=%s urge=%.2f peluang=%.2f", chat_id, urge, chance
+            )
+            return False
+        log.info("ambient chime dipicu chat=%s urge=%.2f peluang=%.2f", chat_id, urge, chance)
         return True
+
+    def _recent_chimes(self, moment: float) -> list[float]:
+        """Percobaan chime dalam 24 jam terakhir; jatah harian global dihitung dari sini."""
+        cutoff = moment - 86400.0
+        self._chime_log = [stamp for stamp in self._chime_log if stamp >= cutoff]
+        return self._chime_log
 
     def _urge(self, chat_id: str) -> float:
         """Dorongan untuk menyelituk, murni dari keadaan: 0 berarti betah diam.
@@ -338,6 +362,17 @@ class Ambient:
             return
         topic = self.affect.topic(chat_id)
         parts: list[str] = []
+        place = chat_id
+        if self.sessions is not None:
+            try:
+                place = self.sessions.chat_name(chat_id) or chat_id
+            except Exception:
+                place = chat_id
+        parts.append(
+            f"Kamu sedang di grup \"{place}\". Kamu memilih menyelituk di sini, bukan di chat lain; "
+            f"ini chat yang sama dengan Sanka di mana pun, cuma tempatnya beda."
+        )
+        parts.append(f"Doronganmu sekarang: {self._urge(chat_id):.2f} dari 1.00 (0 = betah diam).")
         if str(topic["summary"]).strip():
             parts.append(f"Topik yang sedang hangat: {topic['summary']}")
         pending = [str(item) for item in topic["unresolved"] if str(item).strip()]
@@ -351,6 +386,13 @@ class Ambient:
                 memory_block = ""
         if memory_block:
             parts.append(memory_block)
+        if self.memory is not None:
+            try:
+                ledger = self.memory.actions_context()
+            except Exception:
+                ledger = ""
+            if ledger:
+                parts.append(ledger)  # biar tidak mengulang aksi yang sama di chat lain
         if self.style is not None:
             try:
                 parts.append(self.style.profile(chat_id))
@@ -364,6 +406,8 @@ class Ambient:
             parts.append(affect_block)
         parts.append("Percakapan terakhir:\n" + "\n".join(self._line(row) for row in rows))
         text = await self.llm.chime(CHIME_SYSTEM, "\n\n".join(parts))
+        self._last_chime = time.time()  # satu percobaan pun menghabiskan jeda global
+        self._chime_log.append(self._last_chime)
         if not text:
             self.affect.mark_chime(chat_id)
             return

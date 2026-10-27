@@ -69,6 +69,7 @@ affect:
   vibe:
     enabled: true               # default aktif; butuh torch + transformers (extra "vibe")
     model: "Aardiiiiy/EmoSense-ID-Indonesian-Emotion-Classifier"
+    max_length: 128             # potong teks panjang sebelum klasifikasi
     state_path: ".sanka/vibe.json"
     attack: 0.35                # seberapa cepat pesan baru menarik mood
     baseline_influence: 0.05    # seberapa cepat mood dasar ikut bergeser
@@ -105,6 +106,8 @@ ambient:
   chime_cooldown: 3600
   chime_per_day: 6
   chime_urge: 0.45        # ambang dorongan emosi untuk menyelituk (kecilkan = lebih sering)
+  chime_gap_seconds: 1800 # jeda minimum antar menyelituk, semua chat
+  chime_per_day_global: 4 # jatah menyelituk 24 jam untuk semua chat
   research_cooldown: 21600
   research_per_day: 6
   research_results: 5

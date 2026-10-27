@@ -109,6 +109,7 @@ class FakeLLM:
     def __init__(self, digest: dict | None = None) -> None:
         self.payload = digest or {}
         self.chime_calls = 0
+        self.chime_prompts: list[str] = []
         self.transcripts: list[str] = []
 
     async def digest(self, chat_name: str, transcript: str, topic: str, people: str) -> dict:
@@ -120,6 +121,7 @@ class FakeLLM:
 
     async def chime(self, system: str, user: str) -> str:
         self.chime_calls += 1
+        self.chime_prompts.append(user)
         return "eh masih pada di sini?"
 
 
@@ -359,12 +361,38 @@ def chime_ambient(tmp_path, affect, rows: list[ChatMessage] | None = None) -> Am
     )
 
 
-def test_chime_candidate_follows_emotional_urge(tmp_path) -> None:
+def test_chime_candidate_follows_emotional_urge(tmp_path, monkeypatch) -> None:
     ambient = chime_ambient(tmp_path, LonelyAffect())
+    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
 
     assert ambient._urge(CHAT) >= 0.45
     assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is True
     assert asyncio.run(ambient._chime_candidate(DM, time.time())) is False  # DM tidak pernah diselituki
+
+
+def test_chime_is_a_draw_not_a_schedule(tmp_path, monkeypatch) -> None:
+    # Keadaan sama, undian beda: deterministik kalau dipaksa 0, diam kalau dipaksa 1.
+    ambient = chime_ambient(tmp_path, LonelyAffect())
+    moment = time.time()
+    monkeypatch.setattr(ambient_module.random, "random", lambda: 1.0)
+    assert asyncio.run(ambient._chime_candidate(CHAT, moment)) is False
+    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
+    assert asyncio.run(ambient._chime_candidate(CHAT, moment)) is True
+
+
+def test_chime_global_gap_and_daily_budget(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
+    moment = time.time()
+    gap = chime_ambient(tmp_path, LonelyAffect())
+    gap._last_chime = moment - 60  # baru menyelituk di chat lain semenit lalu
+    assert asyncio.run(gap._chime_candidate(CHAT, moment)) is False
+
+    spent = chime_ambient(tmp_path, LonelyAffect())
+    spent._chime_log = [moment - index * 600 for index in range(4)]  # jatah 24 jam habis
+    assert asyncio.run(spent._chime_candidate(CHAT, moment)) is False
+
+    spent._chime_log = [moment - 86400 - 1]  # sudah lewat 24 jam, jatah pulih
+    assert asyncio.run(spent._chime_candidate(CHAT, moment)) is True
 
 
 def test_calm_room_keeps_sanka_quiet(tmp_path) -> None:
@@ -415,3 +443,32 @@ def test_digest_parsing_rejects_secrets_and_junk() -> None:
     assert data["facts"][1]["kind"] == "note"
     assert data["unresolved"] == ["jam berapa?"]
     assert parse_digest("bukan json") == {"topic": "", "keywords": [], "facts": [], "unresolved": []}
+
+
+def test_chime_prompt_names_place_and_single_identity(tmp_path) -> None:
+    class FakeSessions:
+        def chat_name(self, chat_id: str) -> str:
+            return "Grup Sunan Dahlan"
+
+    sent: list[tuple[str, str]] = []
+    affect = LonelyAffect()
+    ambient = Ambient(
+        make_config(tmp_path),
+        FakeLLM(),
+        affect,
+        None,
+        None,
+        FakeHistory([message("sepi ya")]),
+        sessions=FakeSessions(),
+        send_text=lambda chat_id, text: sent.append((chat_id, text)),
+    )
+    ambient.known_chats.add(CHAT)
+
+    asyncio.run(ambient._chime(CHAT))
+
+    prompt = ambient.llm.chime_prompts[0]
+    assert 'Kamu sedang di grup "Grup Sunan Dahlan"' in prompt
+    assert "satu orang yang sama dengan Sanka" in prompt or "ini chat yang sama dengan Sanka" in prompt
+    assert "Doronganmu sekarang:" in prompt
+    assert sent == [(CHAT, "eh masih pada di sini?")]
+    assert ambient._chime_log  # percobaan dihitung untuk jatah 24 jam

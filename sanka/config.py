@@ -126,6 +126,8 @@ class AmbientConfig:
     chime_cooldown: int = 3600
     chime_per_day: int = 6
     chime_urge: float = 0.45  # ambang dorongan (emosi) untuk menyelituk
+    chime_gap_seconds: float = 1800.0  # jeda minimum antar menyelituk di chat mana pun
+    chime_per_day_global: int = 4  # jatah menyelituk 24 jam untuk semua chat
     research_cooldown: int = 21600
     research_per_day: int = 6
     research_results: int = 5
@@ -482,6 +484,8 @@ def load_config(path: str | None = None) -> Config:
             chime_cooldown=int(_num(ambient_raw.get("chime_cooldown"), 3600)),
             chime_per_day=int(_num(ambient_raw.get("chime_per_day"), 6)),
             chime_urge=_num(ambient_raw.get("chime_urge"), 0.45),
+            chime_gap_seconds=_num(ambient_raw.get("chime_gap_seconds"), 1800.0),
+            chime_per_day_global=int(_num(ambient_raw.get("chime_per_day_global"), 4)),
             research_cooldown=int(_num(ambient_raw.get("research_cooldown"), 21600)),
             research_per_day=int(_num(ambient_raw.get("research_per_day"), 6)),
             research_results=int(_num(ambient_raw.get("research_results"), 5)),
