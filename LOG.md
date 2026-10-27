@@ -1,5 +1,40 @@
 # LOG
 
+## 2026-10-28 (arah pesan, /mood, dan kirim ke CP)
+
+- `sanka/chat.py`: `MEDIA_LABELS` + `prompt_entry(entry, bot_name, limit)` — satu baris konteks
+  (nama, teks, label media, kutipan) untuk gate dan appraisal; pengganti renderer teks-saja yang
+  membuang pesan stiker/lampiran tanpa caption. `_message_lines` tidak berubah.
+- `sanka/gate.py`: `decide(current=...)` meneruskan pesan asli + fakta arah (`men-tag kamu`,
+  `membalas pesanmu`, `membalas pesan orang lain, bukan pesanmu`, sebut nama) ke `_ask`/`_review`/
+  `_context` (parameter opsional, jadi pemanggil lama tetap jalan). `_context` memakai
+  `prompt_entry` sehingga `[stiker]` dan kutipan ikut terlihat. `DECIDE_PROMPT`/`JUDGE_PROMPT`
+  kini menyuruh model menentukan objek bicara dulu, mengenali variasi nama memanjang/typo, tidak
+  memindahkan objek sindiran orang lain ke diri sendiri, tidak menuduh ngambek dari stiker, dan
+  tidak mengarang kondisi tubuh. `score()` dan override tag/DM tidak berubah.
+- `sanka/llm.py`, `sanka/wa.py`, `sanka/ambient.py`: aturan arah/stiker/tubuh yang sama di
+  `APPRAISE_PROMPT`; `_appraisal_context` memakai `prompt_entry` (stiker dan kutipan tidak lagi
+  hilang karena `if not body: continue`); blok "Cara membaca pesan" di `system_prompt`; chime
+  melarang mengarang kondisi tubuh.
+- `sanka/wa.py`: `_name_body` (huruf berulang: `s+a+n+k+a+`) dipakai `named`/`mentioned`, jadi
+  `SANKAAAAAAAAA`/`SANNNKAAAAAA`/`sankaaaaaa` lolos routing dan `sankas` tidak.
+- `sanka/affect.py`: `modes()` menambah `relation` (`_relation` untuk orang itu) dan `person_name`.
+- `sanka/commands/mood.py` (baru): `/mood` menampilkan label mood, perasaan (valence), energi,
+  gabut/kesepian, status ngambek/nangis, dan hubungan dengan pengirim; fallback
+  `state emosi belum aktif.` tanpa AffectStore. `guard.EXEMPT_COMMANDS` + `roles.member.commands`
+  (config + example) ditambah `mood`, jadi `/mood` tetap menjawab saat Sanka ngambek.
+- `sanka/history.py`: `contacts(query, limit)` — kontak perorangan di arsip, `@lid` dipetakan ke
+  PN lewat `lid_map`, dedupe per JID kirim.
+- `sanka/tools/send_to.py`: `_resolve_target` mencocokkan JID/nama persis/potongan atas gabungan
+  grup + kontak (ambigu -> `beberapa target cocok`), daftar kosong menampilkan `Grup di arsip` dan
+  `Kontak di arsip`, JID `@lid` yang dipetakan ke satu PN tetap bisa dikirim. Prompt `cross_send`
+  mewajibkan panggilan `send_to` yang sukses sebelum mengaku mengirim ("aku cp kamu aja").
+- Uji: `tests/test_gate.py` (konteks stiker + kutipan + arah), `tests/test_context.py`
+  (`prompt_entry`), `tests/test_commands.py` (`/mood` + tanpa affect), `tests/test_smoke.py`
+  (nama memanjang + routing), `tests/test_send.py` (kirim ke kontak + ledger + daftar kontak),
+  `tests/test_registry.py` (mood di registry dan pola member). `pytest -q` 179 lulus,
+  `python -m sanka selftest` SELFTEST OK (member kini punya `mood`).
+
 ## 2026-10-27 (jiwa ganda: appraisal LLM, heartbeat, sulk yang tetap menjawab)
 
 - `sanka/llm.py`: `APPRAISE_PROMPT` + `LLM.appraise` (tanpa tool, `llm.appraise_temperature`) dan

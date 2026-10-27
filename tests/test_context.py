@@ -6,6 +6,7 @@ import asyncio
 import re
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from neonize.proto.Neonize_pb2 import Message
 
@@ -17,6 +18,7 @@ from sanka.chat import (
     build_user_content,
     describe_media,
     message_text,
+    prompt_entry,
 )
 from sanka.config import (
     Config,
@@ -208,3 +210,15 @@ def test_mention_wrappers_are_stripped_from_text() -> None:
     ev.Message.conversation = "@\u2068Sanka\u2069 coba search ini\u00a0ya"
 
     assert message_text(ev.Message) == "@Sanka coba search ini ya"
+
+
+def test_prompt_entry_marks_sticker_and_quote() -> None:
+    quote = Quote(id="q", sender_name="Ilham", sender_id="", text="pantes bego")
+    current = chat_message(
+        "m1", "", media=SimpleNamespace(kind="sticker"), quote=quote
+    )
+
+    line = prompt_entry(current, "sanka", 300)
+
+    assert "Budi: [stiker]" in line
+    assert 'membalas Ilham: "pantes bego"' in line

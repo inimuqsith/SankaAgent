@@ -265,7 +265,7 @@ def test_send_to_lists_ambiguity_and_is_owner_only(tmp_path: Path) -> None:
     assert "Grup di arsip" in listing and "Grup Foto A (1@g.us)" in listing
 
     ambiguous = asyncio.run(execute(TOOLS.by_name, "send_to", {"chat": "foto", "text": "x"}, ctx))
-    assert "beberapa grup cocok" in ambiguous
+    assert "beberapa target cocok" in ambiguous
     assert "1@g.us" in ambiguous and "2@g.us" in ambiguous
 
     missing = asyncio.run(execute(TOOLS.by_name, "send_to", {"chat": "tidak ada", "text": "x"}, ctx))
@@ -274,4 +274,46 @@ def test_send_to_lists_ambiguity_and_is_owner_only(tmp_path: Path) -> None:
     member = ToolContext(config, RoleConfig("member"), ("send",), history=store)
     denied = asyncio.run(execute(TOOLS.by_name, "send_to", {"chat": "Grup Foto A", "text": "x"}, member))
     assert "tidak diizinkan untuk role 'member'" in denied
+    store.close()
+
+
+def test_send_to_resolves_contact_for_private_chat(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    store = HistoryStore(tmp_path / "history.db", tmp_path)
+    store.set_contact("628123456789@s.whatsapp.net", "Ilham JC")
+    client = NewAClient.__new__(NewAClient)
+    sent: list[tuple] = []
+
+    async def send_message(to, message, link_preview=False, add_msg_secret=False):
+        sent.append((to.User, to.Server, message))
+        return SimpleNamespace(ID="T2")
+
+    client.send_message = send_message
+    app = App(config, None, None, Sessions(store=store))
+    app.client = client
+    memory = MemoryStore(tmp_path / "memory.db")
+    ctx = ToolContext(
+        config,
+        RoleConfig("owner"),
+        ("send_to",),
+        chat_id="9@g.us",
+        history=store,
+        memory=memory,
+        send_file=app.send_file,
+        send_message=app.send_text,
+        request="cp ilham",
+    )
+
+    result = asyncio.run(
+        execute(TOOLS.by_name, "send_to", {"chat": "ilham", "text": "halo"}, ctx)
+    )
+
+    dm = "628123456789@s.whatsapp.net"
+    assert result.startswith('ok: terkirim ke "Ilham JC"')
+    assert sent == [("628123456789", "s.whatsapp.net", "halo")]
+    assert app.sessions.get(dm)[-1].outgoing is True
+    assert memory.recent_actions(1)[0]["target"] == dm
+    listing = asyncio.run(execute(TOOLS.by_name, "send_to", {}, ctx))
+    assert "Kontak di arsip" in listing and "Ilham JC" in listing
+    memory.close()
     store.close()

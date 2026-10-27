@@ -63,7 +63,7 @@ roles:
     commands: ["*"]
   member:
     tools: ["read", "web_search", "chat_history", "memory", "skill", "send", "mcp__*"]
-    commands: ["help", "ping", "reset", "whoami", "status", "tools", "cari", "memori", "skill", "kirim"]
+    commands: ["help", "ping", "reset", "whoami", "status", "tools", "cari", "memori", "skill", "kirim", "mood"]
     # user/panitia: memori chat + global (scope pada tool memory), baca skill, kirim file.
     # Hapus memori dan simpan skill tetap owner-only. Batasi `users:` bila bot
     # menerima DM publik.

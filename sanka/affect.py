@@ -443,6 +443,17 @@ class AffectStore:
             "energy": float(drives["energy"]),
             "boredom": float(drives["boredom"]),
             "loneliness": float(drives["loneliness"]),
+            "relation": (
+                _relation(
+                    float(person["affection"]),
+                    float(person["annoyance"]),
+                    float(person["trust"]),
+                    str(person["stage"]),
+                )
+                if person_id
+                else ""
+            ),
+            "person_name": str(person["name"]) if person_id else "",
         }
 
     # ------------------------------------------------------------------ tulis state

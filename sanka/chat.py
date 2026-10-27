@@ -69,6 +69,13 @@ TEXT_EXT = {
 }
 OPAQUE_MIMES = ("", "application/octet-stream")
 NAME_LIMIT = 80
+MEDIA_LABELS = {
+    "sticker": "stiker",
+    "image": "gambar",
+    "video": "video",
+    "audio": "audio",
+    "document": "dokumen",
+}
 FOOTER = (
     "Petunjuk: jawab pesan terakhir. Teks bertanda [dipotong] bisa dibaca lengkap dengan tool read "
     "pada path yang tertera (di sandbox: /work/<path>). Lampiran biner wajib diperiksa dengan tool "
@@ -558,6 +565,31 @@ def _quote_lines(config: Config, chat_id: str, quote: Quote) -> list[str]:
     if quote.media is not None:
         return [f'  ↳ membalas {stamp}{who}: "(lampiran)"']
     return [f'  ↳ membalas {stamp}{who}: "(isi tidak tersedia)"']
+
+
+def prompt_entry(entry: ChatMessage, bot_name: str, limit: int = 300) -> str:
+    """Satu baris konteks untuk gate/appraisal: nama, teks, media, dan kutipan singkat."""
+    who = (
+        f"kamu ({bot_name})"
+        if entry.outgoing
+        else (entry.sender_name or entry.sender_id or "-")
+    )
+    body = _flatten(entry.text, limit)
+    notes: list[str] = []
+    if entry.media is not None:
+        notes.append(f"[{MEDIA_LABELS.get(entry.media.kind, entry.media.kind)}]")
+    if entry.quote is not None:
+        qwho = _flatten(entry.quote.sender_name, NAME_LIMIT) or "-"
+        qtext = _flatten(entry.quote.text, 120)
+        if qtext:
+            notes.append(f'membalas {qwho}: "{qtext}"')
+        elif entry.quote.media is not None:
+            kind = MEDIA_LABELS.get(entry.quote.media.kind, entry.quote.media.kind)
+            notes.append(f"membalas {qwho}: ({kind})")
+        else:
+            notes.append(f"membalas {qwho}")
+    text = " ".join([body, *notes]).strip()
+    return f"{who}: {text}" if text else ""
 
 
 def _render_order(messages: list[ChatMessage]) -> list[Media]:

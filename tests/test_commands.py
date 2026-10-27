@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from sanka.commands import REGISTRY as COMMANDS
 from sanka.commands.cari import cari
 from sanka.commands.help import help_command
+from sanka.commands.mood import mood
 from sanka.commands.status import status
 from sanka.commands.tools import tools_command
 from sanka.commands.whoami import whoami
@@ -152,3 +153,41 @@ def test_help_detail_respects_role_and_accepts_alias() -> None:
 
     ctx.args = "tidak-ada"
     assert "tidak dikenal" in asyncio.run(help_command(ctx))
+
+
+class FakeAffect:
+    def modes(self, chat_id: str, person_id: str) -> dict:
+        return {
+            "label": "jahil",
+            "valence": 0.4,
+            "energy": 0.5,
+            "boredom": 0.2,
+            "loneliness": 0.1,
+            "level": 0,
+            "crying": False,
+            "relation": "dekat",
+            "person_name": "Muqsith",
+        }
+
+
+def test_mood_reports_affect_state() -> None:
+    fake_app = app()
+    fake_app.affect = FakeAffect()
+    ctx = SimpleNamespace(app=fake_app, chat_id="123@g.us", sender="628123", role=RoleConfig("owner"))
+
+    lines = asyncio.run(mood(ctx)).splitlines()
+
+    assert lines[0] == "💭 *Mood Sanka*"
+    for fragment in (
+        "• Lagi: jahil",
+        "• Perasaan: senang",
+        "• Status: nggak ngambek",
+        "• Ke Muqsith: dekat",
+    ):
+        assert fragment in lines
+
+
+def test_mood_without_affect_store() -> None:
+    ctx = SimpleNamespace(app=app(), chat_id="123@g.us", sender="", role=RoleConfig("owner"))
+
+    assert asyncio.run(mood(ctx)) == "state emosi belum aktif."

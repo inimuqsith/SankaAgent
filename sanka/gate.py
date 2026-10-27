@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 
 from . import guard
+from .chat import ChatMessage, prompt_entry
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,19 @@ Balas HANYA JSON: {"act":"reply|react|ignore","bubbles":1,"why":"<=80 char"}
 - Kalau pesan men-tag atau membalas kamu, jangan pilih ignore.
 - Kalau orang lain menyebut namamu atau membicarakanmu tanpa men-tag, boleh reply/react;
   pilih ignore kalau tidak ada nilai.
+- Tentukan dulu siapa yang diajak bicara. "kamu/lu/lo" belum tentu kamu; cek pengirim,
+  kutipan, tag, dan siapa yang baru bicara.
+- Anggap untukmu hanya bila pesan men-tag/membalas pesanmu, memanggil namamu (termasuk
+  variasi memanjang/typo seperti SANKAAAAAAAAA, SANNNKAAAAAA, sankaaaaaa), atau jelas
+  melanjutkan percakapan denganmu.
+- Sindiran/ledekan yang objeknya orang lain bukan untukmu. Contoh: "pantes bego" yang
+  bukan balasan/panggilan untukmu -> ignore/react. "ilham cuekin aja" yang memerintahkanmu
+  mengabaikan Ilham -> untukmu.
+- Stiker/emoji tanpa kata bukan bukti kamu atau orang lain sedang ngambek. Stiker kucing
+  menunduk bisa berarti malu, tunduk, minta maaf, atau bercanda; jangan menuduh ngambek
+  tanpa kata-kata.
+- Kamu tidak punya tubuh fisik. Jangan mengarang kondisi tubuh (kaki pegal, badan capek,
+  sakit).
 Pertimbangkan mood, drive (gabut/kesepian/energi), hubungan, dan siapa yang aktif.
 Jangan menjelaskan proses, jangan menyebut AI."""
 
@@ -41,7 +55,13 @@ Aturan:
 - reply: pesan ditujukan ke Sanka, bertanya, minta bantuan, mengoreksi, atau melanjutkan obrolan dengannya.
 - react: cukup reaksi singkat/stiker; tidak perlu jawaban.
 - ignore: percakapan antar manusia, ledekan yang tidak butuh jawaban, spam, atau Sanka baru saja menjawab.
-- Pesan yang membalas Sanka tetapi hanya komentar ke orang lain → ignore."""
+- Pesan yang membalas Sanka tetapi hanya komentar ke orang lain → ignore.
+- Tentukan dulu siapa yang diajak bicara. "kamu/lu/lo" belum tentu Sanka; pesan hanya untuk Sanka
+  bila men-tag/membalas pesannya, memanggil namanya (termasuk variasi memanjang/typo), atau jelas
+  melanjutkan percakapan dengannya.
+- Sindiran/ledekan yang objeknya orang lain bukan untuk Sanka.
+- Stiker/emoji tanpa kata bukan bukti ngambek atau marah; jangan mengarang isi visual atau kondisi
+  tubuh yang tidak diberikan."""
 
 ACTS = frozenset({"reply", "react", "ignore"})
 SECOND_PERSON = re.compile(r"\b(kamu|lu|lo|kau|km|kmu|sanka|san)\b", re.IGNORECASE)
@@ -261,6 +281,7 @@ class ReplyGate:
         has_quote: bool = False,
         named: bool = False,
         sender_name: str = "",
+        current: ChatMessage | None = None,
         now: float | None = None,
     ) -> Decision:
         moment = time.time() if now is None else float(now)
@@ -293,7 +314,17 @@ class ReplyGate:
         act, bubbles = "", 1
         if self.config.llm_decide and callable(getattr(self.llm, "decide", None)):
             act, bubbles = await self._ask(
-                chat_id, text, sender_id, sender_name, named, moment
+                chat_id,
+                text,
+                sender_id,
+                sender_name,
+                named,
+                moment,
+                current=current,
+                mentioned=mentioned,
+                replied_to_bot=replied_to_bot,
+                has_quote=has_quote,
+                quote_sender_is_bot=quote_sender_is_bot,
             )
 
         if direct:
@@ -320,7 +351,19 @@ class ReplyGate:
             and float(self.config.review_low) <= value < float(self.config.review_high)
             and callable(getattr(self.llm, "judge", None))
         ):
-            verdict = await self._review(chat_id, text, sender_id, sender_name, named, moment)
+            verdict = await self._review(
+                chat_id,
+                text,
+                sender_id,
+                sender_name,
+                named,
+                moment,
+                current=current,
+                mentioned=mentioned,
+                replied_to_bot=replied_to_bot,
+                has_quote=has_quote,
+                quote_sender_is_bot=quote_sender_is_bot,
+            )
             if verdict:
                 return self._log(self._apply(verdict, 1, value, "review", chat_id))
         return self._log(Decision("ignore", f"score:{why}", value))
@@ -340,6 +383,12 @@ class ReplyGate:
         sender_name: str,
         named: bool,
         moment: float,
+        *,
+        current: ChatMessage | None = None,
+        mentioned: bool = False,
+        replied_to_bot: bool = False,
+        has_quote: bool = False,
+        quote_sender_is_bot: bool = False,
     ) -> tuple[str, int]:
         from .llm import parse_verdict
 
@@ -347,7 +396,19 @@ class ReplyGate:
         if len(self._decisions) >= int(self.config.max_decisions_per_minute):
             return "", 1
         self._decisions.append(moment)
-        user = self._context(chat_id, text, sender_id, sender_name, named, moment)
+        user = self._context(
+            chat_id,
+            text,
+            sender_id,
+            sender_name,
+            named,
+            moment,
+            current=current,
+            mentioned=mentioned,
+            replied_to_bot=replied_to_bot,
+            has_quote=has_quote,
+            quote_sender_is_bot=quote_sender_is_bot,
+        )
         try:
             raw = await asyncio.wait_for(
                 self.llm.decide(DECIDE_PROMPT, user), timeout=DECIDE_TIMEOUT
@@ -368,6 +429,12 @@ class ReplyGate:
         sender_name: str,
         named: bool,
         moment: float,
+        *,
+        current: ChatMessage | None = None,
+        mentioned: bool = False,
+        replied_to_bot: bool = False,
+        has_quote: bool = False,
+        quote_sender_is_bot: bool = False,
     ) -> str:
         from .llm import parse_verdict
 
@@ -379,7 +446,19 @@ class ReplyGate:
             raw = await asyncio.wait_for(
                 self.llm.judge(
                     JUDGE_PROMPT,
-                    self._context(chat_id, text, sender_id, sender_name, named, moment),
+                    self._context(
+                        chat_id,
+                        text,
+                        sender_id,
+                        sender_name,
+                        named,
+                        moment,
+                        current=current,
+                        mentioned=mentioned,
+                        replied_to_bot=replied_to_bot,
+                        has_quote=has_quote,
+                        quote_sender_is_bot=quote_sender_is_bot,
+                    ),
                 ),
                 timeout=DECIDE_TIMEOUT,
             )
@@ -399,6 +478,12 @@ class ReplyGate:
         sender_name: str,
         named: bool,
         moment: float,
+        *,
+        current: ChatMessage | None = None,
+        mentioned: bool = False,
+        replied_to_bot: bool = False,
+        has_quote: bool = False,
+        quote_sender_is_bot: bool = False,
     ) -> str:
         """Konteks keputusan: siapa, mood/drive/hubungan, dan percakapan yang sudah ada."""
         parts: list[str] = []
@@ -411,18 +496,9 @@ class ReplyGate:
                 parts.append(prompt[:PROMPT_CHARS])
         lines: list[str] = []
         for entry in self._recent(chat_id)[-HISTORY_LINES:]:
-            body = " ".join(str(getattr(entry, "text", "") or "").split())
-            if not body:
-                continue
-            if getattr(entry, "outgoing", False):
-                who = f"kamu ({self.bot_name})"
-            else:
-                who = (
-                    getattr(entry, "sender_name", "")
-                    or getattr(entry, "sender_id", "")
-                    or "-"
-                )
-            lines.append(f"{who}: {body[:HISTORY_CHARS]}")
+            line = prompt_entry(entry, self.bot_name, HISTORY_CHARS)
+            if line:
+                lines.append(line)
         if lines:
             parts.append("Percakapan terakhir:\n" + "\n".join(lines))
         stamps = sorted(self._sent.get(chat_id, []))
@@ -434,11 +510,23 @@ class ReplyGate:
         parts.append(status)
         name = " ".join(str(sender_name or "").split()) or "-"
         parts.append(f"Pengirim sekarang: {name} ({sender_id or '-'})")
+        facts: list[str] = []
+        if mentioned:
+            facts.append("men-tag kamu")
+        if replied_to_bot or (has_quote and quote_sender_is_bot):
+            facts.append("membalas pesanmu")
+        elif has_quote:
+            facts.append("membalas pesan orang lain, bukan pesanmu")
         if named:
-            parts.append("Catatan: pesan ini menyebut namamu tanpa men-tag.")
-        parts.append(
-            f"Pesan terakhir dari {name}: {' '.join(str(text or '').split())[:HISTORY_CHARS]}"
+            facts.append("menyebut namamu (bisa variasi memanjang/typo)")
+        if facts:
+            parts.append("Arah pesan: " + "; ".join(facts) + ".")
+        last_line = (
+            prompt_entry(current, self.bot_name, HISTORY_CHARS)
+            if current is not None
+            else f"{name}: {' '.join(str(text or '').split())[:HISTORY_CHARS]}"
         )
+        parts.append("Pesan terakhir: " + (last_line or "(kosong)"))
         return "\n\n".join(parts)
 
     def record_sent(self, chat_id: str, person_id: str, now: float | None = None) -> None:

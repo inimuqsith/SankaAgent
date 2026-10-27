@@ -405,6 +405,37 @@ class HistoryStore:
             rows = self._require().execute(sql, (term, like, like, term, like, like, limit)).fetchall()
             return [(str(row["chat_id"]), str(row["name"])) for row in rows]
 
+    def contacts(self, query: str = "", limit: int = 20) -> list[tuple[str, str]]:
+        """Kontak perorangan di arsip, terbaru dulu; hasil (JID kirim, nama)."""
+        limit = max(1, min(int(limit or 20), 50))
+        term = str(query or "").strip()
+        like = f"%{term}%"
+        sql = """
+            SELECT c.jid AS source, COALESCE(NULLIF(l.pn, ''), c.jid) AS jid,
+                   COALESCE(NULLIF(c.name, ''), NULLIF(c.push_name, ''), '') AS name,
+                   c.updated_at AS last
+            FROM contacts c
+            LEFT JOIN lid_map l ON l.lid = c.jid
+            WHERE (c.jid LIKE '%@s.whatsapp.net' OR c.jid LIKE '%@lid')
+              AND (?='' OR COALESCE(c.name, '') LIKE ? OR COALESCE(c.push_name, '') LIKE ?
+                   OR c.jid LIKE ? OR COALESCE(l.pn, '') LIKE ?)
+            ORDER BY c.updated_at DESC, c.jid
+            LIMIT ?
+        """
+        with self._lock:
+            rows = self._require().execute(sql, (term, like, like, like, like, limit)).fetchall()
+        found: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for row in rows:
+            jid = str(row["jid"] or "")
+            if "@" not in jid:
+                jid = f"{jid}@s.whatsapp.net"
+            if not jid or jid in seen:
+                continue
+            seen.add(jid)
+            found.append((jid, str(row["name"])))
+        return found
+
     def _set_contact(self, jid: str, name: str = "", push_name: str = "") -> None:
         if not jid:
             return

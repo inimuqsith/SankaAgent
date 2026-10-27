@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 
+from sanka.chat import ChatMessage, Media, Quote
 from sanka.config import GateConfig
 from sanka.gate import ReplyGate, contentless
 
@@ -17,13 +19,16 @@ class FakeLLM:
         self.verdict = verdict
         self.decide_calls = 0
         self.judge_calls = 0
+        self.user = ""
 
     async def decide(self, system: str, user: str) -> str:
         self.decide_calls += 1
+        self.user = user
         return self.verdict
 
     async def judge(self, system: str, user: str) -> str:
         self.judge_calls += 1
+        self.user = user
         return self.verdict
 
 
@@ -48,6 +53,9 @@ def decide(
     named=False,
     sender_name="Tester",
     now=1000.0,
+    has_media=False,
+    has_quote=False,
+    quote_sender_is_bot=False,
     **kwargs,
 ):
     return asyncio.run(
@@ -58,8 +66,9 @@ def decide(
             mentioned=mentioned,
             replied_to_bot=replied,
             sender_id=SENDER,
-            has_media=False,
-            quote_sender_is_bot=False,
+            has_media=has_media,
+            quote_sender_is_bot=quote_sender_is_bot,
+            has_quote=has_quote,
             named=named,
             sender_name=sender_name,
             now=now,
@@ -259,3 +268,29 @@ def test_contentless_detection() -> None:
     assert contentless("", has_media=True) is True
     assert contentless("🗿", has_media=False) is True
     assert contentless("halo", has_media=False) is False
+
+
+def test_gate_context_includes_sticker_quote_and_direction() -> None:
+    llm = FakeLLM('{"act":"ignore","why":"bukan buat aku"}')
+    current = ChatMessage(
+        id="m1",
+        sender_name="Budi",
+        sender_id=SENDER,
+        when=datetime.now(),
+        text="",
+        media=Media(kind="sticker", mimetype="image/webp", filename="cat.webp", size=1, proto=None),
+        quote=Quote(id="q", sender_name="Ilham", sender_id="", text="pantes bego"),
+    )
+
+    decision = decide(
+        gate_of(llm, llm_decide=True),
+        text="",
+        has_media=True,
+        has_quote=True,
+        current=current,
+    )
+
+    assert "[stiker]" in llm.user
+    assert "membalas Ilham" in llm.user
+    assert "Arah pesan: membalas pesan orang lain, bukan pesanmu" in llm.user
+    assert decision.act == "ignore"

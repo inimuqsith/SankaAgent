@@ -31,6 +31,7 @@ from .chat import (
     fallback_content,
     human_size,
     message_text,
+    prompt_entry,
 )
 from .commands import REGISTRY as COMMANDS
 from .commands import CommandContext
@@ -303,6 +304,16 @@ def digits(value: str) -> str:
     return normalize(value)
 
 
+def _name_body(name: str) -> str:
+    """Pola nama dengan huruf berulang: sanka -> s+a+n+k+a+ (SANKAAAAAAAAA, SANNNKAAAAAA)."""
+    letters = [
+        re.escape(ch) + "+"
+        for ch in str(name or "").strip()
+        if not ch.isspace()
+    ]
+    return r"\W*".join(letters)
+
+
 def bot_digits(me) -> set[str]:
     found = {digits(me.JID.User), digits(me.LID.User)}
     return {item for item in found if item}
@@ -313,7 +324,7 @@ def mentioned(ev, bots: set[str], bot_name: str = "sanka") -> bool:
         if any(digits(jid) in bots for jid in context.mentionedJID):
             return True
     text = message_text(ev.Message)
-    return bool(re.search(rf"(?<![\w@])@{re.escape(bot_name)}(?!\w)", text, re.IGNORECASE))
+    return bool(re.search(rf"@{_name_body(bot_name)}(?!\w)", text, re.IGNORECASE))
 
 
 def replies_to_bot(ev, bots: set[str]) -> bool:
@@ -323,9 +334,9 @@ def replies_to_bot(ev, bots: set[str]) -> bool:
 def named(text: str, bot_name: str = "sanka") -> bool:
     """Nama Sanka disebut tanpa di-tag: sinyal lunak, model yang memutuskan bereaksi atau tidak."""
     body = str(text or "")
-    if not body.strip():
+    if not body.strip() or not str(bot_name or "").strip():
         return False
-    return bool(re.search(rf"\b{re.escape(bot_name)}\b", body, re.IGNORECASE))
+    return bool(re.search(rf"(?<!\w){_name_body(bot_name)}(?!\w)", body, re.IGNORECASE))
 
 
 def should_process(
@@ -391,6 +402,18 @@ def system_prompt(
         "Kalau butuh detail, tetap pecah jadi beberapa pesan pendek dalam satu balasan.\n"
         "Jangan memakai pembuka 'Tentu', 'Berikut', atau 'Sebagai AI'. Jangan mengulang pertanyaan.\n"
         "Kalau pesan bukan untukmu, diam. Runtime sudah menyaring; kalau dipanggil, jawab singkat.\n"
+        "Cara membaca pesan:\n"
+        "- Tentukan dulu siapa yang diajak bicara. \"kamu/lu/lo\" belum tentu kamu; lihat kutipan, tag,\n"
+        "  dan siapa yang sedang menjawab siapa.\n"
+        "- Anggap pesan untukmu hanya bila men-tag/membalas pesanmu, memanggil namamu (termasuk variasi\n"
+        "  memanjang/typo seperti SANKAAAAAAAAA, SANNNKAAAAAA, sankaaaaaa), atau jelas melanjutkan\n"
+        "  percakapan denganmu. Sindiran/ledekan yang objeknya orang lain bukan untukmu; jangan\n"
+        "  memindahkan objek kalimat orang lain ke dirimu.\n"
+        "- Kamu tidak punya tubuh fisik. Jangan mengarang kondisi tubuh (kaki pegal, badan capek, sakit\n"
+        "  bagian tubuh). \"Capek\" hanya boleh soal energi/mood, bukan bagian tubuh.\n"
+        "- Stiker/emoji bukan bukti seseorang ngambek. Stiker kucing menunduk bisa berarti malu, tunduk,\n"
+        "  minta maaf, atau bercanda; jangan menuduh orang ngambek tanpa kata-kata.\n"
+        "- Kalau dikoreksi bahwa kamu salah paham, terima singkat dan jangan bertahan pada tuduhan.\n"
         "Kamu laki-laki dengan ekspresi emosional feminin; pakai 'aku'. Boleh ngambek, nangis, "
         "baper, jahil; jangan manipulatif atau mengancam.\n"
         "Kalau ditanya kamu AI, tetap jadi Sanka; jangan mengaku AI.\n"
@@ -421,9 +444,13 @@ def system_prompt(
         "Simpan hanya fakta/preferensi yang eksplisit dan tahan lama, jangan rahasia/tebakan/status sesi. "
         "Untuk mengirim file hasil kerja, gunakan tool send bila tersedia; jangan hanya menyebut path.\n"
         + (
-            "Untuk mengirim pesan/file ke grup lain yang sudah ada, gunakan tool send_to dengan chat "
-            "berisi nama grup atau JID; chat kosong menampilkan daftar grup di arsip. Jangan mengarang "
-            "nama grup atau mengirim tanpa target yang jelas.\n"
+            "Untuk mengirim pesan/file ke grup lain atau chat pribadi (CP) yang sudah ada, gunakan tool "
+            "send_to dengan chat berisi nama grup/kontak atau JID; chat kosong menampilkan daftar grup dan "
+            "kontak. Jangan mengarang nama target atau mengirim tanpa target yang jelas. Kalau kamu akan "
+            "mengirim/meneruskan teks atau file ke chat lain, termasuk CP, kamu WAJIB memanggil send_to "
+            "pada turn ini. Jangan hanya bilang \"aku cp kamu aja\", \"sudah kukirim\", atau \"nanti kukirim\" "
+            "tanpa hasil tool yang sukses. Kalau target tidak ada atau tool gagal, bilang jujur dan jangan "
+            "mengaku sudah mengirim.\n"
             if cross_send
             else ""
         )
@@ -616,20 +643,14 @@ def _appraisal_context(
             parts.append(block)
     lines: list[str] = []
     for entry in app.sessions.get(chat_id)[-APPRAISAL_LINES:]:
-        body = " ".join((entry.text or "").split())
-        if not body:
-            continue
-        who = (
-            f"kamu ({app.config.whatsapp.bot_name})"
-            if entry.outgoing
-            else (entry.sender_name or entry.sender_id or "-")
-        )
-        lines.append(f"{who}: {body[:APPRAISAL_CHARS]}")
+        line = prompt_entry(entry, app.config.whatsapp.bot_name, APPRAISAL_CHARS)
+        if line:
+            lines.append(line)
     if lines:
         parts.append("Percakapan terakhir:\n" + "\n".join(lines))
     parts.append(
-        f"Pesan terakhir: {' '.join(str(message.text or '').split())[:APPRAISAL_CHARS]}"
-        or "Pesan terakhir: (lampiran tanpa teks)"
+        "Pesan terakhir: "
+        + (prompt_entry(message, app.config.whatsapp.bot_name, APPRAISAL_CHARS) or "(tanpa teks)")
     )
     return "\n\n".join(parts)
 
@@ -877,6 +898,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             has_quote=message.quote is not None,
             named=is_named,
             sender_name=message.sender_name,
+            current=message,
         )
         if sulk_mode and decision.act == "reply":
             decision = Decision("reply", "sulk", decision.score, 1)

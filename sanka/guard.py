@@ -16,7 +16,7 @@ INJECTION = re.compile(
     re.IGNORECASE,
 )
 # Command yang tetap jalan walau Sanka sedang ngambek/nangis: operasional, bukan obrolan.
-EXEMPT_COMMANDS = frozenset({"help", "status", "whoami", "reset", "stop", "ping", "calmdown"})
+EXEMPT_COMMANDS = frozenset({"help", "status", "whoami", "reset", "stop", "ping", "calmdown", "mood"})
 TENSION = re.compile(
     r"\b(anjir|asu|bangsat|goblok|tolol|jancok|sampah|mampus|diam|gausah)\b", re.IGNORECASE
 )

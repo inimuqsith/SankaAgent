@@ -57,7 +57,16 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
 
 - [x] Command observability tanpa LLM: `/whoami` (pengirim, role, chat, bot), `/status` (model,
   arsip, memori, skill, tool), `/tools` (tool yang diizinkan role), `/cari` (arsip chat aktif),
-  `/help <command>` (usage/alias/izin), dan alias `/new` untuk `/reset`.
+  `/help <command>` (usage/alias/izin), `/mood` (label mood, valence, drive, status sulk/nangis,
+  dan hubungan dengan pengirim), dan alias `/new` untuk `/reset`.
+- [x] Arah pesan diputuskan model, bukan regex: gate dan appraisal menerima entri pesan yang sama
+  (`prompt_entry`: nama, teks, label media, kutipan) plus fakta arah (`men-tag kamu`, `membalas
+  pesanmu`, `membalas pesan orang lain`), sehingga ledekan yang objeknya orang lain tidak lagi
+  dianggap untuk Sanka. Nama dengan huruf berulang (`SANKAAAAAAAAA`) dikenali sebagai sinyal
+  lembut/routing; prompt melarang mengarang kondisi tubuh dan menuduh ngambek dari stiker saja.
+- [x] Kirim ke chat pribadi (CP): `send_to` juga me-resolve kontak arsip (`contacts` +
+  `lid_map`), bukan hanya grup, dan prompt mewajibkan panggilan tool yang sukses sebelum Sanka
+  mengaku sudah mengirim ke chat lain.
 
 - [x] Dua engine: soul (appraisal + drives + heartbeat) dan percakapan (gate + balasan + tool)
   berbagi state SQLite. `sanka/affect.py` menyimpan mood PAD + OCC (`affect-kernel`) per chat,

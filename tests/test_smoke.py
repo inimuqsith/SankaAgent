@@ -21,7 +21,7 @@ from sanka.config import (
 from sanka.format import format_reply
 from sanka.permissions import allows, role_for
 from sanka.tools.web_search import searx_hits
-from sanka.wa import should_process, system_prompt
+from sanka.wa import named, should_process, system_prompt
 
 BOT = {"628567770837"}
 
@@ -91,6 +91,7 @@ def test_group_routing() -> None:
     assert routed(group_event("halo semua")) is False
     assert routed(group_event("pagi", mentioned=("628567770837@s.whatsapp.net",))) is True
     assert routed(group_event("@sanka tolong cek")) is True
+    assert routed(group_event("@SANKAAAAAAAAA tolong cek")) is True
     assert routed(group_event("jawab ya", participant="628567770837@s.whatsapp.net")) is True
 
 
@@ -496,3 +497,10 @@ def test_config_false_string_disables_flag(tmp_path, monkeypatch) -> None:
 
     assert config.humanize.enabled is False
     assert config.ambient.proactive is False
+
+
+def test_elongated_name_is_detected() -> None:
+    assert named("SANKAAAAAAAAA") is True
+    assert named("SANNNKAAAAAA") is True
+    assert named("sankaaaaaa") is True
+    assert named("sankas") is False
