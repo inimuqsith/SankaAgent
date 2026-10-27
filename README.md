@@ -48,7 +48,7 @@ dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.
 | `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
 | `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
-| `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine per chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
+| `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine per chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `grudge_half_life_hours` (kesal reda sendiri), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
 | `humanize` | bubble & jeda: `enabled`, `normal_chars`, `normal_parts`, `detail_chars`, `detail_parts`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles`, `reaction_stickers` |
 | `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
 | `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_cooldown`, `chime_per_day`, `research_cooldown`, `research_per_day`, `research_results` |
@@ -240,6 +240,10 @@ catatan kehadiran ("N pesan masuk saat kamu tidak aktif; itu arsip, bukan antrea
 yang dikenal (diisi dari pesan live dan `history.recent_chats` saat start): satu langkah
 `pre_turn_decay` per 5 menit, drive berubah (energi turun, kebosanan dan kesepian naik), dan tidak
 ada pesan yang dikirim. Pesan masuk memuaskan drive (kebosanan/kesepian turun, energi naik).
+Di detak yang sama `_soothe` meluruhkan `annoyance` orang-orang di chat itu dengan paruh waktu
+`affect.grudge_half_life_hours` (default 6 jam, `0` = mati), jadi label `musuh` bisa kembali jadi
+`teman` tanpa `/calmdown`; trust, afeksi, dan respek tidak dikikis waktu, dan orang yang kesalnya
+sudah di bawah 0.01 langsung dilunaskan. `/calmdown` tetap jalur instan (potong setengah).
 
 **Vibe ruangan (ala anima).** `sanka/vibe.py` meniru dinamika anima-engine dengan classifier emosi
 Indonesia EmoSense-ID (`affect.vibe.model`) dan tanpa memakai dependency anima (paket itu tanpa

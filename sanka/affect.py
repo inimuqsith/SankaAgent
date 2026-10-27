@@ -34,6 +34,7 @@ PULSE_MAX_HOURS = 24.0  # batas pertumbuhan drive setelah lama mati/clock skew
 PAD_WEIGHT = {"me": 1.0, "group": 0.6, "other": 0.2, "unknown": 0.2}
 WINDOW_SECONDS = 600.0  # jendela pembatas gerak hubungan per orang
 WINDOW_LIMIT = 0.20  # delta maksimum per arah per jendela
+SOOTHE_FLOOR = 0.01  # di bawah ini dianggap lunas, biar tidak menulis angka receh terus
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS people (
@@ -545,10 +546,34 @@ class AffectStore:
                 data["loneliness"] = _clamp(
                     float(data["loneliness"]) + (0.03 + 0.05 * attachment) * hours
                 )
+                self._soothe(conn, chat_id, hours)
                 data["last_pulse"] = moment
                 self._write_drives(conn, chat_id, data)
                 conn.commit()
         return self._payload(state, data)
+
+    def _soothe(self, conn: sqlite3.Connection, chat_id: str, hours: float) -> None:
+        """Kesal reda sendiri saat tidak ada yang menyulut: label 'musuh' bukan hukuman seumur hidup.
+
+        Hanya annoyance yang meluruh (paruh waktu `grudge_half_life_hours`); trust/afeksi respek
+        tidak dikikis waktu, karena hubungan yang baik bukan pinjaman berjalan.
+        """
+        life = float(self.config.grudge_half_life_hours or 0.0)
+        if life <= 0 or hours <= 0:
+            return
+        factor = 0.5 ** (hours / life)
+        rows = conn.execute(
+            "SELECT p.person_id, p.annoyance FROM people p "
+            "JOIN chat_people cp ON cp.person_id = p.person_id "
+            "WHERE cp.chat_id=? AND p.annoyance > 0",
+            (chat_id,),
+        ).fetchall()
+        for row in rows:
+            value = float(row["annoyance"]) * factor
+            conn.execute(
+                "UPDATE people SET annoyance=? WHERE person_id=?",
+                (0.0 if value < SOOTHE_FLOOR else _clamp(value), str(row["person_id"])),
+            )
 
     # ------------------------------------------------------------------ tenang
 

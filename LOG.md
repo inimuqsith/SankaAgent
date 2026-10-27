@@ -41,6 +41,11 @@
   (`baseline` tetap bergerak lambat sesuai desain). Satu pesan belum menggeser band karena
   `attack` 0.35 (ekspektasi "satu pesan langsung negatif" di plan tidak konsisten dengan
   `attack` 0.35 dan band 0.35/0.6).
+- Kesal reda sendiri di detak jantung: `AffectStore._soothe` (dipanggil `pulse` di gate 5 menit
+  yang sudah ada) meluruhkan `people.annoyance` dengan `0.5 ** (jam / grudge_half_life_hours)`
+  (default 6 jam, `0` = mati), lalu melunaskan nilai di bawah `SOOTHE_FLOOR` 0.01. Hanya
+  annoyance yang meluruh; trust/afeksi/respek tidak disentuh. Label `musuh` (>= 0.75) karena itu
+  bisa turun sendiri tanpa `/calmdown`, dan `/calmdown` tetap jalur instan.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

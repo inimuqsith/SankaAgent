@@ -331,3 +331,52 @@ def test_other_directed_appraisal_is_attenuated(tmp_path) -> None:
     finally:
         other.close()
         direct.close()
+
+
+def test_heartbeat_soothes_grudge_over_hours(tmp_path, monkeypatch) -> None:
+    import time
+
+    store = make_store(tmp_path)
+    try:
+        turn(store, decision(annoyance=0.2), message_id="SOOTHE0")
+        conn = store._require()
+        conn.execute("UPDATE people SET annoyance=0.8 WHERE person_id=?", (FRIEND,))
+        conn.commit()
+        assert "musuh" in store.prompt(CHAT)  # label awal dari 0.8
+
+        moment = time.time()
+        monkeypatch.setattr("sanka.affect.time.time", lambda: moment)
+        store.pulse(CHAT)  # detak pertama hanya menambatkan waktu
+        monkeypatch.setattr("sanka.affect.time.time", lambda: moment + 3 * 3600)
+        store.pulse(CHAT)
+
+        people = store.known_people(CHAT, 5)
+        assert people[0]["annoyance"] == pytest.approx(0.8 * 0.5 ** 0.5, rel=1e-3)
+        assert "musuh" not in store.prompt(CHAT)  # label ikut reda tanpa command
+        assert people[0]["trust"] == pytest.approx(0.1)  # hubungan baik tidak dikikis waktu
+    finally:
+        store.close()
+
+
+def test_heartbeat_soothe_is_per_chat(tmp_path, monkeypatch) -> None:
+    import time
+
+    store = make_store(tmp_path)
+    try:
+        # annoyance melekat pada orang, jadi isolasi per chat diuji dengan dua orang berbeda.
+        turn(store, decision(annoyance=0.2), message_id="SOOTHE1", chat=CHAT, person=FRIEND)
+        turn(store, decision(annoyance=0.2), message_id="SOOTHE2", chat=OTHER, person=OWNER)
+        conn = store._require()
+        conn.execute("UPDATE people SET annoyance=0.8")
+        conn.commit()
+
+        moment = time.time()
+        monkeypatch.setattr("sanka.affect.time.time", lambda: moment)
+        store.pulse(CHAT)
+        monkeypatch.setattr("sanka.affect.time.time", lambda: moment + 6 * 3600)
+        store.pulse(CHAT)
+
+        assert store.known_people(CHAT, 5)[0]["annoyance"] < 0.5  # orang di chat ini reda
+        assert store.known_people(OTHER, 5)[0]["annoyance"] == pytest.approx(0.8)  # chat lain utuh
+    finally:
+        store.close()

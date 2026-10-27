@@ -88,6 +88,7 @@ class AffectConfig:
     path: Path = Path(".sanka/affect.db")  # hubungan, orang, topik, drives
     state_dir: Path | None = None  # file state emotion-engine per chat; None = di samping DB
     volatility: str = "expressive"
+    grudge_half_life_hours: float = 6.0  # kesal reda sendiri; 0 = mati
     vibe: VibeConfig = field(default_factory=VibeConfig)
 
 
@@ -436,6 +437,7 @@ def load_config(path: str | None = None) -> Config:
             path=affect_db,
             state_dir=affect_state_dir,
             volatility=str(affect_raw.get("volatility") or "expressive").strip() or "expressive",
+            grudge_half_life_hours=_num(affect_raw.get("grudge_half_life_hours"), 6.0),
             vibe=VibeConfig(
                 enabled=_bool(vibe_raw.get("enabled"), True),
                 model=str(
