@@ -386,8 +386,16 @@ def load_config(path: str | None = None) -> Config:
             persona = soul.read_text(encoding="utf-8").strip()
         except OSError:
             log.warning("gagal membaca %s; fallback ke persona YAML", soul, exc_info=True)
-    if not persona:
+    if persona:
+        log.info("persona dari %s (%d karakter)", soul, len(persona))
+    else:
         persona = str(raw.get("persona") or "").strip()
+        if persona:
+            log.info("persona dari YAML config (SOUL.md tidak ada di %s)", base)
+        else:
+            log.warning(
+                "SOUL.md tidak ada di %s dan persona YAML kosong; Sanka jalan tanpa jiwa", base
+            )
 
     return Config(
         persona=persona,

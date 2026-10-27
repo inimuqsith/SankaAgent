@@ -30,7 +30,11 @@ Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Tool `sandbox` memakai Po
 atau Docker CLI di container (lihat [Sandbox](#sandbox)).
 State emosi memakai `emotion-engine` (MIT) yang di-vendor apa adanya di
 `sanka/vendor/emotion_engine.py` (lihat `sanka/vendor/LICENSE.emotion-engine`), jadi tidak ada
-dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.yaml`.
+dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.yaml` (di image:
+`/app/SOUL.md`, ikut `COPY` saat build). File ini tidak dibuat otomatis: kalau tidak ada, loader
+memakai `persona:` di YAML; kalau dua-duanya kosong, Sanka tetap jalan tanpa persona dan log
+menulis peringatan `SOUL.md tidak ada di <folder>`. Saat start, loader mencatat sumbernya
+(`persona dari /app/SOUL.md (3120 karakter)`), jadi mudah dicek dari log deployment.
 
 ## Konfigurasi
 
