@@ -65,7 +65,7 @@ affect:
   path: ".sanka/affect.db"     # hubungan, orang, topik, drives
   state_dir: ".sanka/emotions"  # satu file state emotion-engine per chat
   volatility: expressive        # steady | expressive | dramatic_test
-  grudge_half_life_hours: 6.0   # kesal reda sendiri di detak jantung; 0 = mati
+  grudge_half_life_hours: 1.5   # kesal reda sendiri di detak jantung; 0 = mati
   vibe:
     enabled: true               # default aktif; butuh torch + transformers (extra "vibe")
     model: "Aardiiiiy/EmoSense-ID-Indonesian-Emotion-Classifier"

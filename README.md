@@ -241,9 +241,10 @@ yang dikenal (diisi dari pesan live dan `history.recent_chats` saat start): satu
 `pre_turn_decay` per 5 menit, drive berubah (energi turun, kebosanan dan kesepian naik), dan tidak
 ada pesan yang dikirim. Pesan masuk memuaskan drive (kebosanan/kesepian turun, energi naik).
 Di detak yang sama `_soothe` meluruhkan `annoyance` orang-orang di chat itu dengan paruh waktu
-`affect.grudge_half_life_hours` (default 6 jam, `0` = mati), jadi label `musuh` bisa kembali jadi
-`teman` tanpa `/calmdown`; trust, afeksi, dan respek tidak dikikis waktu, dan orang yang kesalnya
-sudah di bawah 0.01 langsung dilunaskan. `/calmdown` tetap jalur instan (potong setengah).
+`affect.grudge_half_life_hours` (default 1,5 jam, `0` = mati): kesal 0.9 kehilangan label `musuh`
+dalam ~35 menit dan tinggal ~0.05 setelah 6 jam, tanpa `/calmdown`; trust, afeksi, dan respek tidak
+dikikis waktu, dan nilai di bawah 0.01 langsung dilunaskan. `/calmdown` tetap jalur instan
+(potong setengah).
 
 **Vibe ruangan (ala anima).** `sanka/vibe.py` meniru dinamika anima-engine dengan classifier emosi
 Indonesia EmoSense-ID (`affect.vibe.model`) dan tanpa memakai dependency anima (paket itu tanpa

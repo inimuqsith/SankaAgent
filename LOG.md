@@ -43,7 +43,8 @@
   `attack` 0.35 dan band 0.35/0.6).
 - Kesal reda sendiri di detak jantung: `AffectStore._soothe` (dipanggil `pulse` di gate 5 menit
   yang sudah ada) meluruhkan `people.annoyance` dengan `0.5 ** (jam / grudge_half_life_hours)`
-  (default 6 jam, `0` = mati), lalu melunaskan nilai di bawah `SOOTHE_FLOOR` 0.01. Hanya
+  (default 1,5 jam -> label musuh dari 0.9 hilang dalam ~35 menit, `0` = mati), lalu melunaskan
+  nilai di bawah `SOOTHE_FLOOR` 0.01. Hanya
   annoyance yang meluruh; trust/afeksi/respek tidak disentuh. Label `musuh` (>= 0.75) karena itu
   bisa turun sendiri tanpa `/calmdown`, dan `/calmdown` tetap jalur instan.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
