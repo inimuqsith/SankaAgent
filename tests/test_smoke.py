@@ -421,7 +421,6 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
         "  llm_decide: true\n"
         "  decide_temperature: 0.4\n"
         "  max_decisions_per_minute: 7\n"
-        "  reply_cooldown_seconds: 12\n"
         "humanize:\n"
         "  enabled: true\n"
         "  normal_chars: 180\n"
@@ -452,7 +451,6 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
     assert config.gate.llm_decide is True
     assert config.gate.decide_temperature == 0.4
     assert config.gate.max_decisions_per_minute == 7
-    assert config.gate.reply_cooldown_seconds == 12
     assert config.humanize.normal_chars == 180
     assert config.humanize.normal_parts == 2
     assert config.humanize.max_bubbles == 5

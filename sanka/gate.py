@@ -2,8 +2,10 @@
 
 Keputusan utama datang dari `LLM.decide` (sadar mood, drive, dan hubungan); tag/DM tidak bisa
 di-ignore. Skor deterministik di bawah adalah prior/fallback, dipakai saat LLM mati, saat
-`llm_decide` dimatikan, dan untuk memutuskan chime otonom di `ambient.py`. Rate limit tetap pagar
-keras agar Sanka tidak spam; cooldown hanya berlaku untuk pesan tanpa perhatian langsung.
+`llm_decide` dimatikan, dan untuk memutuskan chime otonom di `ambient.py`. Tidak ada kuota,
+cooldown, atau jeda paksa: hanya penilaian model/skor yang membuat Sanka diam, plus
+`max_decisions_per_minute` sebagai pagar biaya. Setiap keputusan juga membawa `mode`
+(`daily`/`professional`) yang menentukan gaya kerja dan format laporan di `wa.py`.
 """
 
 from __future__ import annotations
@@ -22,12 +24,19 @@ log = logging.getLogger(__name__)
 DECIDE_PROMPT = """Kamu Sanka, laki-laki dengan ekspresi emosional feminin, di grup WhatsApp.
 Baca percakapan, siapa yang bicara, hubungan, dan pesan terakhir. Kamu punya jiwa: keputusanmu
 boleh berubah karena mood, keakraban, dan apa yang baru terjadi. Tentukan tindakanmu sendiri.
-Balas HANYA JSON: {"act":"reply|react|ignore","bubbles":1,"why":"<=80 char"}
+Balas HANYA JSON: {"act":"reply|react|ignore","bubbles":1,"mode":"daily|professional","why":"<=80 char"}
 - reply: kamu mau menanggapi.
 - react: cukup reaksi singkat/stiker; tidak perlu jawaban.
 - ignore: kamu pilih diam; percakapan bukan untukmu, atau tidak perlu.
 - bubbles: 1 untuk balasan biasa. Pakai 2-3 hanya bila perlu beberapa pesan terpisah; jangan
   menambah bubble untuk mengulang atau memancing.
+- mode: "daily" atau "professional". Default "daily".
+  * daily: obrolan, sapaan, ledekan, pendapat, pertanyaan ringan yang bisa dijawab dari chat/memori.
+  * professional: pengirim meminta kamu mengerjakan, memeriksa, atau membuat sesuatu dengan alat
+    (cek server, jalankan perintah, baca/unduh file, rekap data, kirim file, analisis), atau
+    jawabannya butuh kerja nyata dan bukti. Contoh: "cek status server via shell" -> professional;
+    "cp apa sih" -> daily.
+- mode tidak mengubah izin, sikap, atau keputusan balas; kamu tetap Sanka.
 - Baris "kamu (Sanka)" adalah pesanmu sendiri. Kalau baru mengirim beberapa pesan, pilih 1.
 - Kalau pesan men-tag atau membalas kamu, jangan pilih ignore.
 - Kalau orang lain menyebut namamu atau membicarakanmu tanpa men-tag, boleh reply/react;
@@ -68,11 +77,22 @@ Aturan:
 ACTS = frozenset({"reply", "react", "ignore"})
 SECOND_PERSON = re.compile(r"\b(kamu|lu|lo|kau|km|kmu|sanka|san)\b", re.IGNORECASE)
 REQUEST = re.compile(r"\b(tolong|coba|bantu|carikan|jelaskan|rekap|kirim|buat)\b", re.IGNORECASE)
+WORK = re.compile(
+    r"\b(tolong|coba|bantu|carikan|jelaskan|rekap|kirim|buat|cek|check|jalankan|eksekusi|"
+    r"install|deploy|restart|perbaiki|hapus|ubah|hitung|analisis|scan|download|upload|uji|"
+    r"debug|status|log)\b",
+    re.IGNORECASE,
+)
 HISTORY_LINES = 12
 HISTORY_CHARS = 300
 PROMPT_CHARS = 700
-RATE_WINDOW = 600.0
+RECENT_WINDOW = 600.0
 DECIDE_TIMEOUT = 8.0
+
+
+def mode_for(text: str) -> str:
+    """Tebakan mode saat model tidak memberi mode: permintaan kerja -> professional."""
+    return "professional" if WORK.search(str(text or "")) else "daily"
 
 
 @dataclass(frozen=True)
@@ -81,6 +101,7 @@ class Decision:
     reason: str
     score: float
     bubbles: int = 1
+    mode: str = ""
 
 
 def contentless(text: str, has_media: bool) -> bool:
@@ -111,8 +132,6 @@ class ReplyGate:
         self.sessions = sessions
         self.bot_name = bot_name
         self.stickers = tuple(stickers)
-        self._sent: dict[str, list[float]] = {}
-        self._person_sent: dict[tuple[str, str], list[float]] = {}
         self._decisions: list[float] = []
         self._reviews: list[float] = []
 
@@ -225,48 +244,13 @@ class ReplyGate:
         if len(body.strip()) < 4:
             points -= 0.15
             tags.append("short")
-        window = [stamp for stamp in stamps if moment - stamp < RATE_WINDOW]
+        window = [stamp for stamp in stamps if moment - stamp < RECENT_WINDOW]
         if len(window) >= 3:
             points -= 0.10
             tags.append("chatty")
         return max(0.0, min(1.0, points)), ",".join(tags) or "casual"
 
     # ------------------------------------------------------------------ keputusan
-
-    def _over_limit(
-        self,
-        chat_id: str,
-        sender_id: str,
-        moment: float,
-        *,
-        attention: bool,
-        direct: bool,
-    ) -> str:
-        """Pagar anti-flood hanya untuk pesan tanpa perhatian langsung.
-
-        Tag/DM (direct) tidak pernah diblokir: satu-satunya hal yang bisa membuat Sanka diam
-        pada pesan seperti itu adalah keputusan model sendiri, bukan cooldown/kuota. Cap chat
-        dan cap per orang tetap berlaku untuk pesan yang tidak ditujukan kepadanya supaya Sanka
-        tidak mendominasi grup.
-        """
-        stamps = [stamp for stamp in self._sent.get(chat_id, []) if moment - stamp < RATE_WINDOW]
-        self._sent[chat_id] = stamps
-        person = [
-            stamp
-            for stamp in self._person_sent.get((chat_id, sender_id), [])
-            if moment - stamp < RATE_WINDOW
-        ]
-        self._person_sent[(chat_id, sender_id)] = person
-        if direct:
-            return ""
-        last = max([*stamps, *self._bot_stamps(chat_id)[-1:]], default=0.0)
-        if not attention and last and moment - last < float(self.config.reply_cooldown_seconds):
-            return "cooldown"
-        if len(stamps) >= int(self.config.max_replies_per_10min):
-            return "rate_limit"
-        if len(person) >= int(self.config.max_person_replies_per_10min):
-            return "rate_limit"
-        return ""
 
     async def decide(
         self,
@@ -306,16 +290,10 @@ class ReplyGate:
             return self._log(Decision("ignore", "empty", value))
 
         direct = is_dm or mentioned
-        attention = direct or replied_to_bot or named
-        blocked = self._over_limit(
-            chat_id, sender_id, moment, attention=attention, direct=direct
-        )
-        if blocked:
-            return self._log(Decision("ignore", blocked, value))
 
-        act, bubbles = "", 1
+        act, bubbles, mode = "", 1, ""
         if self.config.llm_decide and callable(getattr(self.llm, "decide", None)):
-            act, bubbles = await self._ask(
+            act, bubbles, mode = await self._ask(
                 chat_id,
                 text,
                 sender_id,
@@ -329,6 +307,7 @@ class ReplyGate:
                 has_quote=has_quote,
                 quote_sender_is_bot=quote_sender_is_bot,
             )
+        mode = mode or mode_for(text)
 
         if direct:
             if act in {"", "ignore"}:  # tag/DM tidak bisa diabaikan; sulk diurus wa.py
@@ -336,18 +315,18 @@ class ReplyGate:
             if act == "react" and not self.stickers:
                 act = "reply"
             return self._log(
-                Decision(act, "direct" if is_dm else "mention", value, min(bubbles, 2))
+                Decision(act, "direct" if is_dm else "mention", value, min(bubbles, 2), mode)
             )
 
         if act:
-            return self._log(self._apply(act, bubbles, value, "llm", chat_id))
+            return self._log(self._apply(act, bubbles, value, "llm", chat_id, mode))
 
         if contentless(text, has_media):
-            return self._log(Decision("ignore", "contentless", value))
+            return self._log(Decision("ignore", "contentless", value, mode=mode))
         if value >= float(self.config.reply_threshold):
-            return self._log(Decision("reply", f"score:{why}", value, 1))
+            return self._log(Decision("reply", f"score:{why}", value, 1, mode))
         if value >= float(self.config.react_threshold) and self.stickers:
-            return self._log(Decision("react", f"score:{why}", value, 1))
+            return self._log(Decision("react", f"score:{why}", value, 1, mode))
         if (
             self.config.llm_review
             and not self.config.llm_decide
@@ -369,15 +348,23 @@ class ReplyGate:
                 quote_sender_is_bot=quote_sender_is_bot,
             )
             if verdict:
-                return self._log(self._apply(verdict, 1, value, "review", chat_id))
-        return self._log(Decision("ignore", f"score:{why}", value))
+                return self._log(self._apply(verdict, 1, value, "review", chat_id, mode))
+        return self._log(Decision("ignore", f"score:{why}", value, mode=mode))
 
-    def _apply(self, act: str, bubbles: int, value: float, source: str, chat_id: str) -> Decision:
+    def _apply(
+        self,
+        act: str,
+        bubbles: int,
+        value: float,
+        source: str,
+        chat_id: str,
+        mode: str = "daily",
+    ) -> Decision:
         """Keputusan model -> Decision; reaksi tanpa stiker tidak dikirim sama sekali."""
         if act == "react" and not self.stickers:
             log.info("gate react tanpa stiker chat=%s", chat_id)
-            return Decision("ignore", f"{source}:no_sticker", value)
-        return Decision(act, source, value, max(1, int(bubbles)))
+            return Decision("ignore", f"{source}:no_sticker", value, mode=mode)
+        return Decision(act, source, value, max(1, int(bubbles)), mode)
 
     async def _ask(
         self,
@@ -394,12 +381,12 @@ class ReplyGate:
         replied_to_bot: bool = False,
         has_quote: bool = False,
         quote_sender_is_bot: bool = False,
-    ) -> tuple[str, int]:
+    ) -> tuple[str, int, str]:
         from .llm import parse_verdict
 
         self._decisions = [stamp for stamp in self._decisions if moment - stamp < 60]
         if len(self._decisions) >= int(self.config.max_decisions_per_minute):
-            return "", 1
+            return "", 1, ""
         self._decisions.append(moment)
         user = self._context(
             chat_id,
@@ -421,10 +408,10 @@ class ReplyGate:
             )
         except TimeoutError:
             log.warning("keputusan LLM timeout chat=%s", chat_id)
-            return "", 1
+            return "", 1, ""
         except Exception:  # kegagalan LLM jatuh ke skor deterministik
             log.warning("keputusan LLM gagal chat=%s", chat_id, exc_info=True)
-            return "", 1
+            return "", 1, ""
         return parse_verdict(raw)
 
     async def _review(
@@ -514,12 +501,10 @@ class ReplyGate:
                 lines.append(line)
         if lines:
             parts.append("Percakapan terakhir:\n" + "\n".join(lines))
-        stamps = sorted(self._sent.get(chat_id, []))
-        recent = [stamp for stamp in stamps if moment - stamp < RATE_WINDOW]
-        bot = sorted(self._bot_stamps(chat_id))
-        last = max([*bot[-1:], *recent[-1:]], default=0.0)
+        bot = [stamp for stamp in self._bot_stamps(chat_id) if moment - stamp < RECENT_WINDOW]
+        last = max(bot, default=0.0)
         status = f"Status: pesan terakhirmu {int(max(0, moment - last))} detik lalu"
-        status += f"; {len(recent)} pesanmu dalam 10 menit terakhir."
+        status += f"; {len(bot)} pesanmu dalam 10 menit terakhir."
         parts.append(status)
         name = " ".join(str(sender_name or "").split()) or "-"
         parts.append(f"Pengirim sekarang: {name} ({sender_id or '-'})")
@@ -542,16 +527,12 @@ class ReplyGate:
         parts.append("Pesan terakhir: " + (last_line or "(kosong)"))
         return "\n\n".join(parts)
 
-    def record_sent(self, chat_id: str, person_id: str, now: float | None = None) -> None:
-        moment = time.time() if now is None else float(now)
-        self._sent.setdefault(chat_id, []).append(moment)
-        self._person_sent.setdefault((chat_id, person_id), []).append(moment)
-
     @staticmethod
     def _log(decision: Decision) -> Decision:
         log.info(
-            "gate act=%s score=%.2f bubbles=%d reason=%s",
+            "gate act=%s mode=%s score=%.2f bubbles=%d reason=%s",
             decision.act,
+            decision.mode or "-",
             decision.score,
             decision.bubbles,
             decision.reason,

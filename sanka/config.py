@@ -94,9 +94,6 @@ class GateConfig:
     review_low: float = 0.25
     review_high: float = 0.60
     max_reviews_per_minute: int = 6
-    max_replies_per_10min: int = 8
-    max_person_replies_per_10min: int = 6
-    reply_cooldown_seconds: float = 45.0
 
 
 @dataclass(frozen=True)
@@ -446,11 +443,6 @@ def load_config(path: str | None = None) -> Config:
             review_low=_num(gate_raw.get("review_low"), 0.25),
             review_high=_num(gate_raw.get("review_high"), 0.60),
             max_reviews_per_minute=int(_num(gate_raw.get("max_reviews_per_minute"), 6)),
-            max_replies_per_10min=int(_num(gate_raw.get("max_replies_per_10min"), 8)),
-            max_person_replies_per_10min=int(
-                _num(gate_raw.get("max_person_replies_per_10min"), 6)
-            ),
-            reply_cooldown_seconds=_num(gate_raw.get("reply_cooldown_seconds"), 45.0),
         ),
         humanize=HumanizeConfig(
             enabled=_bool(humanize_raw.get("enabled"), False),

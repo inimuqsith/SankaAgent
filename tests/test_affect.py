@@ -305,7 +305,7 @@ def test_pending_and_topic_roundtrip(tmp_path) -> None:
     store.close()
 
 
-def test_neglect_sadness_is_rate_limited(tmp_path) -> None:
+def test_neglect_sadness_is_capped(tmp_path) -> None:
     store = make_store(tmp_path)
 
     assert store.neglect(CHAT, now=1000) is True

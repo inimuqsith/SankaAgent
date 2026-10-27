@@ -48,6 +48,7 @@ class ToolContext:
         self.send_file = send_file
         self.send_message = send_message
         self.request = request
+        self.used: list[str] = []
 
 
 def _int(args: dict, key: str, default: int) -> int:
@@ -86,6 +87,7 @@ async def execute(specs: dict[str, Handler], name: str, args: dict, ctx: ToolCon
         return f"error: tool '{name}' tidak diizinkan untuk role '{ctx.role.name}'"
     if spec.fn is None:
         return f"error: tool '{name}' tidak punya implementasi"
+    ctx.used.append(spec.name)  # percobaan kerja tetap dianggap kerja walau tool gagal
     try:
         result = await spec.fn(args, ctx)
     except PermissionError as exc:  # penolakan path tidak perlu traceback

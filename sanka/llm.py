@@ -136,20 +136,24 @@ def parse_appraisal(text: str) -> dict:
     }
 
 
-def parse_verdict(text: str) -> tuple[str, int]:
-    """Keputusan gate -> (`act`, `bubbles`); act kosong berarti model tidak menjawab jelas."""
+MODES = frozenset({"daily", "professional"})
+
+
+def parse_verdict(text: str) -> tuple[str, int, str]:
+    """Keputusan gate -> (`act`, `bubbles`, `mode`); act kosong berarti model tidak menjawab jelas."""
     data = _json_object(text)
     if data is None:
         raw = str(text or "").strip().lower().replace('"', " ").replace("'", " ")
         for word in raw.split():
             if word in {"reply", "react", "ignore"}:
-                return word, 1
-        return "", 1
+                return word, 1, ""
+        return "", 1, ""
     act = str(data.get("act") or "").strip().lower()
     if act not in {"reply", "react", "ignore"}:
-        return "", 1
+        return "", 1, ""
     bubbles = _unit_bubbles(data.get("bubbles"))
-    return act, bubbles
+    mode = str(data.get("mode") or "").strip().lower()
+    return act, bubbles, mode if mode in MODES else ""
 
 
 def _unit_bubbles(value) -> int:

@@ -37,7 +37,6 @@ def gate_of(llm=None, *, stickers: tuple[str, ...] = (), **kwargs) -> ReplyGate:
         "enabled": True,
         "llm_decide": False,
         "llm_review": False,
-        "reply_cooldown_seconds": 0.0,
     }
     options.update(kwargs)
     return ReplyGate(GateConfig(**options), llm, None, None, "sanka", stickers)
@@ -106,16 +105,6 @@ def test_llm_ignore_dm_is_overridden() -> None:
     assert decision.act == "reply" and decision.reason == "direct"
 
 
-def test_direct_mention_bypasses_cooldown() -> None:
-    gate = gate_of(reply_cooldown_seconds=45)
-    assert decide(gate, text="halo", mentioned=True, now=1000.0).act == "reply"
-    gate.record_sent(CHAT, SENDER, now=1000.0)
-
-    decision = decide(gate, text="halo lagi", mentioned=True, now=1005.0)
-
-    assert decision.act == "reply"
-
-
 def test_named_message_is_judged_by_llm() -> None:
     llm = FakeLLM('{"act":"ignore","why":"tidak perlu"}')
 
@@ -170,55 +159,40 @@ def test_direct_question_replies() -> None:
     assert decision.act == "reply"
 
 
-def test_direct_mention_bypasses_rate_limit() -> None:
-    gate = gate_of(
-        max_replies_per_10min=2, max_person_replies_per_10min=2, reply_cooldown_seconds=45
+def test_verdict_mode_professional() -> None:
+    llm = FakeLLM('{"act":"reply","mode":"professional"}')
+    decision = decide(gate_of(llm, llm_decide=True), text="sanka", named=True)
+
+    assert decision.mode == "professional"
+
+
+def test_invalid_mode_falls_back_to_request_signal() -> None:
+    llm = FakeLLM('{"act":"reply","mode":"galak"}')
+    decision = decide(
+        gate_of(llm, llm_decide=True), text="sanka tolong cek status server", mentioned=True
     )
-    for index in range(5):
-        moment = 1000.0 + index * 30
-        assert decide(gate, text="sanka halo", mentioned=True, now=moment).act == "reply"
-        gate.record_sent(CHAT, SENDER, now=moment)
 
-    decision = decide(gate, text="@sanka halooo ?", mentioned=True, now=1000.0 + 5 * 30)
-
-    assert decision.act == "reply" and decision.reason == "mention"
+    assert decision.mode == "professional"
 
 
-def test_dm_bypasses_rate_limit() -> None:
-    gate = gate_of(max_replies_per_10min=1, max_person_replies_per_10min=1)
-    for index in range(3):
-        moment = 1000.0 + index * 20
-        assert decide(gate, text="halo", is_dm=True, now=moment).act == "reply"
-        gate.record_sent(DM, SENDER, now=moment)
-
-    decision = decide(gate, text="halo lagi", is_dm=True, now=1000.0 + 3 * 20)
-
-    assert decision.act == "reply" and decision.reason == "direct"
+def test_casual_message_is_daily() -> None:
+    assert decide(gate_of(), text="wkwk lucu", mentioned=True).mode == "daily"
 
 
-def test_rate_limit_hits_unprompted_reply() -> None:
-    gate = gate_of(max_replies_per_10min=2, max_person_replies_per_10min=99)
-    for index in range(2):
-        moment = 1000.0 + index * 60
-        assert decide(gate, text="kamu kok gitu sih?", replied=True, now=moment).act == "reply"
-        gate.record_sent(CHAT, SENDER, now=moment)
+def test_model_mode_wins_over_request_signal() -> None:
+    llm = FakeLLM('{"act":"reply","mode":"daily"}')
+    decision = decide(gate_of(llm, llm_decide=True), text="sanka cek dm dong", mentioned=True)
 
-    decision = decide(gate, text="kamu kok gitu sih?", replied=True, now=1000.0 + 2 * 60)
-
-    assert decision.act == "ignore" and decision.reason == "rate_limit"
+    assert decision.mode == "daily"
 
 
-def test_person_rate_limit() -> None:
-    gate = gate_of(max_person_replies_per_10min=2)
-    for index in range(2):
-        moment = 1000.0 + index * 60
-        decision = decide(gate, text="kamu kok gitu sih?", replied=True, now=moment)
-        assert decision.act == "reply"
-        gate.record_sent(CHAT, SENDER, now=moment)
+def test_replies_are_not_quota_blocked() -> None:
+    llm = FakeLLM('{"act":"reply","bubbles":1}')
+    gate = gate_of(llm, llm_decide=True)
+    for index in range(6):
+        decision = decide(gate, text="sanka", named=True, now=1000.0 + index)
 
-    decision = decide(gate, text="kamu kok gitu sih?", replied=True, now=1190.0)
-
-    assert decision.act == "ignore" and decision.reason == "rate_limit"
+        assert decision.act == "reply" and decision.reason == "llm"
 
 
 def test_react_needs_sticker() -> None:
@@ -254,7 +228,7 @@ def test_judge_reviews_borderline_score() -> None:
     assert decision.act == "ignore"
 
 
-def test_judge_review_is_rate_limited() -> None:
+def test_judge_review_is_capped() -> None:
     llm = FakeLLM("ignore")
     gate = gate_of(llm, llm_review=True, max_reviews_per_minute=1, review_low=0.0, review_high=1.0)
 

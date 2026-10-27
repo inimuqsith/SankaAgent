@@ -46,7 +46,7 @@ oleh `pip install -e '.[dev]'`; import-nya hanya di `sanka/affect.py`.
 | `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
 | `affect` | emosi persisten: `enabled`, `path` (DB `0600`), `sulk_minutes`, `cry_minutes`, `silence_max_minutes`, `silence_max_ignores`, `allow_owner_sulk`, `decay_hours`, `max_appraisals_per_minute` |
-| `gate` | keputusan balas: `enabled`, `reply_threshold`, `react_threshold`, `llm_decide`, `decide_temperature`, `max_decisions_per_minute`, `llm_review`, `review_low`, `review_high`, `max_reviews_per_minute`, `max_replies_per_10min`, `max_person_replies_per_10min`, `reply_cooldown_seconds` |
+| `gate` | keputusan balas: `enabled`, `reply_threshold`, `react_threshold`, `llm_decide`, `decide_temperature`, `max_decisions_per_minute`, `llm_review`, `review_low`, `review_high`, `max_reviews_per_minute` |
 | `humanize` | bubble & jeda: `enabled`, `normal_chars`, `normal_parts`, `detail_chars`, `detail_parts`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles`, `reaction_stickers` |
 | `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
 | `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_cooldown`, `chime_per_day`, `research_cooldown`, `research_per_day`, `research_results` |
@@ -218,15 +218,14 @@ transkrip.
 **Gate balasan.** `sanka/gate.py` memutuskan `reply`/`react`/`ignore`. Dengan `gate.llm_decide`
 model menerima mood, drive, hubungan, 12 pesan terakhir (pesan Sanka dilabeli `kamu (Sanka)`),
 status terakhirnya sendiri, dan pesan baru, lalu memilih sendiri (JSON
-`{"act": ..., "bubbles": 1-3}`); skor deterministik (mention, nama disebut, pertanyaan, kata kedua,
-topik, ledekan, kabar terakhir, dsb.) hanya prior/fallback saat LLM mati, `llm_decide` dimatikan,
-atau sebagai nilai untuk chime otonom. Tag `@`/DM tidak bisa di-ignore: `ignore` dari model
-ditimpa menjadi `reply` (sulk yang membuat balasannya menolak membantu), dan pesan seperti itu
-tidak pernah diblokir cooldown maupun kuota. Cooldown dan rate limit (`max_replies_per_10min`,
-`max_person_replies_per_10min`) hanya berlaku untuk pesan yang tidak ditujukan kepada Sanka, jadi
-Sanka bisa ikut nimbrung tanpa mendominasi; `reply_cooldown_seconds: 0` mematikan jeda paksa dan
-menyerahkan sepenuhnya ke penilaian model (konteks memuat pesan Sanka sendiri dan jumlah
-kirimannya). `gate.max_decisions_per_minute` membatasi biaya keputusan.
+`{"act": ..., "bubbles": 1-3, "mode": "daily|professional"}`); skor deterministik (mention, nama
+disebut, pertanyaan, kata kedua, topik, ledekan, kabar terakhir, dsb.) hanya prior/fallback saat
+LLM mati, `llm_decide` dimatikan, atau sebagai nilai untuk chime otonom. Tag `@`/DM tidak bisa
+di-ignore: `ignore` dari model ditimpa menjadi `reply` (sulk yang membuat balasannya menolak
+membantu). Tidak ada kuota, cooldown, atau jeda paksa: hanya penilaian model yang membuat Sanka
+diam, dan `gate.max_decisions_per_minute` membatasi biaya keputusan. Setiap keputusan juga membawa
+`mode` (`daily`/`professional`); `daily` memakai prompt obrolan dan bubble pendek, `professional`
+memakai prompt kerja dan laporan utuh. Mode dipilih per pesan, default `daily`.
 `humanize.reaction_stickers` diisi path stiker relatif workspace untuk mengizinkan `react`.
 
 **Gaya chat.** `sanka/style.py` hanya menyimpan agregat (median panjang, rasio huruf kecil,

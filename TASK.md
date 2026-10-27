@@ -82,8 +82,8 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   waktu habis.
 - [x] Gate balasan memutuskan `reply`/`react`/`ignore` plus jumlah `bubbles` lewat LLM (mood +
   drive + hubungan + 12 pesan terakhir); skor deterministik hanya prior/fallback. Tag/DM tidak
-  pernah di-ignore dan tidak diblokir cooldown/kuota; cooldown (`reply_cooldown_seconds`, 0 =
-  mati) dan rate limit per chat/orang hanya untuk pesan yang tidak ditujukan ke Sanka, dan
+  pernah di-ignore, dan tidak ada kuota/jeda paksa; gate juga memilih `mode` daily/professional
+  (daily = prompt obrolan + bubble pendek, professional = prompt kerja + laporan utuh), dan
   `max_decisions_per_minute` membatasi biaya.
 - [x] Balasan manusia: satu burst 1-3 bubble pendek (`human_chunks`, batas dari `humanize`), jeda
   mengetik dari panjang teks, chunk pertama mengutip pesan. Tidak ada double-text otomatis; pesan

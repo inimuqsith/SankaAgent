@@ -576,18 +576,69 @@ def test_gate_bubbles_cap_chunks(tmp_path) -> None:
         config = rich_config(
             tmp_path,
             require_mention=False,
-            gate=GateConfig(enabled=True, llm_decide=True, reply_cooldown_seconds=0),
+            gate=GateConfig(enabled=True, llm_decide=True),
         )
         gate = ReplyGate(config.gate, llm, None, Sessions(), "sanka", ())
         app = App(config, llm, FakeHub(), Sessions(), gate=gate)
         app.bot_digits = {"628567770837"}
-        await handle_message(client, group_event("sanka tolong jelaskan", mention=False), app)
+        await handle_message(client, group_event("sanka halo", mention=False), app)
         return sent
 
     sent = asyncio.run(flow())
 
     assert len(sent) == 3  # maksimum 3 bubble walau jawaban butuh lebih
     assert all(len(payload_text(item)) <= 420 for item in sent)
+
+
+def test_professional_mode_sends_full_report(tmp_path) -> None:
+    from sanka.config import GateConfig
+    from sanka.gate import ReplyGate
+
+    report = "hasil cek server\n" + "\n".join(f"• baris {i} " + "data " * 20 for i in range(8))
+
+    class ProLLM(FakeLLM):
+        async def decide(self, system, user) -> str:
+            return '{"act":"reply","mode":"professional"}'
+
+        async def run(self, system, user_content, specs, ctx, session="") -> str:
+            self.calls.append(user_content)
+            assert "Mode profesional" in system
+            return report
+
+    async def flow():
+        client, sent, _ = transport()
+        config = rich_config(tmp_path, gate=GateConfig(enabled=True, llm_decide=True))
+        llm = ProLLM()
+        gate = ReplyGate(config.gate, llm, None, Sessions(), "sanka", ())
+        app = App(config, llm, FakeHub(), Sessions(), gate=gate)
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("halo sanka"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert len(sent) == 1
+    assert payload_text(sent[0]) == report.strip()
+
+
+def test_work_tool_escalates_format(tmp_path) -> None:
+    report = "laporan\n" + "\n".join(f"• item {i} " + "angka " * 20 for i in range(8))
+
+    class ToolLLM(FakeLLM):
+        async def run(self, system, user_content, specs, ctx, session="") -> str:
+            ctx.used.append("shell")
+            return report
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), ToolLLM(), FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("halo sanka"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert len(sent) == 1 and payload_text(sent[0]) == report.strip()
 
 
 def test_burst_of_mentions_replies_once(tmp_path) -> None:
@@ -606,7 +657,7 @@ def test_burst_of_mentions_replies_once(tmp_path) -> None:
         client, sent, _ = transport()
         llm = SlowDecideLLM()
         config = rich_config(
-            tmp_path, gate=GateConfig(enabled=True, llm_decide=True, reply_cooldown_seconds=0)
+            tmp_path, gate=GateConfig(enabled=True, llm_decide=True)
         )
         gate = ReplyGate(config.gate, llm, None, Sessions(), "sanka", ())
         app = App(config, llm, FakeHub(), Sessions(), gate=gate)
@@ -640,7 +691,7 @@ def test_named_group_message_reaches_gate(tmp_path) -> None:
         config = rich_config(
             tmp_path,
             require_mention=False,
-            gate=GateConfig(enabled=True, llm_decide=True, reply_cooldown_seconds=0),
+            gate=GateConfig(enabled=True, llm_decide=True),
         )
         gate = ReplyGate(config.gate, llm, None, Sessions(), "sanka", ())
         app = App(config, llm, FakeHub(), Sessions(), gate=gate)
@@ -829,7 +880,7 @@ def test_llm_ignore_for_mention_still_replies(tmp_path) -> None:
         client, sent, _ = transport()
         llm = DecidingLLM()
         config = rich_config(
-            tmp_path, gate=GateConfig(enabled=True, llm_decide=True, reply_cooldown_seconds=0)
+            tmp_path, gate=GateConfig(enabled=True, llm_decide=True)
         )
         gate = ReplyGate(config.gate, llm, None, Sessions(), "sanka", ())
         app = App(config, llm, FakeHub(), Sessions(), gate=gate)
@@ -1000,13 +1051,13 @@ def test_person_style_is_in_prompt(tmp_path) -> None:
     style.close()
 
 
-def test_command_does_not_consume_reply_budget(tmp_path) -> None:
+def test_command_does_not_block_later_reply(tmp_path) -> None:
     from sanka.config import GateConfig
     from sanka.gate import ReplyGate
 
     async def flow():
         client, _, _ = transport()
-        config = rich_config(tmp_path, gate=GateConfig(enabled=True, reply_cooldown_seconds=45))
+        config = rich_config(tmp_path, gate=GateConfig(enabled=True))
         gate = ReplyGate(config.gate, None, None, Sessions(), "sanka", ())
         app = App(config, FakeLLM(), FakeHub(), Sessions(), gate=gate)
         app.bot_digits = {"628567770837"}
@@ -1015,8 +1066,7 @@ def test_command_does_not_consume_reply_budget(tmp_path) -> None:
 
     gate, app = asyncio.run(flow())
 
-    assert gate._sent == {}
-    # pesan biasa sesudah command tetap boleh dibalas (tanpa cooldown dari command)
+    # pesan biasa sesudah command tetap dibalas: command tidak meninggalkan state gate
     second = asyncio.run(
         gate.decide(
             chat_id="1234567890@g.us",

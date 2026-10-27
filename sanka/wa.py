@@ -37,7 +37,7 @@ from .commands import REGISTRY as COMMANDS
 from .commands import CommandContext
 from .config import Config
 from .format import format_reply, humanize_reply, reply_budget, typing_delay
-from .gate import Decision
+from .gate import Decision, mode_for
 from .llm import LLM
 from .mcp import Hub
 from .memory import SENSITIVE
@@ -386,6 +386,21 @@ def should_process(
     return replied or is_mentioned
 
 
+DAILY_STYLE = (
+    "Balas seperti chat WhatsApp sungguhan: kalimat pendek, ideal di bawah 300 karakter. "
+    "Kalau butuh detail, tetap pecah jadi beberapa pesan pendek dalam satu balasan.\n"
+)
+PRO_STYLE = (
+    "Mode profesional: pesan ini tugas, bukan obrolan. Kerjakan sampai tuntas dengan tool yang ada, "
+    "verifikasi hasilnya, lalu laporkan hasil akhirnya saja: ringkas, terstruktur, dan faktual. "
+    "Boleh satu pesan panjang (maksimal ~3000 karakter); rincian pakai baris '• '. Tanpa heading, "
+    "tanpa tabel, tanpa emoji, tanpa partikel canda. Sebut angka, path, atau output nyata dari tool. "
+    "Kalau tool gagal atau izin kurang, sebut apa adanya setelah mencoba; jangan mengarang hasil. "
+    "Kamu tetap Sanka, bukan asisten; yang berubah hanya cara kerja dan cara melapor.\n"
+)
+CHAT_TOOLS = frozenset({"chat_history", "memory", "skill"})
+
+
 def system_prompt(
     config: Config,
     role_name: str,
@@ -401,6 +416,7 @@ def system_prompt(
     safety: str = "",
     sender: str = "",
     is_dm: bool = False,
+    mode: str = "daily",
 ) -> str:
     # Tanpa identitas ini model membaca mention @<LID bot> sebagai nomor orang lain.
     identity = (
@@ -415,8 +431,7 @@ def system_prompt(
         f"{identity}"
         f"Pengirim sekarang: {' '.join(str(sender or '').split()) or '-'}.\n"
         f"Workspace: {config.workspace}. Pakai tool bila perlu; jangan mengarang hasil tool.\n"
-        "Balas seperti chat WhatsApp sungguhan: kalimat pendek, ideal di bawah 300 karakter. "
-        "Kalau butuh detail, tetap pecah jadi beberapa pesan pendek dalam satu balasan.\n"
+        f"{PRO_STYLE if mode == 'professional' else DAILY_STYLE}"
         "Jangan memakai pembuka 'Tentu', 'Berikut', atau 'Sebagai AI'. Jangan mengulang pertanyaan.\n"
         "Kalau pesan bukan untukmu, diam. Runtime sudah menyaring; kalau dipanggil, jawab singkat.\n"
         "Cara membaca pesan:\n"
@@ -930,6 +945,10 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
     else:
         decision = Decision("reply", "legacy", 1.0, int(app.config.humanize.max_bubbles))
 
+    mode = decision.mode or mode_for(message.text)
+    tool_ctx = None
+    professional = False
+
     if decision.act == "ignore":
         if sulk_mode:  # diam saat ngambek: tetap dicatat agar satu keluhan bisa muncul
             ignored = 0
@@ -950,7 +969,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
     await _chat_presence(client, jid, True)
     typing = asyncio.create_task(_keep_typing(client, jid))
     try:
-        log.info("pesan chat=%s sender=%s role=%s", chat, sender, role.name)
+        log.info("pesan chat=%s sender=%s role=%s mode=%s", chat, sender, role.name, mode)
 
         async with app.locks[chat_id]:
             if not is_command and not crisis and _stale(app, chat_id, message):
@@ -1031,6 +1050,18 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 except Exception:  # payload rusak tidak boleh membungkam balasan
                     log.exception("gagal merakit payload chat=%s", chat)
                     content = fallback_content(app.config, message)
+                tool_ctx = ToolContext(
+                    app.config,
+                    role,
+                    tool_patterns(role),
+                    chat_id=chat_id,
+                    history=app.sessions.store,
+                    memory=app.memory,
+                    skills=app.skills,
+                    send_file=send_file,
+                    send_message=send_message,
+                    request=request_text,
+                )
                 answer = await app.llm.run(
                     system_prompt(
                         app.config,
@@ -1047,28 +1078,19 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         safety=safety,
                         sender=message.sender_name,
                         is_dm=is_dm,
+                        mode=mode,
                     ),
                     content,
                     specs,
-                    ToolContext(
-                        app.config,
-                        role,
-                        tool_patterns(role),
-                        chat_id=chat_id,
-                        history=app.sessions.store,
-                        memory=app.memory,
-                        skills=app.skills,
-                        send_file=send_file,
-                        send_message=send_message,
-                        request=request_text,
-                    ),
+                    tool_ctx,
                     session=f"sanka-{chat_id}",
                 )
                 reply = answer
+                professional = mode == "professional" or bool(set(tool_ctx.used) - CHAT_TOOLS)
 
             reflect_context = _reflect_context(app.sessions, chat_id, message)
             humanize = app.config.humanize
-            if is_command:
+            if is_command or professional:
                 chunks = format_reply(reply) or ["(kosong)"]
                 pace = False
                 quote_all = True
@@ -1094,11 +1116,6 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             await _send_chunks(client, ev, app, chat_id, chunks, pace=pace, quote_all=quote_all)
             if covered:
                 app.answered[chat_id] = covered
-            if app.gate is not None and not is_command:
-                try:  # command operasional tidak menghabiskan kuota obrolan
-                    app.gate.record_sent(chat_id, person_id)
-                except Exception:
-                    log.debug("gate: gagal mencatat kiriman chat=%s", chat, exc_info=True)
             if (
                 reply
                 and not is_command
