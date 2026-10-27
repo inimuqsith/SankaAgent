@@ -72,6 +72,13 @@
   (arsip + `decision(act=ignore, reason="grup tanpa panggilan")`), jadi tidak ada balasan dan emosi
   tidak bergerak. `group_reply: model` mengembalikan perilaku lama (percaya keputusan). Nimbrung
   tanpa panggilan tetap lewat chime yang berjatah.
+- Bubble ditentukan model: `human_chunks`/`humanize_reply` hanya memakai baris kosong sebagai batas
+  pesan, tanpa pemotongan paksa dan tanpa elipsis; kelebihan paragraf digabung ke bubble terakhir
+  (bukan dibuang). `DAILY_STYLE` menjelaskan konvensinya (obrolan santai boleh banyak bubble,
+  penjelasan serius/daftar tetap satu pesan). `reply_budget` beserta `normal_chars`/`normal_parts`/
+  `detail_chars`/`detail_parts` dihapus karena sudah mati; `max_bubbles` jadi batas atas.
+- `decision.ground_tone`: nada `curt`/`hurt`/`angry` diturunkan ke `neutral` bila PAD netral/positif
+  dan annoyance orangnya < 0.3, supaya balasan tidak "ikut suasana" saat hatinya tenang.
 - Vibe dinyalakan secara default: `VibeConfig.enabled` dan loader (`_bool(..., True)`) sekarang
   `true`, jadi config tanpa blok `affect.vibe` tetap menjalankan vibe; di mesin tanpa torch/model
   jalurnya fail-open (warning sekali saat start, `App.anima` tetap `None`-efektif).

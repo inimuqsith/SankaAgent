@@ -506,7 +506,7 @@ def rich_config(
         mcp={},
         affect=affect or AffectConfig(enabled=False),
         humanize=humanize
-        or HumanizeConfig(enabled=True, normal_parts=2, min_delay=0, max_delay=0, between_delay=0),
+        or HumanizeConfig(enabled=True, min_delay=0, max_delay=0, between_delay=0),
     )
 
 
@@ -576,20 +576,42 @@ def affect_setup(tmp_path: Path):
     return AffectStore(tmp_path / "affect.db", config), config
 
 
-def test_long_answer_splits_into_short_bubbles(tmp_path) -> None:
+def test_bubbles_follow_the_model_not_a_byte_counter(tmp_path) -> None:
+    # Satu paragraf panjang tetap satu pesan (penjelasan serius tidak boleh dihancurkan),
+    # dua paragraf jadi dua pesan berurutan seperti orang chat.
+    long_answer = long_text(70)
+    llm = DecisionLLM(answer=long_answer)
+
     async def flow():
         client, sent, _ = transport()
-        app = App(rich_config(tmp_path), DecisionLLM(long_text(70)), FakeHub(), Sessions())
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
         app.bot_digits = {"628567770837"}
         await handle_message(client, dm_event("halo sanka"), app)
         return sent
 
     sent = asyncio.run(flow())
 
-    assert len(sent) == 2
-    assert all(len(payload_text(item)) <= 220 for item in sent)
-    assert sent[0][1].extendedTextMessage.contextInfo.stanzaID == "3EB0DM"
-    assert isinstance(sent[1][1], str)
+    assert [payload_text(item) for item in sent] == [long_answer]
+
+    llm.answer = "bohong apanya sih 😭\n\nmasa aku ngambek terus, nanti kamu bosen loh"
+
+    async def flow_two() -> list[tuple]:
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        event = dm_event("masak kamu bohong")
+        event.Info.ID = "3EB0BUBBLE"
+        await handle_message(client, event, app)
+        return sent
+
+    sent = asyncio.run(flow_two())
+
+    assert [payload_text(item) for item in sent] == [
+        "bohong apanya sih 😭",
+        "masa aku ngambek terus, nanti kamu bosen loh",
+    ]
+    assert sent[0][1].extendedTextMessage.contextInfo.stanzaID == "3EB0BUBBLE"
+    assert isinstance(sent[1][1], str)  # bubble kedua tanpa quote
 
 
 def test_unaddressed_group_skips_decision_and_reply(tmp_path) -> None:
@@ -781,9 +803,8 @@ def test_daily_decision_with_tool_does_not_force_report(tmp_path) -> None:
 
     sent = asyncio.run(flow())
 
-    assert len(sent) >= 2  # daily: tetap dipecah jadi bubble pendek
-    assert all(len(payload_text(item)) <= 220 for item in sent)
-    assert "Mode profesional" not in llm.system
+    assert [payload_text(item) for item in sent] == [report.strip()]  # daily: satu pesan, isi utuh
+    assert "Mode profesional" not in llm.system  # tapi bukan format laporan profesional
 
 
 def test_mention_gets_cold_reply_when_emotion_negative(tmp_path) -> None:
@@ -1386,3 +1407,64 @@ def test_group_message_that_calls_the_name_is_answered(tmp_path) -> None:
 
     assert len(llm.decisions) == 1  # nama disebut = panggilan tanpa tag
     assert [payload_text(item) for item in sent] == ["lagi di sini"]
+
+
+def test_cold_tone_is_softened_when_mood_is_calm(tmp_path) -> None:
+    store, affect_config = affect_setup(tmp_path)
+    llm = DecisionLLM(answer="iya", decision=verdict("reply", tone="hurt"))
+
+    async def flow():
+        client, _, _ = transport()
+        app = App(
+            rich_config(tmp_path, affect=affect_config),
+            llm,
+            FakeHub(),
+            Sessions(),
+            affect=store,
+        )
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("halo sanka"), app)
+        return llm
+
+    llm = asyncio.run(flow())
+
+    assert "Nada: neutral." in llm.system  # mood tenang: tidak mengaku ngambek
+    store.close()
+
+
+def test_cold_tone_survives_when_emotion_is_negative(tmp_path) -> None:
+    store, affect_config = affect_setup(tmp_path)
+    store.turn_end(
+        "628999999999@s.whatsapp.net",
+        "628999999999",
+        "Muqsith",
+        "dasar goblok",
+        "member",
+        "628999999999@s.whatsapp.net",
+        Decision(
+            "me", "reply", "daily", "angry", 1, Appraisal("hostility", -0.4, 0.3, 0.1),
+            RelationshipDelta(), "kesal",
+        ),
+        "MSGPRIOR",
+    )
+    llm = DecisionLLM(answer="iya", decision=verdict("reply", tone="hurt"))
+
+    async def flow():
+        client, _, _ = transport()
+        app = App(
+            rich_config(tmp_path, affect=affect_config),
+            llm,
+            FakeHub(),
+            Sessions(),
+            affect=store,
+        )
+        app.bot_digits = {"628567770837"}
+        event = dm_event("halo sanka")
+        event.Info.ID = "3EB0TONED"
+        await handle_message(client, event, app)
+        return llm
+
+    llm = asyncio.run(flow())
+
+    assert "Nada: hurt." in llm.system  # perasaannya memang negatif
+    store.close()

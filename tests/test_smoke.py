@@ -380,8 +380,7 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
         "  volatility: steady\n"
         "humanize:\n"
         "  enabled: true\n"
-        "  normal_chars: 180\n"
-        "  normal_parts: 2\n"
+        "  min_delay: 1.5\n"
         "  max_bubbles: 5\n"
         "  reaction_stickers: [\"stickers/a.webp\"]\n"
         "style:\n"
@@ -402,8 +401,7 @@ def test_human_config_sections_from_yaml(tmp_path, monkeypatch) -> None:
     assert config.affect.state_dir == tmp_path / ".sanka/emotions"
     assert config.affect.volatility == "steady"
     assert not hasattr(config, "gate")
-    assert config.humanize.normal_chars == 180
-    assert config.humanize.normal_parts == 2
+    assert config.humanize.min_delay == 1.5
     assert config.humanize.max_bubbles == 5
     assert config.humanize.reaction_stickers == ("stickers/a.webp",)
     assert not hasattr(config.humanize, "followups")

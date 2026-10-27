@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sanka.config import HumanizeConfig, StyleConfig
-from sanka.format import human_chunks, humanize_reply, reply_budget
+from sanka.config import StyleConfig
+from sanka.format import human_chunks, humanize_reply
 from sanka.style import StyleStore
 
 
@@ -49,44 +49,53 @@ def test_learn_persists_aggregates_only(tmp_path) -> None:
     reloaded.close()
 
 
-def test_human_chunks_short(tmp_path) -> None:
-    parts = human_chunks("a" * 700, limit=220, max_parts=3)
+def test_human_chunks_never_cuts_content() -> None:
+    body = "a" * 700
 
-    assert len(parts) == 3
-    assert all(len(part) <= 220 for part in parts)
-    assert parts[-1].endswith("…")
+    parts = human_chunks(body, max_parts=3)
+
+    assert parts == [body]  # tanpa baris kosong: satu bubble, tanpa elipsis
+    assert "…" not in "".join(parts)
 
 
 def test_human_chunks_keeps_fence() -> None:
     fence = "```\n" + "b" * 400 + "\n```"
 
-    parts = human_chunks(fence, limit=220, max_parts=3)
+    parts = human_chunks(fence, max_parts=3)
 
     assert len(parts) == 1
     assert parts[0] == fence
 
 
-def test_reply_budget() -> None:
-    assert reply_budget("halo", is_command=False) == (220, 2)
-    assert reply_budget("tolong jelaskan detail", is_command=False) == (420, 3)
-    assert reply_budget("singkat aja", is_command=False) == (220, 2)
-    assert reply_budget("halo", is_command=True) == (3500, 20)
+def test_bubbles_follow_blank_lines_from_model() -> None:
+    text = "bohong apanya sih 😭\n\nmasa aku ngambek terus, nanti kamu bosen loh"
+
+    parts = humanize_reply(text, max_parts=3)
+
+    assert parts == ["bohong apanya sih 😭", "masa aku ngambek terus, nanti kamu bosen loh"]
 
 
-def test_reply_budget_follows_humanize_config() -> None:
-    humanize = HumanizeConfig(
-        normal_chars=180, normal_parts=1, detail_chars=300, detail_parts=2
+def test_structured_list_stays_one_message() -> None:
+    text = (
+        "Alur kurasi foto HB 2026, versi simpel\n"
+        "1. KUMPULKAN — semua foto masuk Drive\n"
+        "2. SORTIR BARENG — pilih bareng kelompok\n"
+        "3. SETOR — isi folder SORTIR disetor ke kurator"
     )
 
-    assert reply_budget("halo", is_command=False, humanize=humanize) == (180, 1)
-    assert reply_budget("tolong jelaskan detail", is_command=False, humanize=humanize) == (300, 2)
+    parts = humanize_reply(text, max_parts=3)
+
+    assert len(parts) == 1
+    assert "3. SETOR" in parts[0]
 
 
-def test_humanize_reply_splits_sentences() -> None:
-    parts = humanize_reply("Halo! Apa kabar? " + "kata " * 100, limit=120, max_parts=2)
+def test_extra_paragraphs_are_merged_not_dropped() -> None:
+    text = "satu\n\ndua\n\ntiga\n\nempat"
 
-    assert 1 <= len(parts) <= 2
-    assert all(len(part) <= 121 for part in parts)
+    parts = humanize_reply(text, max_parts=2)
+
+    assert parts[0] == "satu"
+    assert parts[1] == "dua\n\ntiga\n\nempat"  # digabung, bukan dipotong
 
 
 def test_person_profile_learns_individual_style(tmp_path) -> None:

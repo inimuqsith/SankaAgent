@@ -10,6 +10,7 @@ from sanka.decision import (
     build_context,
     decide,
     ensure_reply,
+    ground_tone,
     parse_decision,
 )
 
@@ -213,3 +214,39 @@ def test_no_regex_mode_override() -> None:
     parsed = parse_decision(raw)
 
     assert parsed is not None and parsed.mode == "professional"
+
+
+def test_ground_tone_softens_cold_tone_when_mood_is_calm() -> None:
+    decision = parse_decision(
+        '{"addressed":"me","act":"reply","mode":"daily","tone":"hurt","bubbles":1,'
+        '"appraisal":{"label":"neutral","dP":0,"dA":0,"dD":0},'
+        '"relationship":{"trust":0,"affection":0,"respect":0,"annoyance":0},"reason":"x"}'
+    )
+    assert decision is not None
+
+    grounded = ground_tone(decision, {"pleasure": 0.1, "arousal": 0.3}, annoyance=0.0)
+
+    assert grounded.tone == "neutral"  # tidak boleh mengaku ngambek saat PAD netral
+
+
+def test_ground_tone_keeps_cold_tone_when_actually_hurt_or_annoyed() -> None:
+    decision = parse_decision(
+        '{"addressed":"me","act":"reply","mode":"daily","tone":"angry","bubbles":1,'
+        '"appraisal":{"label":"hostility","dP":-0.4,"dA":0.2,"dD":0},'
+        '"relationship":{"trust":0,"affection":0,"respect":0,"annoyance":0.2},"reason":"x"}'
+    )
+    assert decision is not None
+
+    assert ground_tone(decision, {"pleasure": -0.4}, annoyance=0.0).tone == "angry"
+    assert ground_tone(decision, {"pleasure": 0.3}, annoyance=0.6).tone == "angry"  # orangnya menyulut
+
+
+def test_ground_tone_leaves_warm_tones_alone() -> None:
+    decision = parse_decision(
+        '{"addressed":"me","act":"reply","mode":"daily","tone":"playful","bubbles":1,'
+        '"appraisal":{"label":"warmth","dP":0.2,"dA":0,"dD":0},'
+        '"relationship":{"trust":0,"affection":0,"respect":0,"annoyance":0},"reason":"x"}'
+    )
+    assert decision is not None
+
+    assert ground_tone(decision, {"pleasure": -0.5}).tone == "playful"

@@ -96,10 +96,6 @@ class AffectConfig:
 @dataclass(frozen=True)
 class HumanizeConfig:
     enabled: bool = False
-    normal_chars: int = 220
-    normal_parts: int = 2
-    detail_chars: int = 420
-    detail_parts: int = 3
     cpms: float = 25.0
     min_delay: float = 0.5
     max_delay: float = 5.0
@@ -459,10 +455,6 @@ def load_config(path: str | None = None) -> Config:
         ),
         humanize=HumanizeConfig(
             enabled=_bool(humanize_raw.get("enabled"), False),
-            normal_chars=int(_num(humanize_raw.get("normal_chars"), 220)),
-            normal_parts=int(_num(humanize_raw.get("normal_parts"), 2)),
-            detail_chars=int(_num(humanize_raw.get("detail_chars"), 420)),
-            detail_parts=int(_num(humanize_raw.get("detail_parts"), 3)),
             cpms=_num(humanize_raw.get("cpms"), 25.0),
             min_delay=_num(humanize_raw.get("min_delay"), 0.5),
             max_delay=_num(humanize_raw.get("max_delay"), 5.0),

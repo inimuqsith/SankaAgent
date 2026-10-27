@@ -80,10 +80,6 @@ affect:
 
 humanize:
   enabled: true
-  normal_chars: 220
-  normal_parts: 2
-  detail_chars: 420
-  detail_parts: 3
   cpms: 25.0
   min_delay: 0.5
   max_delay: 5.0

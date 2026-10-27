@@ -8,7 +8,7 @@ kata singkat untuk mention/DM yang wajib dijawab).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 DECISION_PROMPT = """Kamu Sanka, laki-laki dengan ekspresi emosional feminin, di WhatsApp.
 Tugasmu HANYA memutuskan apa yang kamu lakukan dengan pesan terakhir. Jangan menulis balasan,
@@ -181,6 +181,26 @@ def parse_decision(raw: str) -> Decision | None:
         relationship=relationship,
         reason=_flat(data.get("reason"), REASON_CHARS),
     )
+
+
+TONE_PLEASURE_FLOOR = 0.0  # dingin hanya kalau pleasure benar-benar negatif
+TONE_ANNOYANCE_FLOOR = 0.3  # di atas ini orangnya memang sedang menyebalkan
+
+
+def ground_tone(decision: Decision, emotion, annoyance: float = 0.0) -> Decision:
+    """Nada dingin hanya kalau perasaannya memang negatif atau orangnya memang menyulut.
+
+    Mood netral/positif tidak boleh mengaku ngambek; tanpa ini balasan ikut suasana, bukan
+    berdasar perasaannya sendiri.
+    """
+    if decision.tone not in COLD_TONES:
+        return decision
+    if not isinstance(emotion, dict) or "pleasure" not in emotion:
+        return decision
+    pleasure = float(emotion.get("pleasure") or 0.0)
+    if pleasure < TONE_PLEASURE_FLOOR or float(annoyance) >= TONE_ANNOYANCE_FLOOR:
+        return decision
+    return replace(decision, tone="neutral")
 
 
 def ensure_reply(decision: Decision) -> Decision:

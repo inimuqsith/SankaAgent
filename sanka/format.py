@@ -45,114 +45,31 @@ def format_reply(text: str, limit: int = 3500) -> list[str]:
     return _chunks(cleaned, limit) if cleaned else []
 
 
-DETAIL = re.compile(
-    r"\b(jelaskan|jelasin|detail|lengkap|rinci|step by step|tutorial|kenapa|gimana caranya)\b",
-    re.IGNORECASE,
-)
-SHORT = re.compile(
-    r"\b(singkat|pendek|brief|to the point|gak usah panjang|jangan panjang)\b", re.IGNORECASE
-)
-FENCE_START = "```"
+BUBBLE = re.compile(r"\n\s*\n")  # baris kosong = bubble baru; pilihan model, bukan heuristik
 
 
-def reply_budget(user_text: str, *, is_command: bool, humanize=None) -> tuple[int, int]:
-    """(batas karakter per bubble, jumlah bubble maksimal) sesuai permintaan pengguna."""
-    if is_command:
-        return 3500, 20
-    normal_chars = max(1, int(getattr(humanize, "normal_chars", 220) or 220))
-    normal_parts = max(1, int(getattr(humanize, "normal_parts", 2) or 2))
-    body = str(user_text or "")
-    if SHORT.search(body):
-        return normal_chars, normal_parts
-    if DETAIL.search(body):
-        detail_chars = max(1, int(getattr(humanize, "detail_chars", 420) or 420))
-        detail_parts = max(1, int(getattr(humanize, "detail_parts", 3) or 3))
-        return detail_chars, detail_parts
-    return normal_chars, normal_parts
+def human_chunks(text: str, *, max_parts: int = 3) -> list[str]:
+    """Balasan -> bubble apa adanya: satu paragraf = satu bubble.
 
-
-def _hard(text: str, limit: int) -> list[str]:
-    """Potong per kata; kata yang lebih panjang dari limit dipotong paksa."""
-    parts: list[str] = []
-    current = ""
-    for word in text.split():
-        candidate = f"{current} {word}" if current else word
-        if len(candidate) <= limit:
-            current = candidate
-            continue
-        if current:
-            parts.append(current)
-        current = word
-    if current:
-        parts.append(current)
-    out: list[str] = []
-    for part in parts:
-        while len(part) > limit:
-            out.append(part[:limit])
-            part = part[limit:]
-        if part:
-            out.append(part)
-    return out
-
-
-def _prose(text: str, limit: int) -> list[str]:
-    pieces: list[str] = []
-    for sentence in re.split(r"(?<=[.!?…])\s+", text.strip()):
-        if not sentence:
-            continue
-        if len(sentence) <= limit:
-            pieces.append(sentence)
-            continue
-        for line in sentence.splitlines() or [sentence]:
-            if not line.strip():
-                continue
-            pieces.extend([line.strip()] if len(line.strip()) <= limit else _hard(line, limit))
-    return pieces
-
-
-def _units(text: str, limit: int) -> list[str]:
-    units: list[str] = []
-    for block in FENCE.split(text):
-        if not block.strip():
-            continue
-        if block.startswith(FENCE_START):
-            units.append(block if len(block) <= limit * 3 else "\n".join(_hard(block, limit * 3)))
-            continue
-        units.extend(_prose(block, limit))
-    return units
-
-
-def human_chunks(text: str, *, limit: int = 220, max_parts: int = 3) -> list[str]:
-    """Pecah teks jadi bubble WhatsApp pendek; blok ``` dipertahankan utuh."""
+    Isi tidak pernah dipotong atau diberi elipsis; kalau paragraf melebihi `max_parts`, sisa
+    paragraf digabung ke bubble terakhir supaya tidak ada kalimat yang hilang.
+    """
     body = str(text or "").strip()
     if not body:
         return []
-    parts_limit = max(1, int(max_parts))
-    parts: list[str] = []
-    current = ""
-    for unit in _units(body, limit):
-        ceiling = limit * 3 if unit.startswith(FENCE_START) or current.startswith(FENCE_START) else limit
-        candidate = f"{current} {unit}".strip() if current else unit
-        if len(candidate) <= ceiling:
-            current = candidate
-            continue
-        if current:
-            parts.append(current)
-        current = unit
-    if current:
-        parts.append(current)
-    if len(parts) > parts_limit:
-        kept = parts[:parts_limit]
-        tail = kept[-1]
-        kept[-1] = (tail if len(tail) < limit else tail[: limit - 1].rstrip()) + "…"
-        parts = kept
+    parts = [part.strip() for part in BUBBLE.split(body) if part.strip()]
+    cap = max(1, int(max_parts))
+    if len(parts) > cap:
+        parts = [*parts[: cap - 1], "\n\n".join(parts[cap - 1 :])]
     return parts
 
 
-def humanize_reply(text: str, *, limit: int, max_parts: int) -> list[str]:
-    """Balasan model -> bubble manusia: format WhatsApp dulu, lalu dipotong per kalimat."""
+def humanize_reply(text: str, *, max_parts: int) -> list[str]:
+    """Rapikan format WhatsApp, lalu pakai baris kosong dari model sebagai batas bubble."""
     blocks = format_reply(text, limit=10000)
-    return human_chunks("\n\n".join(blocks), limit=limit, max_parts=max_parts)
+    if not blocks:
+        return []
+    return human_chunks("\n\n".join(blocks), max_parts=max_parts)
 
 
 def typing_delay(text: str, config, rng=random) -> float:

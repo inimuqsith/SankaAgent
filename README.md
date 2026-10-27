@@ -49,7 +49,7 @@ dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.
 | `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
 | `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
 | `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine, satu `sanka.json` untuk semua chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `grudge_half_life_hours` (kesal reda sendiri, lebih lama untuk yang dekat), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
-| `humanize` | bubble & jeda: `enabled`, `normal_chars`, `normal_parts`, `detail_chars`, `detail_parts`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles`, `reaction_stickers` |
+| `humanize` | bubble & jeda: `enabled`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles` (batas atas jumlah pesan), `reaction_stickers` |
 | `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
 | `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_urge`, `chime_gap_seconds`, `chime_cooldown`, `chime_per_day`, `chime_per_day_global`, `research_cooldown`, `research_per_day`, `research_results` |
 | `mcp.servers` | per server: `command` + `args` + `env` (stdio) atau `url` (Streamable HTTP); tool diekspos sebagai `mcp__<server>__<tool>` |
@@ -175,11 +175,13 @@ menjalankan container privileged. Batasi `tools` role dan hanya lakukan bila mem
 
 ## Emosi, keputusan, dan otonomi
 
-Balasan normal bukan satu blok panjang: `humanize` memecahnya jadi 1-3 bubble pendek (maks
-`max_bubbles` per turn), masing-masing dengan jeda mengetik dari panjang teks (`cpms`, dibatasi
-`min_delay`/`max_delay`), dan chunk pertama tetap mengutip pesan asal. Jumlah bubble datang dari
-keputusan LLM (`bubbles`), dibatasi `max_bubbles` dan kebutuhan panjang teks; satu pesan masuk =
-satu burst, tidak ada bubble susulan otomatis sebelum lawan bicara membalas. Pesan yang masuk
+**Bubble ditentukan model, bukan penghitung byte.** Runtime memakai baris kosong dari model sebagai
+batas pesan: `bohong apanya sih 😭` + baris kosong + `masa aku ngambek terus…` jadi dua bubble
+berurutan dengan jeda mengetik per bubble, sedangkan penjelasan serius/daftar bernomor tanpa baris
+kosong tetap satu pesan utuh. Tidak ada pemotongan paksa dan tidak ada elipsis: kalau paragraf
+melebihi `humanize.max_bubbles`, sisa paragraf digabung ke pesan terakhir, bukan dibuang. Prompt
+`DAILY_STYLE` mengajarkan konvensi ini; `max_bubbles` hanya batas atas. Mode `professional` dan
+command selalu satu pesan (`format_reply`). Chunk pertama mengutip pesan asal, sisanya pesan biasa. Pesan yang masuk
 sesaat sebelum burst terakhir terkirim dianggap sudah terwakili, jadi tag beruntun dijawab sekali.
 Kalau `humanize.enabled: false`, semua balasan memakai jalur mengutip tanpa jeda.
 
@@ -206,6 +208,12 @@ dari fakta bahwa tool dipakai. `tone` masuk system prompt sebagai direktif: `cur
 kalimat dingin tanpa emoji, `hurt` singkat dan kecewa, `angry` ketus tanpa ancaman; `warm`,
 `playful`, dan `neutral` mengikuti persona. Prompt juga melarang menjanjikan waktu diam ("aku
 diam 10 menit") karena diam adalah keputusan per pesan, bukan komitmen.
+
+**Nada ikut perasaan, bukan suasana chat.** `decision.ground_tone` menurunkan nada dingin
+(`curt`/`hurt`/`angry`) jadi `neutral` kalau PAD-nya netral/positif **dan** orang itu tidak sedang
+menyulut (annoyance < 0.3) — jadi Sanka tidak lagi mengaku ngambek saat hatinya tenang. Sebaliknya,
+nada dingin tetap dipakai kalau pleasure negatif atau annoyance orangnya tinggi. Pergantian nada
+dicatat di log (`nada hurt->neutral chat=…`).
 
 **State emosi: satu hati untuk semua chat.** `sanka/affect.py` membungkus `emotion-engine` (MIT, di
 vendor di `sanka/vendor/emotion_engine.py`) apa adanya. Hanya ada **satu** file state,

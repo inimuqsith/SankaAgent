@@ -42,8 +42,9 @@ from .decision import (
     RelationshipDelta,
     decide,
     ensure_reply,
+    ground_tone,
 )
-from .format import format_reply, humanize_reply, reply_budget, typing_delay
+from .format import format_reply, humanize_reply, typing_delay
 from .llm import LLM
 from .mcp import Hub
 from .memory import SENSITIVE
@@ -365,7 +366,9 @@ def command_body(text: str, bot_name: str, bots: set[str]) -> str:
 
 DAILY_STYLE = (
     "Balas seperti chat WhatsApp sungguhan: kalimat pendek, ideal di bawah 300 karakter. "
-    "Kalau butuh detail, tetap pecah jadi beberapa pesan pendek dalam satu balasan.\n"
+    "Kalau kamu ingin beberapa gelembung (bubble) terpisah seperti orang chat beruntun, pisahkan "
+    "dengan satu baris kosong; runtime mengirimnya sebagai pesan terpisah. Penjelasan serius, "
+    "daftar, atau langkah bernomor tetap satu pesan utuh tanpa baris kosong di tengah.\n"
 )
 PRO_STYLE = (
     "Mode profesional: pesan ini tugas, bukan obrolan. Kerjakan sampai tuntas dengan tool yang ada, "
@@ -901,6 +904,26 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 )
             elif direct:
                 decision = ensure_reply(decision)
+            if turn is not None:  # nada harus berdasar perasaannya, bukan ikut suasana chat
+                annoyed = 0.0
+                if app.affect is not None:
+                    try:
+                        annoyed = next(
+                            (
+                                float(row["annoyance"])
+                                for row in app.affect.known_people(chat_id, 20)
+                                if row["person_id"] == person_id
+                            ),
+                            0.0,
+                        )
+                    except Exception:
+                        log.debug("gagal membaca annoyance chat=%s", chat, exc_info=True)
+                grounded = ground_tone(decision, turn, annoyed)
+                if grounded.tone != decision.tone:
+                    log.info(
+                        "nada %s->%s chat=%s: perasaan tidak cocok", decision.tone, grounded.tone, chat
+                    )
+                decision = grounded
 
         if not is_command and app.affect is not None:
             try:  # crisis tidak mengubah emosi/relasi, hanya profil & topik
@@ -1078,19 +1101,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 pace = False
                 quote_all = True
             else:
-                limit, _ = reply_budget(message.text, is_command=False, humanize=humanize)
                 answer = reply or ""
-                needed = (
-                    max(1, (len(answer.strip()) + limit - 1) // limit) if answer.strip() else 1
-                )
-                planned = max(
-                    1,
-                    min(
-                        int(humanize.max_bubbles),
-                        max(int(decision.bubbles), needed),
-                    ),
-                )
-                chunks = humanize_reply(answer, limit=limit, max_parts=planned) or ["(kosong)"]
+                planned = max(1, int(humanize.max_bubbles))  # cap saja; jumlah asli dari model
+                chunks = humanize_reply(answer, max_parts=planned) or ["(kosong)"]
                 pace = bool(humanize.enabled)
                 quote_all = not pace
             await _send_chunks(client, ev, app, chat_id, chunks, pace=pace, quote_all=quote_all)
