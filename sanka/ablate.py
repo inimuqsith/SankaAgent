@@ -9,77 +9,54 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 
-from . import salience, thread
+from . import salience
 from .chat import ChatMessage, prompt_entry
 from .config import Config
 from .decision import decide
-from .wa import bot_named, system_prompt
+from .wa import system_prompt
 
 REPLY_WINDOW = 1
 TRANSCRIPT_LINES = 30
-ABLATABLE = ("emotion", "vibe", "thread", "away")
+ABLATABLE = ("emotion", "vibe", "away")
 
 
 @dataclass(frozen=True)
 class Row:
     message: ChatMessage
     called: bool
-    thread_allowed: bool
     replied: bool
 
 
-def classify(messages: list[ChatMessage], *, bot_name: str, thread_seconds: int) -> list[Row]:
+def classify(messages: list[ChatMessage], *, bot_name: str) -> list[Row]:
     """Replay gerbang balasan dari arsip; satu baris per pesan masuk, kronologis.
 
-    Runtime juga menambahkan kata kunci dari balasan bot saat membuka situasi, sedangkan
-    harness hanya memakai pesan masuk. Jadi `thread_allowed` di sini adalah batas bawah
-    (lebih ketat daripada runtime): pesan yang lolos di harness pasti lolos di runtime.
+    Arsip tidak menyimpan mention asli, jadi `called` hanya dari kutipan ke bot: batas
+    bawah (lower bound) dari gerbang runtime yang juga melihat mention asli.
     """
     rows: list[Row] = []
-    state: dict = {}
     pending = -1  # indeks baris pesan masuk yang masih menunggu balasan
     pending_at = -1  # posisinya di arsip, untuk jendela balasan
     for position, message in enumerate(messages):
         if message.outgoing:
             if pending < 0 or position - pending_at > REPLY_WINDOW:
                 continue
-            source = rows[pending].message
             rows[pending] = dataclasses.replace(rows[pending], replied=True)
-            state = thread.open_thread(
-                source.sender_id,
-                source.sender_name,
-                source.text,
-                "",
-                seconds=thread_seconds,
-                now=message.when.timestamp(),
-            )
             pending = -1
             continue
-        called = bot_named(message.text, bot_name) or (
-            message.quote is not None and message.quote.sender_name == bot_name
-        )
-        allowed = called or thread.continues(
-            state,
-            person=message.sender_id,
-            text=message.text,
-            now=message.when.timestamp(),
-        )
-        if not allowed:
-            state = {}
-        rows.append(Row(message, called, allowed, False))
+        called = message.quote is not None and message.quote.sender_name == bot_name
+        rows.append(Row(message, called, False))
         pending = len(rows) - 1
         pending_at = position
     return rows
 
 
 def replay_metrics(rows: list[Row]) -> dict:
-    """Hitungan gerbang: panggilan, situasi lanjutan, balasan, dan kesalahan arah."""
+    """Hitungan gerbang: panggilan, balasan, dan kesalahan arah."""
     incoming = len(rows)
-    false_positive = sum(1 for row in rows if row.replied and not row.thread_allowed)
+    false_positive = sum(1 for row in rows if row.replied and not row.called)
     return {
         "incoming": incoming,
         "called": sum(1 for row in rows if row.called),
-        "thread_allowed": sum(1 for row in rows if row.thread_allowed),
         "replied": sum(1 for row in rows if row.replied),
         "false_positive": false_positive,
         "missed": sum(1 for row in rows if row.called and not row.replied),
@@ -105,7 +82,7 @@ def prompt_budget(
     stripped = dataclasses.replace(
         config, prompt=dataclasses.replace(config.prompt, salience=False)
     )
-    mandatory = {"base": "x", "emotion": "x", "vibe": "x", "safety": "", "away": "", "thread": ""}
+    mandatory = {"base": "x", "emotion": "x", "vibe": "x", "safety": "", "away": ""}
     before: list[int] = []
     after: list[int] = []
     dropped: dict[str, int] = {}
@@ -201,7 +178,6 @@ async def decision_shift(
             "is_reply": message.quote is not None and message.quote.sender_name == bot_name,
             "away": "" if "away" in ablate else "catatan",
             "vibe": "" if "vibe" in ablate else "suasana hangat",
-            "thread": "" if "thread" in ablate else "situasi percakapan terbuka",
             "soul": config.persona,
         }
         emotion = emotion_brief(affect, chat_id)

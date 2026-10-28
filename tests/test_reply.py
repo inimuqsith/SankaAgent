@@ -630,28 +630,6 @@ def test_unaddressed_group_skips_decision_and_reply(tmp_path) -> None:
     assert llm.decisions == []  # tanpa panggilan: model pun tidak ditanya
 
 
-def test_group_reply_policy_model_still_trusts_decision(tmp_path) -> None:
-    from dataclasses import replace
-
-    llm = DecisionLLM(
-        answer="jomblo itu status, bukan gelar wkwk",
-        decision=verdict("reply", addressed="group", reason="nimbrung"),
-    )
-
-    async def flow():
-        client, sent, _ = transport()
-        config = rich_config(tmp_path)
-        config = replace(config, whatsapp=replace(config.whatsapp, group_reply="model"))
-        app = App(config, llm, FakeHub(), Sessions())
-        app.bot_digits = {"628567770837"}
-        await handle_message(client, group_event("wujud aseli jomblo", mention=False), app)
-        return sent
-
-    sent = asyncio.run(flow())
-
-    assert [payload_text(item) for item in sent] == ["jomblo itu status, bukan gelar wkwk"]
-
-
 def test_mention_decision_ignore_is_overridden_to_reply(tmp_path) -> None:
     llm = DecisionLLM(decision=verdict("ignore", addressed="other", tone="warm"))
 
@@ -761,7 +739,7 @@ def test_decision_invalid_unaddressed_sends_nothing(tmp_path) -> None:
     assert llm.calls == []
 
 
-def test_ignore_still_records_emotion_without_typing(tmp_path) -> None:
+def test_unprompted_group_leaves_emotion_untouched(tmp_path) -> None:
     store, affect_config = affect_setup(tmp_path)
     llm = DecisionLLM(
         decision=verdict(
@@ -779,14 +757,15 @@ def test_ignore_still_records_emotion_without_typing(tmp_path) -> None:
             affect=store,
         )
         app.bot_digits = {"628567770837"}
-        # disebut namanya = dipanggil, jadi keputusan tetap dibuat dan emosi tetap tercatat
+        # tanpa mention/reply ke bot: model tidak ditanya, emosi tidak bergerak
         await handle_message(client, group_event("dasar bot sampah sanka", mention=False), app)
         return sent, presence
 
     sent, presence = asyncio.run(flow())
 
-    assert sent == [] and presence == []  # ignore tidak memunculkan typing
-    assert store.status("1234567890@g.us", "628222222222")["pleasure"] < 0
+    assert sent == [] and presence == []
+    assert llm.decisions == []
+    assert store.status("1234567890@g.us", "628222222222")["pleasure"] == 0.0
     store.close()
 
 
@@ -1091,7 +1070,9 @@ def test_prompt_budget_drops_optional_blocks() -> None:
 
     config = make_config()
     blocks = {"memory": "x" * 6000, "topic": "topik" * 240}
-    tight = replace(config, prompt=replace(config.prompt, max_chars=5500))
+    base_len = len(system_prompt(config, "member", None))
+    # Anggaran muat base + topik tapi tidak + memori: salience membuang yang tak relevan.
+    tight = replace(config, prompt=replace(config.prompt, max_chars=base_len + len(blocks["topic"]) + 10))
 
     prompt = system_prompt(tight, "member", None, query="kopi", bonuses={"topic": 0.3}, **blocks)
 
@@ -1454,7 +1435,7 @@ def test_group_captionless_image_is_ignored(tmp_path) -> None:
     assert llm.decisions == [] and llm.calls == []
 
 
-def test_group_message_that_calls_the_name_is_answered(tmp_path) -> None:
+def test_group_name_without_tag_is_ignored(tmp_path) -> None:
     llm = DecisionLLM(answer="lagi di sini")
 
     async def flow():
@@ -1466,8 +1447,9 @@ def test_group_message_that_calls_the_name_is_answered(tmp_path) -> None:
 
     sent = asyncio.run(flow())
 
-    assert len(llm.decisions) == 1  # nama disebut = panggilan tanpa tag
-    assert [payload_text(item) for item in sent] == ["lagi di sini"]
+    assert sent == []
+    assert llm.decisions == []
+    assert llm.calls == []
 
 
 def test_cold_tone_is_softened_when_mood_is_calm(tmp_path) -> None:
@@ -1611,108 +1593,124 @@ def test_command_does_not_wait_in_the_queue(tmp_path) -> None:
     assert app.quiet
 
 
-def test_stretched_name_counts_as_a_call() -> None:
-    from sanka.wa import bot_named
+def test_group_followup_without_mention_is_ignored(tmp_path) -> None:
+    llm = DecisionLLM(answer="rapatnya jam tiga")
 
-    for text in ("SAANKAAAA", "SANKAAAAAAAAAAA", "sannnkaaaaaa", "saaannkaaaa tolong"):
-        assert bot_named(text, "sanka") is True, text
-    for text in ("kesankan", "sangka", "sanksi baru", "s a n k a"):
-        assert bot_named(text, "sanka") is False, text
-
-
-def open_thread_flow(tmp_path):
     async def flow():
         client, sent, _ = transport()
-        llm = DecisionLLM(answer="rapatnya jam tiga")
         app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
         app.bot_digits = {"628567770837"}
         await handle_message(
-            client, group_event("@sanka catatan rapat jam tiga", event_id="3EB0T1"), app
+            client, group_event("@sanka catatan rapat jam tiga", event_id="3EB0F1"), app
         )
-        return client, sent, llm, app
-
-    return flow
-
-
-def test_open_thread_continues_without_mention(tmp_path) -> None:
-    import asyncio as aio
-
-    async def flow():
-        client, sent, llm, app = await open_thread_flow(tmp_path)()
-        await handle_message(client, group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0T2"), app)
-        return sent, llm, app
-
-    sent, llm, app = aio.run(flow())
-
-    assert len(llm.decisions) == 2  # lanjutan situasi ikut diputuskan tanpa mention
-    assert len(sent) == 2
-    assert app.threads  # situasi masih terbuka
-
-
-def test_new_topic_closes_the_situation(tmp_path) -> None:
-    import asyncio as aio
-
-    async def flow():
-        client, sent, llm, app = await open_thread_flow(tmp_path)()
         await handle_message(
-            client, group_event("eh tiket bola besok berapa", mention=False, event_id="3EB0T3"), app
+            client, group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0F2"), app
         )
-        return sent, llm, app
+        return sent
 
-    sent, llm, app = aio.run(flow())
+    sent = asyncio.run(flow())
 
-    assert len(llm.decisions) == 1  # konteks pindah: tidak diputuskan lagi
-    assert len(sent) == 1
-    assert app.threads == {}  # situasi dianggap selesai
-
-
-def test_other_person_closes_the_situation(tmp_path) -> None:
-    import asyncio as aio
-
-    async def flow():
-        client, sent, llm, app = await open_thread_flow(tmp_path)()
-        other = group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0T4")
-        other.Info.MessageSource.Sender.User = "628111111111"
-        await handle_message(client, other, app)
-        return sent, llm, app
-
-    sent, llm, app = aio.run(flow())
-
+    assert len(sent) == 1  # lanjutan tanpa mention: balasan tidak bertambah
     assert len(llm.decisions) == 1
-    assert len(sent) == 1
-    assert app.threads == {}
 
 
-def test_expired_thread_needs_a_new_call(tmp_path) -> None:
-    import asyncio as aio
-    import time
+def test_group_reply_to_bot_without_mention_is_answered(tmp_path) -> None:
+    llm = DecisionLLM(answer="iya, ini dia")
 
     async def flow():
-        client, sent, llm, app = await open_thread_flow(tmp_path)()
-        app.threads["1234567890@g.us"]["until"] = time.time() - 1
-        await handle_message(
-            client, group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0T5"), app
-        )
-        return sent, llm, app
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        ev = group_event("iya, tolong", mention=False)
+        context = ev.Message.extendedTextMessage.contextInfo
+        context.participant = BOT_JID
+        context.stanzaID = "3EB0BOTMSG"
+        context.quotedMessage.conversation = "mau kubantu?"
+        await handle_message(client, ev, app)
+        return sent
 
-    sent, llm, app = aio.run(flow())
+    sent = asyncio.run(flow())
 
-    assert len(llm.decisions) == 1
+    assert len(sent) == 1  # reply ke pesan bot tanpa mention tetap dijawab
+
+
+def recipe_app(tmp_path, roles: dict, workspace_files: dict | None = None) -> App:
+    from sanka.recipes import RecipeStore
+
+    config = Config(
+        persona="p",
+        llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
+        workspace=tmp_path / "workspace",
+        whatsapp=WhatsAppConfig(session_db=tmp_path / "wa.db"),
+        roles=roles,
+        default_role="member",
+        sandbox=SandboxConfig(),
+        mcp={},
+    )
+    if workspace_files:
+        (tmp_path / "workspace").mkdir(parents=True, exist_ok=True)
+        for name, body in workspace_files.items():
+            (tmp_path / "workspace" / name).write_text(body, encoding="utf-8")
+    app = App(config, FakeLLM(), FakeHub(), Sessions(), recipes=RecipeStore(tmp_path / "recipes"))
+    app.bot_digits = {"628567770837"}
+    return app
+
+
+def sent_text(sent: list[tuple]) -> str:
+    return sent[0][1].extendedTextMessage.text
+
+
+def test_recipe_command_reads_file(tmp_path) -> None:
+    from sanka.config import RoleConfig as RC
+
+    app = recipe_app(
+        tmp_path,
+        {"member": RC("member", tools=("read",), commands=("*",))},
+        {"a.txt": "isi rekap divisi"},
+    )
+    app.recipes.save(
+        "rekap", "recipe", "Rekap.", steps=[{"tool": "read", "args": {"path": "a.txt"}}]
+    )
+
+    client, sent, _ = transport()
+    asyncio.run(handle_message(client, group_event("/rekap divisi"), app))
+
     assert len(sent) == 1
-    assert app.threads == {}
+    assert "isi rekap divisi" in sent_text(sent)
 
 
-def test_open_situation_reaches_the_decision_prompt(tmp_path) -> None:
-    import asyncio as aio
+def test_recipe_command_owner_only_locked_for_member(tmp_path) -> None:
+    from sanka.config import RoleConfig as RC
 
-    async def flow():
-        client, _, llm, app = await open_thread_flow(tmp_path)()
-        await handle_message(
-            client, group_event("rapat jam tiga di mana?", mention=False, event_id="3EB0T6"), app
-        )
-        return llm
+    app = recipe_app(
+        tmp_path,
+        {"member": RC("member", tools=("*",), commands=("*",))},
+        {"a.txt": "rahasia"},
+    )
+    app.recipes.save(
+        "rekap",
+        "recipe",
+        "Rekap.",
+        roles=["owner"],
+        steps=[{"tool": "read", "args": {"path": "a.txt"}}],
+    )
 
-    llm = aio.run(flow())
+    client, sent, _ = transport()
+    asyncio.run(handle_message(client, group_event("/rekap"), app))
 
-    assert "Situasi percakapan" in llm.decisions[1]
-    assert "melanjutkan obrolan" in llm.decisions[1]
+    assert sent_text(sent) == "🔒 Command /rekap tidak diizinkan untuk role member."
+
+
+def test_prompt_recipe_delegates_one_turn(tmp_path) -> None:
+    from sanka.commands import REGISTRY as COMMANDS
+    from sanka.config import RoleConfig as RC
+
+    app = recipe_app(tmp_path, {"member": RC("member", tools=("*",), commands=("*",))})
+    app.recipes.save("puisi", "prompt", "Bikin puisi.", prompt="Buatkan puisi tentang {{args}}.")
+
+    client, sent, _ = transport()
+    asyncio.run(handle_message(client, group_event("/puisi senja"), app))
+
+    assert sent_text(sent) == "siap"
+    assert COMMANDS.get("puisi") is None
+    assert COMMANDS.get("rekap") is None

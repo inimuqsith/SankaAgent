@@ -66,11 +66,8 @@ CREATE TABLE IF NOT EXISTS topics (
   last_message REAL NOT NULL DEFAULT 0,
   last_digest REAL NOT NULL DEFAULT 0,
   last_research REAL NOT NULL DEFAULT 0,
-  last_chime REAL NOT NULL DEFAULT 0,
   research_day TEXT NOT NULL DEFAULT '',
-  research_count INTEGER NOT NULL DEFAULT 0,
-  chime_day TEXT NOT NULL DEFAULT '',
-  chime_count INTEGER NOT NULL DEFAULT 0
+  research_count INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS drives (
@@ -556,7 +553,7 @@ class AffectStore:
     # ------------------------------------------------------------------ heartbeat
 
     def drives(self, chat_id: str) -> dict:
-        """Drive publik (energi, kebosanan, kesepian) untuk prompt dan chime."""
+        """Drive publik (energi, kebosanan, kesepian) untuk prompt."""
         with self._lock:
             data = self._drives(self._require(), chat_id)
         return {key: float(data[key]) for key in ("energy", "boredom", "loneliness")}
@@ -717,11 +714,8 @@ class AffectStore:
                 "last_message": 0.0,
                 "last_digest": 0.0,
                 "last_research": 0.0,
-                "last_chime": 0.0,
                 "research_day": "",
                 "research_count": 0,
-                "chime_day": "",
-                "chime_count": 0,
             }
         data = dict(row)
         data["keywords"] = _load(data["keywords"], [])
@@ -794,22 +788,6 @@ class AffectStore:
                 "VALUES(?, ?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET "
                 "last_research=excluded.last_research, research_day=excluded.research_day, "
                 "research_count=excluded.research_count",
-                (chat_id, moment, day, count),
-            )
-            conn.commit()
-
-    def mark_chime(self, chat_id: str, now: float | None = None) -> None:
-        moment = time.time() if now is None else float(now)
-        day = time.strftime("%Y-%m-%d", time.localtime(moment))
-        with self._lock:
-            conn = self._require()
-            data = self.topic(chat_id)
-            count = int(data["chime_count"]) + 1 if data["chime_day"] == day else 1
-            conn.execute(
-                "INSERT INTO topics(chat_id, last_chime, chime_day, chime_count) "
-                "VALUES(?, ?, ?, ?) ON CONFLICT(chat_id) DO UPDATE SET "
-                "last_chime=excluded.last_chime, chime_day=excluded.chime_day, "
-                "chime_count=excluded.chime_count",
                 (chat_id, moment, day, count),
             )
             conn.commit()

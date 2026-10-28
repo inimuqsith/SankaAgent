@@ -386,8 +386,3 @@ class LLM:
         flat = " ".join(raw.split())
         return flat if len(flat) <= 400 else flat[:399] + "…"
 
-    async def chime(self, system: str, user: str) -> str:
-        """Pesan spontan singkat saat chat sepi; `[DIAM]` berarti tidak ada nilai bicara."""
-        return await self.complete(
-            system, user, max_tokens=300, temperature=0.9, session=f"{USER_AGENT}-chime"
-        )

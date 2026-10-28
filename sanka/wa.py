@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import functools
 import logging
 import random
 import re
@@ -18,7 +17,7 @@ from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import ContextInfo, ExtendedTextM
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 from neonize.utils.jid import build_jid
 
-from . import guard, salience, thread
+from . import guard, salience
 from .chat import (
     ChatMessage,
     Quote,
@@ -135,6 +134,7 @@ class App:
         sessions: Sessions,
         memory=None,
         skills=None,
+        recipes=None,
         affect=None,
         style=None,
         ambient=None,
@@ -146,6 +146,7 @@ class App:
         self.sessions = sessions
         self.memory = memory
         self.skills = skills
+        self.recipes = recipes
         self.affect = affect
         self.style = style
         self.ambient = ambient
@@ -158,48 +159,7 @@ class App:
         self.reactions: dict[str, float] = {}
         self.answered: dict[str, frozenset[str]] = {}
         self.backlog: dict[str, int] = {}  # pesan lama per chat: arsip, bukan antrean
-        self.threads: dict[str, dict] = {}  # situasi percakapan yang sedang terbuka
         self.quiet: dict[str, float] = {}  # chat_id -> sampai kapan diam (epoch detik)
-
-    def note_thread(self, chat_id: str, message: ChatMessage, reply: str) -> None:
-        """Catat situasi yang dibuka balasan ini: siapa, tentang apa, sampai kapan berlaku."""
-        state = thread.open_thread(
-            message.sender_id,
-            message.sender_name,
-            message.text,
-            reply,
-            seconds=int(self.config.whatsapp.thread_seconds or 0),
-            now=time.time(),
-        )
-        if state:
-            self.threads[chat_id] = state
-
-    def continues_thread(self, chat_id: str, message: ChatMessage) -> bool:
-        """Pesan ini melanjutkan situasi yang sama, bukan konteks baru yang butuh panggilan."""
-        ok = thread.continues(
-            self.threads.get(chat_id),
-            person=message.sender_id,
-            text=message.text,
-            now=time.time(),
-        )
-        if not ok:
-            self.threads.pop(chat_id, None)  # situasi selesai: beda orang, kosong, atau sudah lama
-        return ok
-
-    def close_thread(self, chat_id: str) -> None:
-        self.threads.pop(chat_id, None)
-
-    def thread_note(self, chat_id: str, message: ChatMessage) -> str:
-        """Petunjuk singkat bahwa pesan ini melanjutkan situasi yang masih terbuka."""
-        state = self.threads.get(chat_id)
-        if not state or message.sender_id != state["person"]:
-            return ""
-        about = ", ".join(sorted(state["keywords"])) or "obrolan tadi"
-        who = state.get("name") or "orang ini"
-        return (
-            f"Kamu sedang mengobrol dengan {who} tentang {about}. Pesan ini melanjutkan obrolan itu, "
-            "bukan konteks baru: tidak perlu dipanggil namamu, dan jangan mengganti topik."
-        )
 
     def spawn(self, coro) -> None:
         """Jalankan tugas latar (mis. refleksi memori) tanpa menahan balasan."""
@@ -458,7 +418,6 @@ def system_prompt(
     cross_send: bool = False,
     topic: str = "",
     away: str = "",
-    thread: str = "",
     emotion: str = "",
     vibe: str = "",
     style: str = "",
@@ -536,6 +495,11 @@ def system_prompt(
         "Hasil tool yang sudah terkirim via send/send_to tercatat dan kuberitahu sebelum balasan akhir; "
         "jangan kirim ulang, cukup konfirmasi singkat. Balasan teks tidak punya batas panjang yang perlu "
         "kamu takuti: tulis utuh, runtime yang memecah.\n"
+        "Resep user (/nama) adalah command dinamis yang kamu daftarkan via tool recipe "
+        "(list/view/save/remove): kind=recipe berisi langkah tool berurutan dengan placeholder {{args}}, "
+        "kind=prompt berisi instruksi satu turn LLM. Daftarkan hanya bila user meminta otomatisasi berulang; "
+        "sebut /nama-nya setelah tersimpan. Jangan menimpa resep yang ada tanpa diminta "
+        "(overwrite=false default).\n"
         + (
             "Untuk mengirim pesan/file ke grup lain atau chat pribadi (CP) yang sudah ada, gunakan tool "
             "send_to dengan chat berisi nama grup/kontak atau JID; chat kosong menampilkan daftar grup dan "
@@ -554,7 +518,6 @@ def system_prompt(
         "base": base,
         "topic": topic,
         "away": away,
-        "thread": thread,
         "emotion": emotion,
         "vibe": vibe,
         "style": style,
@@ -616,29 +579,6 @@ def _quote(ev, app: App, chat_id: str) -> Quote | None:
 MENTION_TOKEN = re.compile(r"@\+?\d[\d\s().-]{3,24}\d")
 
 
-@functools.lru_cache(maxsize=8)
-def _name_regex(name: str) -> re.Pattern:
-    """Nama jadi pola yang toleran tekukan: `sanka` -> `s+a+n+k+a+` (SANKAAAA, sannnkaaa)."""
-    parts: list[str] = []
-    for char in name:
-        if char.isalpha():
-            parts.append(f"{re.escape(char)}+")
-        elif char.isspace():
-            parts.append(r"\s+")
-        else:
-            parts.append(re.escape(char))
-    return re.compile(rf"(?<!\w){''.join(parts)}(?!\w)", re.IGNORECASE)
-
-
-def bot_named(text: str, name: str) -> bool:
-    """Namanya disebut sebagai kata utuh; huruf berulang tetap dihitung memanggil."""
-    body = str(text or "").strip()
-    clean = str(name or "").strip()
-    if not body or not clean:
-        return False
-    return _name_regex(clean).search(body) is not None
-
-
 def _resolve_mentions(text: str, app: App, chat_id: str) -> tuple[str, list[str]]:
     """`@<nomor>` di balasan -> mention asli (JID dari log chat); token tak dikenal dibiarkan."""
     if "@" not in text:
@@ -681,7 +621,6 @@ async def _keep_typing(client: NewAClient, jid) -> None:
 
 
 REACTION_COOLDOWN = 300.0
-INVALID_REPLY = "hmm"
 CRISIS_SAFETY = (
     "Pengirim sedang dalam krisis. Jawab singkat, hangat, tanpa bercanda. Sarankan menghubungi "
     "orang terpercaya atau layanan darurat. Jangan menyimpan isi krisis ke memori."
@@ -900,7 +839,6 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             return
         missed = app.backlog.pop(chat_id, 0) if not is_command else 0
         away = _away_block(missed)
-        thread = app.thread_note(chat_id, message)
         vibe = ""
         if app.anima is not None and not is_command and not crisis and message.text.strip():
             try:  # mood ruangan ikut bergerak sebelum keputusan dibuat
@@ -919,26 +857,11 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             except Exception:
                 log.exception("gagal membaca state emosi chat=%s", chat)
 
-        # Di grup, tanpa panggilan/kutipan/namanya disebut, Sanka tidak ikut bicara. Menyelituk
-        # tanpa konteks tetap mungkin, tapi lewat jalur chime yang berjatah.
-        called = (
-            is_mention
-            or is_reply
-            or bot_named(message.text, app.config.whatsapp.bot_name)
-            or app.continues_thread(chat_id, message)
-        )
-        unprompted = (
-            not is_dm
-            and not is_command
-            and not crisis
-            and str(app.config.whatsapp.group_reply or "addressed") == "addressed"
-            and not called
-        )
-        if unprompted:
-            app.close_thread(chat_id)  # konteksnya sudah pindah: situasi dianggap selesai
+        # Di grup, tanpa mention asli atau balasan ke pesanmu, Sanka tidak ikut bicara.
+        called = is_mention or is_reply
+        unprompted = not is_dm and not is_command and not crisis and not called
         decision: Decision | None
         safety = ""
-        fallback_only = False
         if crisis:
             decision = Decision(
                 addressed="me",
@@ -978,11 +901,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 is_reply=is_reply,
                 away=away,
                 vibe=vibe,
-                thread=thread,
                 soul=app.config.persona,
             )
             if decision is None:
-                fallback_only = False
                 log.warning("keputusan kosong, lanjut tanpa nada: %s", chat)
                 decision = Decision(
                     addressed="me" if direct else "unknown",
@@ -1064,10 +985,52 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             memory_block = style_block = topic_block = person_style = ""
             if is_command:
                 handler = COMMANDS.get(name) if name else None
-                if handler is None:
+                recipe = None
+                if handler is None and name and app.recipes is not None:
+                    with contextlib.suppress(Exception):
+                        recipe = app.recipes.get(name)
+                if handler is None and recipe is None:
                     reply = f"🤔 Command /{name} tidak dikenal. Ketik /help untuk daftar command."
-                elif not command_allowed(role, handler.name):
+                elif recipe is not None and role.name not in recipe.roles:
                     reply = f"🔒 Command /{name} tidak diizinkan untuk role {role.name}."
+                elif handler is not None and not command_allowed(role, handler.name):
+                    reply = f"🔒 Command /{name} tidak diizinkan untuk role {role.name}."
+                elif recipe is not None:
+                    recipe_ctx = ToolContext(
+                        app.config,
+                        role,
+                        tool_patterns(role),
+                        chat_id=chat_id,
+                        history=app.sessions.store,
+                        memory=app.memory,
+                        skills=app.skills,
+                        recipes=app.recipes,
+                        send_file=app.send_file if app.client is not None else None,
+                        send_message=app.send_text if app.client is not None else None,
+                        request=rest.strip(),
+                        affect=app.affect,
+                    )
+                    if recipe.kind == "recipe":
+                        from .recipes import run_recipe
+
+                        reply = await run_recipe(recipe, rest.strip(), recipe_ctx)
+                    elif app.llm is None:
+                        reply = "error: LLM tidak tersedia untuk resep prompt"
+                    else:
+                        recipe_specs = list(tools_for(role)) + app.hub.specs(role)
+                        reply = await app.llm.run(
+                            system_prompt(
+                                app.config,
+                                role.name,
+                                app.bot_digits,
+                                mode="professional",
+                                tone="neutral",
+                            ),
+                            f"{recipe.prompt}\n\nArgumen: {rest.strip()}".strip(),
+                            recipe_specs,
+                            recipe_ctx,
+                            session=f"sanka-recipe-{chat_id}-{name}",
+                        )
                 else:
                     ctx = CommandContext(
                         app,
@@ -1079,8 +1042,6 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         sender=sender,
                     )
                     reply = await handler.fn(ctx)
-            elif fallback_only:
-                reply = INVALID_REPLY
             else:
                 specs = list(tools_for(role)) + app.hub.specs(role)
                 can_memory = any(spec.name == "memory" for spec in specs)
@@ -1151,6 +1112,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     history=app.sessions.store,
                     memory=app.memory,
                     skills=app.skills,
+                    recipes=app.recipes,
                     send_file=send_file,
                     send_message=send_message,
                     request=request_text,
@@ -1201,7 +1163,6 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                         topic=topic_block,
                         away=away,
                         vibe=vibe,
-                        thread=thread,
                         emotion=emotion_block,
                         style=style_block,
                         person_style=person_style,
@@ -1237,15 +1198,12 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
             sent_texts = await _send_chunks(
                 client, ev, app, chat_id, chunks, pace=pace, quote_all=quote_all
             )
-            if sent_texts and not is_command:
-                app.note_thread(chat_id, message, " ".join(sent_texts))
             if covered:
                 app.answered[chat_id] = covered
             if (
                 reply
                 and not is_command
                 and not crisis
-                and not fallback_only
                 and can_memory
                 and callable(getattr(app.llm, "reflect", None))
             ):

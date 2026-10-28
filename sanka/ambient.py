@@ -1,15 +1,13 @@
-"""Otonomi terbatas: ringkas topik, riset saat sepi, dan nimbrung jarang.
+"""Otonomi terbatas: ringkas topik dan riset saat sepi.
 
 Semua akses di luar efek emosi dibatasi: tool hanya `web_search`, memori hanya chat yang
-sama + global, dan tidak pernah mengirim DM. Pengiriman spontan tunduk pada cooldown harian
-dan state emosi dari emotion-engine.
+sama + global, dan tidak pernah mengirim pesan ke chat mana pun.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import time
 from datetime import date, datetime
 
@@ -21,20 +19,7 @@ from .tools.web_search import TOOL as WEB_SEARCH
 log = logging.getLogger(__name__)
 
 TRANSCRIPT_CHARS = 300
-CHIME_QUIET_WINDOW = 12 * 3600  # di atas ini topiknya sudah dingin, bukan sepi
 AMBIENT_ROLE = ("web_search",)
-CHIME_SYSTEM = """Kamu Sanka, laki-laki dengan ekspresi emosional feminin, di grup WhatsApp yang sedang sepi.
-Tulis SATU pesan pendek (maks 200 karakter) yang natural dan menambah nilai, seperti manusia
-yang nimbrung: tanya lanjutan, tanggapi topik yang menggantung, atau celetuk jahil ringan.
-Jangan mengulang pertanyaan, jangan minta izin, jangan menjelaskan proses, jangan menyebut AI,
-jangan mengarang fakta. Kadang kamu penasaran dan ingin tahu kelanjutan; kadang kamu gabut atau
-kesepian dan meratapi chat yang sepi. Jangan menuduh, jangan memancing dengan pertanyaan berulang.
-Jika tidak ada nilai, balas [DIAM].
-Kamu satu orang yang sama di semua chat WhatsApp: bukan akun lain, bukan persona lain. Yang beda
-hanya tempatnya, jadi kamu boleh memilih chat mana yang ingin kamu selituki, tapi jangan menyalin
-celetukan yang sama ke banyak chat, jangan mengaku sedang di tempat lain, dan jangan membocorkan isi
-chat lain yang tidak relevan di sini.
-Kamu tidak punya tubuh fisik; jangan mengarang kondisi tubuh."""
 
 
 class Ambient:
@@ -49,9 +34,6 @@ class Ambient:
         memory=None,
         history=None,
         sessions=None,
-        send_text=None,
-        quiet=None,
-        turn_busy=None,
     ):
         self.config = config
         self.settings = config.ambient
@@ -61,15 +43,9 @@ class Ambient:
         self.memory = memory
         self.history = history
         self.sessions = sessions
-        self.send_text = send_text
-        self.quiet = quiet or (lambda _chat_id: False)
-        self.turn_busy = turn_busy or (lambda: False)
         self.known_chats: set[str] = set()
         self.busy: set[str] = set()
         self.tasks: set[asyncio.Task] = set()
-        self._last_human: dict[str, float] = {}
-        self._last_chime = 0.0  # jeda global: satu menyelituk untuk semua chat
-        self._chime_log: list[float] = []  # percobaan chime 24 jam terakhir (plafon global)
         self._task: asyncio.Task | None = None
 
     # ------------------------------------------------------------------ lifecycle
@@ -109,12 +85,6 @@ class Ambient:
         if not chat_id:
             return
         self.known_chats.add(chat_id)
-        if not getattr(message, "outgoing", False):
-            when = getattr(message, "when", None)
-            try:
-                self._last_human[chat_id] = when.timestamp() if when is not None else time.time()
-            except (AttributeError, OSError, ValueError):
-                self._last_human[chat_id] = time.time()
 
     async def _loop(self) -> None:
         while True:
@@ -159,10 +129,6 @@ class Ambient:
                 if await self._research_candidate(chat_id, moment):
                     await self._research(chat_id)
                     break
-            for chat_id in chats:
-                if await self._chime_candidate(chat_id, moment):
-                    await self._chime(chat_id)
-                    break
 
     async def _research_candidate(self, chat_id: str, moment: float) -> bool:
         settings = self.settings
@@ -177,80 +143,6 @@ class Ambient:
         if moment - float(topic["last_research"]) < int(settings.research_cooldown):
             return False
         return int(topic["research_count"]) < int(settings.research_per_day)
-
-    async def _chime_candidate(self, chat_id: str, moment: float) -> bool:
-        """Boleh menyelituk bukan karena jadwal: ruangan sepi + dorongan perasaan cukup kuat.
-
-        Cooldown dan plafon harian tetap ada, tapi itu pengaman anti-spam, bukan pemicu.
-        """
-        settings = self.settings
-        if self.affect is None or not chat_id.endswith("@g.us"):
-            return False
-        if self.turn_busy():  # sedang membalas chat lain: jangan menyela antrean
-            return False
-        try:
-            topic = self.affect.topic(chat_id)
-        except Exception:
-            return False
-        quiet = moment - float(topic["last_message"])
-        if quiet < int(settings.idle_minutes) * 60:  # ruangan masih ramai: jangan menyela
-            return False
-        if quiet > CHIME_QUIET_WINDOW:  # topik sudah dingin, bukan sepi
-            return False
-        if moment - float(topic["last_chime"]) < int(settings.chime_cooldown):
-            return False
-        if int(topic["chime_count"]) >= int(settings.chime_per_day):
-            return False
-        if moment - self._last_chime < float(settings.chime_gap_seconds):
-            return False  # baru menyelituk di chat mana pun: jangan beruntun
-        if len(self._recent_chimes(moment)) >= int(settings.chime_per_day_global):
-            return False  # jatah 24 jam seluruh chat sudah habis
-        rows = self._recent(chat_id, 3)
-        if not rows or getattr(rows[-1], "outgoing", False):
-            return False
-        urge = self._urge(chat_id)
-        floor = float(settings.chime_urge)
-        if urge <= floor:
-            log.debug("ambient chime ditahan chat=%s urge=%.2f", chat_id, urge)
-            return False
-        chance = min(1.0, (urge - floor) / (1.0 - floor))
-        if random.random() >= chance:
-            log.debug(
-                "ambient chime ditahan chat=%s urge=%.2f peluang=%.2f", chat_id, urge, chance
-            )
-            return False
-        log.info("ambient chime dipicu chat=%s urge=%.2f peluang=%.2f", chat_id, urge, chance)
-        return True
-
-    def _recent_chimes(self, moment: float) -> list[float]:
-        """Percobaan chime dalam 24 jam terakhir; jatah harian global dihitung dari sini."""
-        cutoff = moment - 86400.0
-        self._chime_log = [stamp for stamp in self._chime_log if stamp >= cutoff]
-        return self._chime_log
-
-    def _urge(self, chat_id: str) -> float:
-        """Dorongan untuk menyelituk, murni dari keadaan: 0 berarti betah diam.
-
-        Kesepian dan kebosanan tumbuh selama chat sepi; gelisah (arousal) dan sedih
-        (pleasure negatif) menambah keinginan bicara; pertanyaan yang menggantung
-        menambah penasaran. Energi tinggi berarti masih punya tenaga untuk memulai.
-        """
-        try:
-            status = self.affect.status(chat_id)
-            drives = self.affect.drives(chat_id)
-            pending = self.affect.pending(chat_id)
-        except Exception:
-            log.debug("ambient: gagal membaca urge chat=%s", chat_id, exc_info=True)
-            return 0.0
-        urge = (
-            0.35 * float(drives["loneliness"])
-            + 0.20 * float(drives["boredom"])
-            + 0.10 * float(drives["energy"])
-            + 0.15 * float(status["arousal"])
-            + 0.15 * max(0.0, -float(status["pleasure"]))
-            + 0.15 * min(1.0, float(pending) / 2.0)
-        )
-        return min(1.0, urge)
 
     # ------------------------------------------------------------------ aksi
 
@@ -353,79 +245,6 @@ class Ambient:
                 return
         self.affect.mark_research(chat_id)
         log.info("ambient riset selesai chat=%s query=%s", chat_id, query[:80])
-
-    async def _chime(self, chat_id: str) -> None:
-        if self.affect is None or self.llm is None or self.send_text is None:
-            return
-        if not chat_id.endswith("@g.us") or chat_id not in self.known_chats:
-            return
-        if self.quiet(chat_id):
-            return
-        rows = self._recent(chat_id, 8)
-        if not rows or getattr(rows[-1], "outgoing", False):
-            return
-        topic = self.affect.topic(chat_id)
-        parts: list[str] = []
-        place = chat_id
-        if self.sessions is not None:
-            try:
-                place = self.sessions.chat_name(chat_id) or chat_id
-            except Exception:
-                place = chat_id
-        parts.append(
-            f"Kamu sedang di grup \"{place}\". Kamu memilih menyelituk di sini, bukan di chat lain; "
-            f"ini chat yang sama dengan Sanka di mana pun, cuma tempatnya beda."
-        )
-        parts.append(f"Doronganmu sekarang: {self._urge(chat_id):.2f} dari 1.00 (0 = betah diam).")
-        if str(topic["summary"]).strip():
-            parts.append(f"Topik yang sedang hangat: {topic['summary']}")
-        pending = [str(item) for item in topic["unresolved"] if str(item).strip()]
-        if pending:
-            parts.append("Yang belum terjawab: " + "; ".join(pending[:2]))
-        memory_block = ""
-        if self.memory is not None:
-            try:
-                memory_block = self.memory.context(chat_id, include_global=True)
-            except Exception:
-                memory_block = ""
-        if memory_block:
-            parts.append(memory_block)
-        if self.memory is not None:
-            try:
-                ledger = self.memory.actions_context()
-            except Exception:
-                ledger = ""
-            if ledger:
-                parts.append(ledger)  # biar tidak mengulang aksi yang sama di chat lain
-        if self.style is not None:
-            try:
-                parts.append(self.style.profile(chat_id))
-            except Exception:
-                pass
-        try:
-            affect_block = self.affect.prompt(chat_id)
-        except Exception:
-            affect_block = ""
-        if affect_block:
-            parts.append(affect_block)
-        parts.append("Percakapan terakhir:\n" + "\n".join(self._line(row) for row in rows))
-        text = await self.llm.chime(CHIME_SYSTEM, "\n\n".join(parts))
-        self._last_chime = time.time()  # satu percobaan pun menghabiskan jeda global
-        self._chime_log.append(self._last_chime)
-        if not text:
-            self.affect.mark_chime(chat_id)
-            return
-        body = " ".join(str(text).split())[:200]
-        if not body or body.strip("[]").upper() == "DIAM" or guard.SENSITIVE.search(body):
-            self.affect.mark_chime(chat_id)
-            return
-        try:
-            await self.send_text(chat_id, body)
-        except Exception:  # transport gagal tidak boleh mematikan otonomi
-            log.exception("ambient chime gagal kirim chat=%s", chat_id)
-            return
-        self.affect.mark_chime(chat_id)
-        log.info("ambient chime terkirim chat=%s", chat_id)
 
     # ------------------------------------------------------------------ util
 

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from .chat import keyword_set
 
-MANDATORY = ("base", "safety", "away", "thread", "emotion", "vibe")
+MANDATORY = ("base", "safety", "away", "emotion", "vibe")
 COMPETING = ("topic", "style", "person_style", "memory", "actions", "skills")
 ORDER = (
     "base",
     "topic",
     "away",
-    "thread",
     "emotion",
     "vibe",
     "style",

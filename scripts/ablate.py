@@ -81,7 +81,7 @@ def report(chat: str, replay: dict, budget: dict, shift: dict | None) -> str:
         (
             "replay  : "
             f"incoming={replay['incoming']} called={replay['called']} "
-            f"thread_allowed={replay['thread_allowed']} replied={replay['replied']} "
+            f"replied={replay['replied']} "
             f"false_positive={replay['false_positive']} missed={replay['missed']} "
             f"unprompted_rate={replay['unprompted_rate']:.3f}"
         ),
@@ -109,15 +109,12 @@ def main() -> int:
     parser.add_argument("--chat", default=None, help="JID chat (default: chat terbaru)")
     parser.add_argument("--last", type=int, default=200, help="jumlah pesan arsip (default 200)")
     parser.add_argument(
-        "--thread-seconds", type=int, default=None, help="umur situasi (default config)"
-    )
-    parser.add_argument(
         "--llm-sample", type=int, default=0, help="jumlah pesan untuk replay keputusan LLM"
     )
     parser.add_argument(
         "--ablate",
-        default="emotion,vibe,thread,away",
-        help="blok gate yang diabsi (emotion,vibe,thread,away)",
+        default="emotion,vibe,away",
+        help="blok gate yang diabsi (emotion,vibe,away)",
     )
     parser.add_argument("--json", type=Path, default=None, help="tulis hasil lengkap ke path JSON")
     args = parser.parse_args()
@@ -141,14 +138,7 @@ def main() -> int:
     messages = store.recent(chat, args.last)
     if not messages:
         raise SystemExit(f"chat {chat} tidak punya pesan di arsip")
-    seconds = (
-        args.thread_seconds
-        if args.thread_seconds is not None
-        else int(config.whatsapp.thread_seconds or 0)
-    )
-    rows = ablate.classify(
-        messages, bot_name=config.whatsapp.bot_name, thread_seconds=seconds
-    )
+    rows = ablate.classify(messages, bot_name=config.whatsapp.bot_name)
     stores = open_stores(config)
     budget = ablate.prompt_budget(
         config,

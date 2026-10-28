@@ -257,26 +257,10 @@ STOPWORDS = frozenset(
         "with", "that", "this", "dengan", "karena", "biar", "gak", "nggak", "ngga",
     }
 )
-FOLLOWUP_CUES = frozenset(
-    {
-        "iya", "iyaa", "iyaaa", "hah", "apaan", "maksudnya", "kenapa", "kok", "terus",
-        "lanjut", "gimana", "emang", "bener", "beneran", "serius", "trus", "ya", "yaa",
-        "maksud", "lah", "loh", "mau", "jadi",
-    }
-)
-
 
 def keyword_set(text: str) -> set[str]:
-    """Kata >=4 huruf tanpa stopword: dipakai salience, situasi, dan harness ablasi."""
+    """Kata >=4 huruf tanpa stopword: dipakai salience."""
     return {w for w in re.findall(r"[a-z0-9]{4,}", str(text or "").lower()) if w not in STOPWORDS}
-
-
-def followup_utterance(text: str) -> bool:
-    """Pendek dan berpola menyambung ("iya?", "maksudnya?", "gimana dong")."""
-    words = re.findall(r"[a-z]+", str(text or "").lower())
-    if not words or len(words) > 4:
-        return False
-    return bool(set(words) & FOLLOWUP_CUES) or str(text).strip().endswith("?")
 
 
 def digits(value: str) -> str:

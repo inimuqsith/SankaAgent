@@ -1,9 +1,8 @@
-"""Kontrak otonomi: tool terbatas, digest->memori, riset, dan chime yang tahu batas."""
+"""Kontrak otonomi: tool terbatas, digest->memori, dan riset saat sepi."""
 
 from __future__ import annotations
 
 import asyncio
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -82,11 +81,8 @@ class PulseAffect:
             "last_message": 0.0,
             "last_digest": 0.0,
             "last_research": 0.0,
-            "last_chime": 0.0,
             "research_day": "",
             "research_count": 0,
-            "chime_day": "",
-            "chime_count": 0,
         }
 
     def pending(self, chat_id: str) -> int:
@@ -108,8 +104,6 @@ class PulseAffect:
 class FakeLLM:
     def __init__(self, digest: dict | None = None) -> None:
         self.payload = digest or {}
-        self.chime_calls = 0
-        self.chime_prompts: list[str] = []
         self.transcripts: list[str] = []
 
     async def digest(self, chat_name: str, transcript: str, topic: str, people: str) -> dict:
@@ -118,11 +112,6 @@ class FakeLLM:
 
     async def research_summary(self, query: str, results: str) -> str:
         return "hasil riset singkat"
-
-    async def chime(self, system: str, user: str) -> str:
-        self.chime_calls += 1
-        self.chime_prompts.append(user)
-        return "eh masih pada di sini?"
 
 
 def test_ambient_tool_context_is_web_search_only(tmp_path) -> None:
@@ -233,61 +222,6 @@ def test_research_skips_without_question(tmp_path, monkeypatch) -> None:
     affect.close()
 
 
-def test_chime_skips_dm(tmp_path) -> None:
-    affect = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
-    sent: list[tuple[str, str]] = []
-
-    async def send_text(chat_id: str, body: str) -> str:
-        sent.append((chat_id, body))
-        return "ok"
-
-    llm = FakeLLM()
-    ambient = Ambient(
-        make_config(tmp_path),
-        llm,
-        affect,
-        None,
-        None,
-        FakeHistory([message("sepi ya")]),
-        sessions=None,
-        send_text=send_text,
-    )
-
-    ambient.note(DM, message("halo"))
-    asyncio.run(ambient._chime(DM))
-
-    assert sent == []
-    assert llm.chime_calls == 0
-    affect.close()
-
-
-def test_chime_sends_when_allowed(tmp_path) -> None:
-    affect = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
-    sent: list[tuple[str, str]] = []
-
-    async def send_text(chat_id: str, body: str) -> str:
-        sent.append((chat_id, body))
-        return "ok"
-
-    ambient = Ambient(
-        make_config(tmp_path),
-        FakeLLM(),
-        affect,
-        None,
-        None,
-        FakeHistory([message("sepi ya")]),
-        sessions=None,
-        send_text=send_text,
-    )
-    ambient.note(CHAT, message("sepi ya"))
-
-    asyncio.run(ambient._chime(CHAT))
-
-    assert sent == [(CHAT, "eh masih pada di sini?")]
-    assert affect.topic(CHAT)["chime_count"] == 1
-    affect.close()
-
-
 def test_digest_excludes_outgoing_messages(tmp_path) -> None:
     affect = AffectStore(tmp_path / "affect.db", AffectConfig(enabled=True))
     llm = FakeLLM({"topic": "logistik", "keywords": [], "facts": [], "unresolved": []})
@@ -310,124 +244,6 @@ def test_digest_excludes_outgoing_messages(tmp_path) -> None:
     affect.close()
 
 
-class LonelyAffect(PulseAffect):
-    """Perasaan yang mendorong menyelituk: sepi, gabut, gelisah, ada yang menggantung."""
-
-    def __init__(self, *, quiet_seconds: float = 3600.0, chime_age: float = 7200.0) -> None:
-        super().__init__()
-        self.quiet_seconds = quiet_seconds
-        self.chime_age = chime_age
-
-    def status(self, chat_id: str, person_id: str = "") -> dict:
-        return {
-            "summary": "guarded",
-            "pulse": "quiet none pulse",
-            "pleasure": -0.4,
-            "arousal": 0.6,
-            "dominance": 0.4,
-        }
-
-    def drives(self, chat_id: str) -> dict:
-        return {"energy": 0.4, "boredom": 1.0, "loneliness": 1.0}
-
-    def pending(self, chat_id: str) -> int:
-        return 0
-
-    def topic(self, chat_id: str) -> dict:
-        now = time.time()
-        return {
-            "summary": "logistik",
-            "unresolved": [],
-            "last_message": now - self.quiet_seconds,
-            "last_digest": 0.0,
-            "last_research": 0.0,
-            "last_chime": now - self.chime_age,
-            "research_day": "",
-            "research_count": 0,
-            "chime_day": "",
-            "chime_count": 0,
-        }
-
-
-def chime_ambient(tmp_path, affect, rows: list[ChatMessage] | None = None) -> Ambient:
-    return Ambient(
-        make_config(tmp_path),
-        FakeLLM(),
-        affect,
-        None,
-        None,
-        FakeHistory(rows or [message("sepi ya")]),
-        sessions=None,
-    )
-
-
-def test_chime_candidate_follows_emotional_urge(tmp_path, monkeypatch) -> None:
-    ambient = chime_ambient(tmp_path, LonelyAffect())
-    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
-
-    assert ambient._urge(CHAT) >= 0.45
-    assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is True
-    assert asyncio.run(ambient._chime_candidate(DM, time.time())) is False  # DM tidak pernah diselituki
-
-
-def test_chime_is_a_draw_not_a_schedule(tmp_path, monkeypatch) -> None:
-    # Keadaan sama, undian beda: deterministik kalau dipaksa 0, diam kalau dipaksa 1.
-    ambient = chime_ambient(tmp_path, LonelyAffect())
-    moment = time.time()
-    monkeypatch.setattr(ambient_module.random, "random", lambda: 1.0)
-    assert asyncio.run(ambient._chime_candidate(CHAT, moment)) is False
-    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
-    assert asyncio.run(ambient._chime_candidate(CHAT, moment)) is True
-
-
-def test_chime_global_gap_and_daily_budget(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
-    moment = time.time()
-    gap = chime_ambient(tmp_path, LonelyAffect())
-    gap._last_chime = moment - 60  # baru menyelituk di chat lain semenit lalu
-    assert asyncio.run(gap._chime_candidate(CHAT, moment)) is False
-
-    spent = chime_ambient(tmp_path, LonelyAffect())
-    spent._chime_log = [moment - index * 600 for index in range(4)]  # jatah 24 jam habis
-    assert asyncio.run(spent._chime_candidate(CHAT, moment)) is False
-
-    spent._chime_log = [moment - 86400 - 1]  # sudah lewat 24 jam, jatah pulih
-    assert asyncio.run(spent._chime_candidate(CHAT, moment)) is True
-
-
-def test_calm_room_keeps_sanka_quiet(tmp_path) -> None:
-    # Sejam sepi dan cooldown lewat, tapi perasaannya betah: diam adalah jawaban yang benar.
-    ambient = chime_ambient(tmp_path, PulseAffect())
-    quiet = time.time() - 3600
-
-    assert ambient._urge(CHAT) < 0.45
-    assert asyncio.run(ambient._chime_candidate(CHAT, quiet + 3600)) is False
-
-
-def test_chime_does_not_interrupt_busy_room(tmp_path) -> None:
-    ambient = chime_ambient(tmp_path, LonelyAffect(quiet_seconds=300))
-
-    assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is False
-
-
-def test_chime_cooldown_and_cold_topic_are_rails(tmp_path) -> None:
-    fresh = chime_ambient(tmp_path, LonelyAffect(chime_age=60))  # baru menyelituk semenit lalu
-    cold = chime_ambient(tmp_path, LonelyAffect(quiet_seconds=20 * 3600))  # topik 20 jam, bukan sepi
-    own = chime_ambient(tmp_path, LonelyAffect(), rows=[message("eh", outgoing=True)])
-
-    assert asyncio.run(fresh._chime_candidate(CHAT, time.time())) is False
-    assert asyncio.run(cold._chime_candidate(CHAT, time.time())) is False
-    assert asyncio.run(own._chime_candidate(CHAT, time.time())) is False
-
-
-def test_urge_is_zero_when_state_is_broken(tmp_path) -> None:
-    class Broken(PulseAffect):
-        def status(self, chat_id: str, person_id: str = "") -> dict:
-            raise RuntimeError("state rusak")
-
-    assert chime_ambient(tmp_path, Broken())._urge(CHAT) == 0.0
-
-
 def test_digest_parsing_rejects_secrets_and_junk() -> None:
     data = parse_digest(
         '{"topic":"rapat","keywords":["rapat",3],"facts":['
@@ -445,42 +261,16 @@ def test_digest_parsing_rejects_secrets_and_junk() -> None:
     assert parse_digest("bukan json") == {"topic": "", "keywords": [], "facts": [], "unresolved": []}
 
 
-def test_chime_prompt_names_place_and_single_identity(tmp_path) -> None:
-    class FakeSessions:
-        def chat_name(self, chat_id: str) -> str:
-            return "Grup Sunan Dahlan"
-
-    sent: list[tuple[str, str]] = []
-    affect = LonelyAffect()
+def test_tick_on_quiet_room_sends_nothing(tmp_path) -> None:
+    affect = PulseAffect()
+    llm = FakeLLM()
     ambient = Ambient(
-        make_config(tmp_path),
-        FakeLLM(),
-        affect,
-        None,
-        None,
-        FakeHistory([message("sepi ya")]),
-        sessions=FakeSessions(),
-        send_text=lambda chat_id, text: sent.append((chat_id, text)),
+        make_config(tmp_path), llm, affect, None, None, FakeHistory([message("sepi ya")]), None
     )
-    ambient.known_chats.add(CHAT)
+    ambient.note(CHAT, message("sepi ya"))
 
-    asyncio.run(ambient._chime(CHAT))
+    asyncio.run(ambient._tick(now=1000.0))
 
-    prompt = ambient.llm.chime_prompts[0]
-    assert 'Kamu sedang di grup "Grup Sunan Dahlan"' in prompt
-    assert "satu orang yang sama dengan Sanka" in prompt or "ini chat yang sama dengan Sanka" in prompt
-    assert "Doronganmu sekarang:" in prompt
-    assert sent == [(CHAT, "eh masih pada di sini?")]
-    assert ambient._chime_log  # percobaan dihitung untuk jatah 24 jam
+    assert affect.pulses == [CHAT]
+    assert llm.transcripts == []  # FakeLLM tanpa metode spontan: jalur bangkit = AttributeError
 
-
-def test_chime_waits_for_the_turn_queue(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(ambient_module.random, "random", lambda: 0.0)
-    busy = {"now": True}
-    ambient = chime_ambient(tmp_path, LonelyAffect())
-    ambient.turn_busy = lambda: busy["now"]
-
-    assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is False  # antrean sibuk
-
-    busy["now"] = False
-    assert asyncio.run(ambient._chime_candidate(CHAT, time.time())) is True

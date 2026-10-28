@@ -29,8 +29,6 @@ class WhatsAppConfig:
     history_db: Path | None = None
     backlog_seconds: int = 600  # lebih tua dari ini = arsip, bukan antrean balasan
     quiet_seconds: int = 600  # durasi default /stop
-    group_reply: str = "addressed"  # addressed = hanya bila dipanggil; model = percayakan keputusan
-    thread_seconds: int = 900  # situasi percakapan terbuka: lanjutan tidak perlu mention
 
 
 @dataclass(frozen=True)
@@ -69,6 +67,11 @@ class MemoryConfig:
 class SkillsConfig:
     dir: Path = Path(".sanka/skills")
     max_index_chars: int = 3000
+
+
+@dataclass(frozen=True)
+class RecipesConfig:
+    dir: Path = Path(".sanka/recipes")
 
 
 @dataclass(frozen=True)
@@ -127,11 +130,6 @@ class AmbientConfig:
     history_window: int = 30
     idle_minutes: int = 20
     proactive: bool = True
-    chime_cooldown: int = 3600
-    chime_per_day: int = 6
-    chime_urge: float = 0.45  # ambang dorongan (emosi) untuk menyelituk
-    chime_gap_seconds: float = 1800.0  # jeda minimum antar menyelituk di chat mana pun
-    chime_per_day_global: int = 4  # jatah menyelituk 24 jam untuk semua chat
     research_cooldown: int = 21600
     research_per_day: int = 6
     research_results: int = 5
@@ -159,6 +157,7 @@ class Config:
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     skills: SkillsConfig = field(default_factory=SkillsConfig)
+    recipes: RecipesConfig = field(default_factory=RecipesConfig)
     affect: AffectConfig = field(default_factory=AffectConfig)
     humanize: HumanizeConfig = field(default_factory=HumanizeConfig)
     style: StyleConfig = field(default_factory=StyleConfig)
@@ -337,6 +336,7 @@ def load_config(path: str | None = None, *, require_key: bool = True) -> Config:
     search_raw = raw.get("web_search") if isinstance(raw.get("web_search"), dict) else {}
     memory_raw = raw.get("memory") if isinstance(raw.get("memory"), dict) else {}
     skills_raw = raw.get("skills") if isinstance(raw.get("skills"), dict) else {}
+    recipes_raw = raw.get("recipes") if isinstance(raw.get("recipes"), dict) else {}
     affect_raw = _section(raw, "affect")
     humanize_raw = _section(raw, "humanize")
     prompt_raw = _section(raw, "prompt")
@@ -377,6 +377,9 @@ def load_config(path: str | None = None, *, require_key: bool = True) -> Config:
     )
     skills_dir = _reject_legacy(
         _expand(str(skills_raw.get("dir") or ".sanka/skills"), base), "skills.dir"
+    )
+    recipes_dir = _reject_legacy(
+        _expand(str(recipes_raw.get("dir") or ".sanka/recipes"), base), "recipes.dir"
     )
     host_ws_raw = sandbox_raw.get("host_workspace")
     host_workspace = _expand(str(host_ws_raw), base) if host_ws_raw else None
@@ -423,8 +426,6 @@ def load_config(path: str | None = None, *, require_key: bool = True) -> Config:
             history_db=history_db,
             backlog_seconds=int(_num(wa_raw.get("backlog_seconds"), 600)),
             quiet_seconds=int(_num(wa_raw.get("quiet_seconds"), 600)),
-            group_reply=str(wa_raw.get("group_reply") or "addressed").strip().lower(),
-            thread_seconds=int(_num(wa_raw.get("thread_seconds"), 900)),
         ),
         roles=roles,
         default_role=default_role,
@@ -451,6 +452,7 @@ def load_config(path: str | None = None, *, require_key: bool = True) -> Config:
             dir=skills_dir,
             max_index_chars=int(skills_raw.get("max_index_chars") or 3000),
         ),
+        recipes=RecipesConfig(dir=recipes_dir),
         affect=AffectConfig(
             enabled=_bool(affect_raw.get("enabled"), False),
             path=affect_db,
@@ -493,11 +495,6 @@ def load_config(path: str | None = None, *, require_key: bool = True) -> Config:
             history_window=int(_num(ambient_raw.get("history_window"), 30)),
             idle_minutes=int(_num(ambient_raw.get("idle_minutes"), 20)),
             proactive=_bool(ambient_raw.get("proactive"), True),
-            chime_cooldown=int(_num(ambient_raw.get("chime_cooldown"), 3600)),
-            chime_per_day=int(_num(ambient_raw.get("chime_per_day"), 6)),
-            chime_urge=_num(ambient_raw.get("chime_urge"), 0.45),
-            chime_gap_seconds=_num(ambient_raw.get("chime_gap_seconds"), 1800.0),
-            chime_per_day_global=int(_num(ambient_raw.get("chime_per_day_global"), 4)),
             research_cooldown=int(_num(ambient_raw.get("research_cooldown"), 21600)),
             research_per_day=int(_num(ambient_raw.get("research_per_day"), 6)),
             research_results=int(_num(ambient_raw.get("research_results"), 5)),

@@ -16,12 +16,10 @@ jangan menjelaskan proses, jangan menyebut AI.
 
 Aturan keputusan:
 - "addressed": "me" bila pesan ini untukmu (mention asli @nomor kamu, balasan ke pesanmu,
-  namamu dipanggil, atau jelas melanjutkan percakapan denganmu), "other" bila untuk orang lain,
-  "group" bila untuk suasana grup, "unknown" bila tidak jelas. Kata "kamu/lu/lo" belum tentu kamu:
-  lihat kutipan, tag, dan siapa menjawab siapa.
-- Namamu yang hanya disebut sebagai topik bukan alamat untukmu: orang membicarakan Sanka di
-  depannya bukan berarti sedang bicara kepadanya. Kalau tidak ada panggilan, kutipan ke pesanmu,
-  atau sambungan percakapan denganmu, pilih "other"/"group" dan jangan menyela.
+  atau DM), "other" bila untuk orang lain, "group" bila untuk suasana grup, "unknown" bila
+  tidak jelas. Kata "kamu/lu/lo" belum tentu kamu: lihat kutipan, tag, dan siapa menjawab siapa.
+- Namamu yang hanya disebut sebagai teks bukan alamat untukmu: tanpa mention asli atau
+  kutipan ke pesanmu, pilih "other"/"group" dan jangan menyela.
 - "act": "reply" kalau kamu ingin ikut bicara, "ignore" kalau tidak, "react" kalau stiker sudah cukup.
   Tidak ada pilihan diam yang dipaksakan; diam adalah keputusanmu per pesan.
 - "mode": "professional" HANYA untuk tugas kerja nyata yang butuh alat/bukti (cek, rekap, hitung,
@@ -274,7 +272,6 @@ def build_context(
     is_reply: bool = False,
     away: str = "",
     vibe: str = "",
-    thread: str = "",
 ) -> str:
     """Konteks keputusan: fakta transport, state emosi, hubungan, transkrip, pesan terakhir."""
     kind = "pesan pribadi (DM)" if is_dm else "grup"
@@ -295,8 +292,6 @@ def build_context(
         parts.append("Catatan kehadiran:\n" + away.strip())
     if vibe.strip():
         parts.append(vibe.strip())
-    if thread.strip():
-        parts.append("Situasi percakapan:\n" + thread.strip())
     block = _emotion_block(emotion)
     if block:
         parts.append("Keadaan emosimu:\n" + block)
@@ -322,7 +317,6 @@ async def decide(
     is_reply: bool = False,
     away: str = "",
     vibe: str = "",
-    thread: str = "",
     soul: str = "",
 ) -> Decision | None:
     """Satu keputusan LLM; kosong setelah satu retry = None (tanpa fallback regex)."""
@@ -339,7 +333,6 @@ async def decide(
         is_reply=is_reply,
         away=away,
         vibe=vibe,
-        thread=thread,
     )
     session = f"sanka-decision-{chat_id}"
     raw = await llm.complete(system, user, max_tokens=4000, temperature=0.3, session=session)

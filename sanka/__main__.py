@@ -7,7 +7,6 @@ import contextlib
 import logging
 import shutil
 import sys
-import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -35,6 +34,7 @@ try:
     from .memory import MemoryStore
     from .permissions import commands_for, tool_patterns, tools_for
     from .skills import SkillStore
+    from .recipes import RecipeStore
     from .style import StyleStore
     from .tools import REGISTRY, ToolContext, execute
     from .tools.sandbox import resolve_runtime
@@ -221,6 +221,7 @@ async def run_bot(config: Config) -> None:
     store: HistoryStore | None = None
     memory: MemoryStore | None = None
     skills: SkillStore | None = None
+    recipes: RecipeStore | None = None
     affect = style = ambient = None
     app: App | None = None
     try:
@@ -237,6 +238,11 @@ async def run_bot(config: Config) -> None:
             skills = SkillStore(config.skills.dir, config.skills.max_index_chars)
         except Exception:
             log.exception("gagal membuka direktori skill; skill nonaktif")
+        try:
+            recipes = RecipeStore(config.recipes.dir)
+        except Exception:
+            log.exception("gagal membuka direktori resep; resep nonaktif")
+        log.info("resep: %s", ", ".join(recipes.names()) if recipes else "-")
         if config.affect.enabled:
             try:
                 affect = AffectStore(config.affect.path, config.affect, soul=config.persona)
@@ -279,7 +285,7 @@ async def run_bot(config: Config) -> None:
             sessions,
             memory=memory,
             skills=skills,
-            affect=affect,
+            recipes=recipes,
             style=style,
             anima=vibe,
         )
@@ -292,9 +298,6 @@ async def run_bot(config: Config) -> None:
                 memory,
                 store,
                 app.sessions,
-                app.send_text,
-                quiet=lambda chat_id: app.quiet.get(chat_id, 0.0) > time.time(),
-                turn_busy=lambda: app.turn.locked(),
             )
             app.ambient = ambient
             ambient.start()

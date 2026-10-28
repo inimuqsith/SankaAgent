@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sanka.chat import keyword_set
 from sanka.salience import COMPETING, MANDATORY, ORDER, select
 
 
@@ -70,3 +71,6 @@ def test_memory_survives_tiebreak_when_nothing_matches() -> None:
 
     assert names(kept) == ["base", "memory"]
     assert dropped == ["topic"]
+
+def test_keyword_set_skips_stopwords_and_short_words() -> None:
+    assert keyword_set("yang aku mau itu kopi enak") == {"kopi", "enak"}
