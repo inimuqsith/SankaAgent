@@ -48,8 +48,10 @@ def test_send_tool_uses_callback_and_confines_path(tmp_path: Path) -> None:
 
     assert result == "ok: laporan.txt"
     assert calls == [("chat", tmp_path / "laporan.txt", "hasil")]
+    assert ctx.sent == [{"tool": "send", "target": "chat", "kind": "file", "summary": "laporan.txt"}]
     assert "tidak ditemukan" in asyncio.run(execute(TOOLS.by_name, "send", {"path": "hilang.txt"}, ctx))
     assert "di luar workspace" in asyncio.run(execute(TOOLS.by_name, "send", {"path": "/etc/passwd"}, ctx))
+    assert len(ctx.sent) == 1  # kiriman gagal tidak dicatat
 
 
 def test_app_send_file_records_outgoing_message(tmp_path: Path) -> None:
@@ -215,6 +217,9 @@ def test_send_to_resolves_group_and_logs_target_context(tmp_path: Path) -> None:
     assert action["target_name"] == "ALD XXVII JHEPRET CLUB FOTOGRAFI"
     assert action["kind"] == "teks" and "rapat jam 7" in action["summary"]
     assert action["request"] == "kirim rapat ke jhepret"
+    assert ctx.sent == [
+        {"tool": "send_to", "target": "1203@g.us", "kind": "teks", "summary": "rapat jam 7"}
+    ]
     memory.close()
     store.close()
 
@@ -250,6 +255,7 @@ def test_send_to_does_not_log_failed_send(tmp_path: Path) -> None:
 
     assert result.startswith("error:") and "gagal" in result
     assert memory.recent_actions() == []
+    assert ctx.sent == []
     memory.close()
     store.close()
 

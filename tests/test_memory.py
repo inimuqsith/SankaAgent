@@ -52,6 +52,18 @@ def test_scopes_dedupe_and_context(tmp_path: Path) -> None:
     store.close()
 
 
+def test_search_matches_any_term_not_all(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path / "memory.db")
+    store.add("chat", "fact", "rekap format tabel ringkas")
+    store.add("chat", "fact", "jadwal ronda malam jumat")
+
+    texts = [row["text"] for row in store.search(["chat"], "rekap ronda jumat")]
+
+    assert "rekap format tabel ringkas" in texts
+    assert "jadwal ronda malam jumat" in texts
+    store.close()
+
+
 def test_action_ledger_is_capped_and_rendered_newest_first(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path / "memory.db")
     assert store.actions_context() == ""
@@ -163,7 +175,7 @@ def test_supersede_hides_old_entry_but_keeps_row(tmp_path: Path) -> None:
     assert created is True
     assert "rapat jam 4" in store.context("chat")
     assert "rapat jam 3" not in store.context("chat")
-    assert store.search(["chat"], "jam 3") == []
+    assert [row["text"] for row in store.search(["chat"], "jam 3")] == ["rapat jam 4"]
     with sqlite3.connect(path) as conn:
         assert conn.execute("SELECT superseded_by FROM memory WHERE id=?", (old,)).fetchone()[0] == new
 
@@ -182,7 +194,7 @@ def test_readding_superseded_text_revives_it(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path / "memory.db")
     old, _ = store.add("chat", "fact", "rapat jam 3")
     new, _ = store.add("chat", "fact", "rapat jam 4", supersedes=old)
-    assert store.search(["chat"], "jam 3") == []
+    assert [row["text"] for row in store.search(["chat"], "jam 3")] == ["rapat jam 4"]
 
     revived, created = store.add("chat", "fact", "rapat jam 3")
     assert created is False and revived == old
@@ -190,7 +202,7 @@ def test_readding_superseded_text_revives_it(tmp_path: Path) -> None:
 
     final, _ = store.add("chat", "fact", "rapat jam 3", supersedes=new)
     assert final == old
-    assert store.search(["chat"], "jam 4") == []
+    assert [row["text"] for row in store.search(["chat"], "jam 4")] == ["rapat jam 3"]
     assert "rapat jam 3" in store.context("chat")
     store.close()
 

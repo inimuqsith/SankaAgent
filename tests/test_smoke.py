@@ -103,10 +103,10 @@ def test_format_reply() -> None:
     assert format_reply("## Judul\n**halo**\n- satu") == ["*Judul*\n*halo*\n• satu"]
     assert format_reply("<reasoning>diam</reasoning>halo") == ["halo"]
     assert format_reply("[dok](https://x.test)") == ["dok (https://x.test)"]
-    long_text = "a" * 4000
+    long_text = "a" * 12000
     chunks = format_reply(long_text)
     assert len(chunks) == 2
-    assert all(len(chunk) <= 3500 for chunk in chunks)
+    assert all(len(chunk) <= 10000 for chunk in chunks)
     assert format_reply("   ") == []
 
 

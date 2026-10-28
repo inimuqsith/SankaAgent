@@ -105,12 +105,14 @@ async def _send_to(args: dict, ctx: ToolContext) -> str:
         results.append(result)
         if not result.startswith("error:"):
             _record(ctx, chat_id, name, "teks", text)
+            ctx.sent.append({"tool": "send_to", "target": chat_id, "kind": "teks", "summary": text[:200]})
     if path is not None:
         result = await ctx.send_file(chat_id, path, caption)
         results.append(result)
         if not result.startswith("error:"):
             summary = f"{path.name}{f' — {caption}' if caption else ''}"
             _record(ctx, chat_id, name, "file", summary)
+            ctx.sent.append({"tool": "send_to", "target": chat_id, "kind": "file", "summary": summary})
     label = f'"{name}" ({chat_id})' if name else chat_id
     if any(result.startswith("error:") for result in results):
         return "\n".join([f"error: pengiriman ke {label} gagal:", *results])

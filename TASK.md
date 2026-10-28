@@ -105,6 +105,15 @@ Tujuan: bot WhatsApp kecil yang nyala dalam satu proses Python.
   kompetisi, dan pergeseran `addressed`/`act`/`tone` saat `emotion`/`vibe`/`thread`/`away` diabsi.
 - [x] Aturan situasi percakapan menjadi fungsi murni `sanka/thread.py` (dengan `keyword_set` dan
   `followup_utterance` di `sanka/chat.py`), dipakai runtime dan harness ablasi.
+- [x] Turn agent run-till-answer dengan budget wall-clock 240 dtk (`RUN_BUDGET_SECONDS`) + guard
+  panggilan berulang; `TURN_LIMIT_TEXT` dihapus, `llm.max_turns` inert tapi tetap dibaca config.
+- [x] Konteks bertahan: tiebreak salience membuang blok depan dulu (`memory`/`skills` selamat),
+  bonus memori 0.35 saat query cocok, recall memori OR-antar-term, dan pesan yang dituju selalu
+  dapat percobaan balasan nyata (tidak lagi `hmm` saat keputusan kosong).
+- [x] Output panjang utuh: chunk balasan 10k, `send_text` memecah otomatis (tidak menolak),
+  hasil tool 40k dengan hint lanjutan, tail sandbox 64 KiB; prompt menyatakan angka sebenarnya.
+- [x] Buku kiriman tool (`ToolContext.sent`): `send`/`send_to` sukses dicatat, model mendapat
+  pass konfirmasi sebelum balasan akhir (fail-open), dan closing kosong menjadi "Sudah kukirim.".
 
 ## Nanti
 

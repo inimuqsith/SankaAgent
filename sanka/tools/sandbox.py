@@ -11,7 +11,7 @@ from ..config import SandboxConfig
 from ..registry import Handler
 from . import OWNER_ONLY, ToolContext, _int
 
-MAX_OUTPUT_BYTES = 16 * 1024
+MAX_OUTPUT_BYTES = 64 * 1024
 TRUNCATED = "(dipotong)\n"
 # Variabel yang boleh masuk ke container; sisanya (API key, dsb.) tidak diwariskan.
 CONTAINER_ENV = ("TZ", "LANG")

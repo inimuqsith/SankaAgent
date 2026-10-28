@@ -61,3 +61,12 @@ def test_bonus_keeps_skills_over_memory() -> None:
 
     assert names(kept) == ["base", "skills"]
     assert dropped == ["memory"]
+
+
+def test_memory_survives_tiebreak_when_nothing_matches() -> None:
+    blocks = {"base": "b" * 10, "topic": "t" * 40, "memory": "m" * 40}
+
+    kept, dropped = select(blocks, "zzz qqq", max_chars=55)
+
+    assert names(kept) == ["base", "memory"]
+    assert dropped == ["topic"]

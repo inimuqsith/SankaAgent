@@ -208,9 +208,9 @@ class MemoryStore:
         clauses = [f"scope IN ({','.join('?' for _ in scopes)})", "superseded_by IS NULL"]
         args: list = [*scopes]
         terms = [term for term in str(query or "").split() if term][:5]
-        for term in terms:
-            clauses.append("text LIKE ?")
-            args.append(f"%{term}%")
+        if terms:
+            clauses.append("(" + " OR ".join(["text LIKE ?"] * len(terms)) + ")")
+            args.extend(f"%{term}%" for term in terms)
         sql = (
             "SELECT * FROM memory WHERE "
             + " AND ".join(clauses)

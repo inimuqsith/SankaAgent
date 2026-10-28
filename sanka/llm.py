@@ -1,9 +1,10 @@
-"""Loop LLM OpenAI-compatible dengan tool calling dan batas jumlah langkah."""
+"""Loop LLM OpenAI-compatible dengan tool calling dan batas waktu kerja."""
 
 from __future__ import annotations
 
 import json
 import logging
+import time
 
 from openai import APIError, AsyncOpenAI
 
@@ -14,7 +15,8 @@ from .tools import ToolContext, execute
 
 log = logging.getLogger(__name__)
 
-TURN_LIMIT_TEXT = "Batas langkah agent tercapai. Coba lagi atau persempit permintaannya."
+RUN_BUDGET_SECONDS = 240
+BUDGET_TEXT = "Waktu kerja habis. Tulis jawaban terbaik dari hasil tool yang sudah ada; jangan memanggil tool lagi."
 API_ERROR_TEXT = "Maaf, model sedang error. Coba lagi sebentar."
 USER_AGENT = "sanka-agent/0.1"
 IMAGE_LOST = "[Gambar gagal dilampirkan ke model; gunakan path di atas dengan sandbox.]"
@@ -199,7 +201,23 @@ class LLM:
         images = _has_images(user_content)
         by_name = {spec.name: spec for spec in specs}
         tools = self._tools(specs)
-        for _ in range(max(1, self.config.llm.max_turns)):
+        start = time.monotonic()
+        last_sig: tuple[str, str] | None = None
+        repeat = 0
+        while True:
+            if time.monotonic() - start > RUN_BUDGET_SECONDS:
+                messages.append({"role": "system", "content": BUDGET_TEXT})
+                try:
+                    final = await self.client.chat.completions.create(
+                        model=self.config.llm.model,
+                        messages=messages,
+                        temperature=float(self.config.llm.temperature),
+                        extra_headers={"x-opencode-session": session or USER_AGENT},
+                    )
+                except (APIError, TimeoutError):
+                    log.exception("LLM gagal")
+                    return API_ERROR_TEXT
+                return (final.choices[0].message.content or "").strip()
             kwargs = {
                 "model": self.config.llm.model,
                 "messages": messages,
@@ -224,7 +242,35 @@ class LLM:
             message = response.choices[0].message
             calls = message.tool_calls or []
             if not calls:
-                return (message.content or "").strip()
+                text = (message.content or "").strip()
+                if not ctx.sent:
+                    return text
+                sent_note = "\n".join(
+                    f"- {entry['tool']} ke {entry['target']}: {entry['kind']} {entry['summary']}"
+                    for entry in ctx.sent
+                )
+                try:
+                    confirm = await self.client.chat.completions.create(
+                        model=self.config.llm.model,
+                        messages=[
+                            *messages,
+                            message.model_dump(exclude_none=True),
+                            {
+                                "role": "user",
+                                "content": (
+                                    "[Sudah terkirim via tool, jangan kirim ulang:\n"
+                                    f"{sent_note}\nTulis balasan akhirmu; cukup konfirmasi singkat "
+                                    "apa yang sudah terkirim.]"
+                                ),
+                            },
+                        ],
+                        temperature=float(self.config.llm.temperature),
+                        extra_headers={"x-opencode-session": session or USER_AGENT},
+                    )
+                except (APIError, TimeoutError):
+                    log.warning("konfirmasi kiriman gagal, pakai jawaban awal")
+                    return text
+                return (confirm.choices[0].message.content or "").strip() or text
             messages.append(message.model_dump(exclude_none=True))
             for call in calls:
                 name = call.function.name
@@ -232,11 +278,17 @@ class LLM:
                 try:
                     args = json.loads(call.function.arguments or "{}")
                 except json.JSONDecodeError:
+                    last_sig, repeat = None, 0
                     result = "error: argumen JSON tidak valid"
                 else:
-                    result = await execute(by_name, name, args if isinstance(args, dict) else {}, ctx)
+                    sig = (name, json.dumps(args, sort_keys=True, default=str))
+                    repeat = repeat + 1 if sig == last_sig else 1
+                    last_sig = sig
+                    if repeat >= 3:
+                        result = "error: panggilan berulang, ubah argumen atau jawab dari hasil yang ada"
+                    else:
+                        result = await execute(by_name, name, args if isinstance(args, dict) else {}, ctx)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
-        return TURN_LIMIT_TEXT
 
     async def reflect(
         self, user_text: str, answer: str, context: str = "", memory: str = ""

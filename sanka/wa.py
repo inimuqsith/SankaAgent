@@ -30,6 +30,7 @@ from .chat import (
     event_time,
     fallback_content,
     human_size,
+    keyword_set,
     message_text,
     prompt_entry,
 )
@@ -62,7 +63,7 @@ log = logging.getLogger(__name__)
 
 TYPING_REFRESH = 8
 MAX_SEND_BYTES = 100 * 1024 * 1024
-MAX_SEND_TEXT = 60_000
+MAX_SEND_TEXT = 100_000
 STICKER_MAX_SIDE = 512
 PHOTO_MAGIC = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
 REFLECT_MIN_CHARS = 8
@@ -327,40 +328,44 @@ class App:
         return f"ok: {noun} terkirim: {target.name} ({human_size(size)})"
 
     async def send_text(self, chat_id: str, text: str) -> str:
-        """Kirim teks ke chat mana pun; langsung dicatat di jendela chat tujuan."""
+        """Kirim teks ke chat mana pun; panjang dipecah per 10k, langsung dicatat."""
         if self.client is None:
             return "error: client WhatsApp tidak tersedia"
         body = clean(str(text or "")).strip()
         if not body:
             return "error: teks kosong"
-        if len(body) > MAX_SEND_TEXT:
-            return f"error: teks terlalu panjang ({len(body)} karakter; maksimal {MAX_SEND_TEXT})"
-        body, mentions = _resolve_mentions(body, self, chat_id)
-        payload = (
-            ExtendedTextMessage(text=body, contextInfo=ContextInfo(mentionedJID=mentions))
-            if mentions
-            else body
-        )
-        try:
-            sent = await self.client.send_message(_jid(chat_id), payload)
-        except SendMessageError as exc:
-            log.exception("gagal mengirim teks ke %s", chat_id)
-            return f"error: gagal mengirim teks: {exc}"
-        except Exception as exc:  # kegagalan transport tidak boleh mematikan turn
-            log.exception("gagal mengirim teks ke %s", chat_id)
-            return f"error: gagal mengirim teks: {type(exc).__name__}: {exc}"
-        self.sessions.append(
-            chat_id,
-            ChatMessage(
-                id=getattr(sent, "ID", "") or f"text-{time.time_ns()}",
-                sender_name=self.config.whatsapp.bot_name,
-                sender_id="",
-                when=datetime.now(),
-                text=body,
-                outgoing=True,
-            ),
-        )
+        chunks = format_reply(body, limit=10000) or [body[:MAX_SEND_TEXT]]
+        last_id = ""
+        for chunk in chunks:
+            part, mentions = _resolve_mentions(chunk, self, chat_id)
+            payload = (
+                ExtendedTextMessage(text=part, contextInfo=ContextInfo(mentionedJID=mentions))
+                if mentions
+                else part
+            )
+            try:
+                sent = await self.client.send_message(_jid(chat_id), payload)
+            except SendMessageError as exc:
+                log.exception("gagal mengirim teks ke %s", chat_id)
+                return f"error: gagal mengirim teks: {exc}"
+            except Exception as exc:  # kegagalan transport tidak boleh mematikan turn
+                log.exception("gagal mengirim teks ke %s", chat_id)
+                return f"error: gagal mengirim teks: {type(exc).__name__}: {exc}"
+            last_id = getattr(sent, "ID", "") or f"text-{time.time_ns()}"
+            self.sessions.append(
+                chat_id,
+                ChatMessage(
+                    id=last_id,
+                    sender_name=self.config.whatsapp.bot_name,
+                    sender_id="",
+                    when=datetime.now(),
+                    text=part,
+                    outgoing=True,
+                ),
+            )
         name = self.sessions.chat_name(chat_id)
+        if len(chunks) > 1:
+            return f"ok: teks terkirim ke {name or chat_id} ({len(chunks)} bagian)"
         return f"ok: teks terkirim ke {name or chat_id}"
 
 
@@ -410,7 +415,8 @@ def command_body(text: str, bot_name: str, bots: set[str]) -> str:
 
 
 DAILY_STYLE = (
-    "Balas seperti chat WhatsApp sungguhan: kalimat pendek, ideal di bawah 300 karakter. "
+    "Balas seperti chat WhatsApp sungguhan: kalimat pendek untuk obrolan; "
+    "untuk rekap/laporan tulis utuh apa adanya. "
     "Kalau kamu ingin beberapa pesan terpisah seperti orang chat beruntun, pisahkan dengan baris "
     "kosong (atau baris `---`); runtime mengirimnya sebagai bubble berurutan. Untuk penjelasan "
     "serius, daftar, atau langkah bernomor, tulis satu pesan utuh tanpa baris kosong di tengah.\n"
@@ -418,10 +424,11 @@ DAILY_STYLE = (
 PRO_STYLE = (
     "Mode profesional: pesan ini tugas, bukan obrolan. Kerjakan sampai tuntas dengan tool yang ada, "
     "verifikasi hasilnya, lalu laporkan hasil akhirnya saja: ringkas, terstruktur, dan faktual. "
-    "Boleh satu pesan panjang (maksimal ~3000 karakter); rincian pakai baris '• '. Tanpa heading, "
-    "tanpa tabel, tanpa emoji, tanpa partikel canda. Sebut angka, path, atau output nyata dari tool. "
-    "Kalau tool gagal atau izin kurang, sebut apa adanya setelah mencoba; jangan mengarang hasil. "
-    "Kamu tetap Sanka, bukan asisten; yang berubah hanya cara kerja dan cara melapor.\n"
+    "Tulis hasil utuh apa adanya, termasuk format dari script (emoji, garis, header); runtime memecah "
+    "otomatis per ~10000 karakter tanpa mengubah isi. Jangan meringkas atau menghilangkan gaya supaya "
+    "muat; rincian pakai baris '• '. Tanpa heading, tanpa tabel. Sebut angka, path, atau output nyata "
+    "dari tool. Kalau tool gagal atau izin kurang, sebut apa adanya setelah mencoba; jangan mengarang "
+    "hasil. Kamu tetap Sanka, bukan asisten; yang berubah hanya cara kerja dan cara melapor.\n"
 )
 TONE_STYLE = {
     "curt": (
@@ -526,6 +533,9 @@ def system_prompt(
         "action=save; arsipkan skill yang tidak berguna dengan action=archive. "
         "Simpan hanya fakta/preferensi yang eksplisit dan tahan lama, jangan rahasia/tebakan/status sesi. "
         "Untuk mengirim file hasil kerja, gunakan tool send bila tersedia; jangan hanya menyebut path.\n"
+        "Hasil tool yang sudah terkirim via send/send_to tercatat dan kuberitahu sebelum balasan akhir; "
+        "jangan kirim ulang, cukup konfirmasi singkat. Balasan teks tidak punya batas panjang yang perlu "
+        "kamu takuti: tulis utuh, runtime yang memecah.\n"
         + (
             "Untuk mengirim pesan/file ke grup lain atau chat pribadi (CP) yang sudah ada, gunakan tool "
             "send_to dengan chat berisi nama grup/kontak atau JID; chat kosong menampilkan daftar grup dan "
@@ -972,7 +982,8 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                 soul=app.config.persona,
             )
             if decision is None:
-                fallback_only = direct
+                fallback_only = False
+                log.warning("keputusan kosong, lanjut tanpa nada: %s", chat)
                 decision = Decision(
                     addressed="me" if direct else "unknown",
                     act="reply" if direct else "ignore",
@@ -1173,6 +1184,11 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     except Exception:
                         log.debug("gagal menghitung bonus salience chat=%s", chat, exc_info=True)
                         bonuses = {}
+                bonuses["memory"] = (
+                    0.35
+                    if memory_block and keyword_set(message.text) & keyword_set(memory_block)
+                    else 0.0
+                )
                 answer = await app.llm.run(
                     system_prompt(
                         app.config,
@@ -1203,7 +1219,7 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
                     tool_ctx,
                     session=f"sanka-{chat_id}",
                 )
-                reply = answer
+                reply = answer if answer.strip() or not tool_ctx.sent else "Sudah kukirim."
 
             reflect_context = _reflect_context(app.sessions, chat_id, message)
             humanize = app.config.humanize

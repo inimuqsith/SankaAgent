@@ -14,9 +14,9 @@ from ..registry import Handler, Registry, allows, discover
 
 log = logging.getLogger(__name__)
 
-MAX_OUTPUT = 20_000
+MAX_OUTPUT = 40_000
 MAX_ERROR = 500
-TRUNCATED = "\n...[dipotong]"
+TRUNCATED = "\n...[dipotong: hasil melebihi 40000 karakter; persempit query/read range atau minta bagian lanjutan]"
 
 FAMILIES = frozenset({"shell", "read", "write", "web_search", "sandbox", "mcp"})
 
@@ -51,6 +51,7 @@ class ToolContext:
         self.request = request
         self.affect = affect
         self.used: list[str] = []
+        self.sent: list[dict] = []
 
 
 def _int(args: dict, key: str, default: int) -> int:

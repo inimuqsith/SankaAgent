@@ -685,7 +685,7 @@ def test_dm_decision_ignore_is_overridden_to_reply(tmp_path) -> None:
     assert "pesan pribadi (DM)" in llm.decisions[0]
 
 
-def test_decision_invalid_mention_falls_back_to_hmm(tmp_path) -> None:
+def test_decision_invalid_mention_gets_real_attempt(tmp_path) -> None:
     llm = DecisionLLM(decision="")
 
     async def flow():
@@ -697,9 +697,52 @@ def test_decision_invalid_mention_falls_back_to_hmm(tmp_path) -> None:
 
     sent = asyncio.run(flow())
 
-    assert [payload_text(item) for item in sent] == ["hmm"]
-    assert llm.calls == []  # model tidak menjawab: jangan mengarang balasan
-    assert len(llm.decisions) == 2  # satu retry dengan budget lebih besar
+    assert [payload_text(item) for item in sent] == ["siap"]
+    assert len(llm.calls) == 1  # pesan yang dituju dapat percobaan nyata, bukan hmm
+
+
+def test_long_styled_rekap_arrives_whole_and_verbatim(tmp_path) -> None:
+    header = "📊 REKAP\n" + "━" * 20 + "\n"
+    rekap = header + "\n".join(f"• baris {i} " + "data " * 200 for i in range(12))
+    assert len(rekap) > 12_000
+    llm = DecisionLLM(answer=rekap, decision=verdict("reply", mode="professional"))
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("rekap dong"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+    texts = [payload_text(item) for item in sent]
+
+    assert len(sent) == 2  # 12k+ dipecah per 10k, bukan diringkas
+    assert texts[0].startswith(header)  # gaya script utuh: emoji + garis
+    assert " ".join("\n".join(texts).split()) == " ".join(rekap.split())  # isi utuh
+    assert all(len(text) <= 10000 for text in texts)
+
+
+def test_tool_send_empty_closing_confirms_not_kosong(tmp_path) -> None:
+    class SentLLM(DecisionLLM):
+        async def run(self, system, user_content, specs, ctx, session="") -> str:
+            ctx.sent.append(
+                {"tool": "send", "target": "chat", "kind": "file", "summary": "laporan.txt"}
+            )
+            return ""
+
+    llm = SentLLM(decision=verdict("reply", mode="professional"))
+
+    async def flow():
+        client, sent, _ = transport()
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions())
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, dm_event("kirim dong"), app)
+        return sent
+
+    sent = asyncio.run(flow())
+
+    assert [payload_text(item) for item in sent] == ["Sudah kukirim."]
 
 
 def test_decision_invalid_unaddressed_sends_nothing(tmp_path) -> None:

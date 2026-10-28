@@ -52,7 +52,7 @@ def select(
             candidates,
             key=lambda name: (
                 block_score(present[name], query, bonus_map.get(name, 0.0)),
-                -ORDER.index(name),
+                ORDER.index(name),
             ),
         )
         kept.remove(weakest)

@@ -38,7 +38,7 @@ def _chunks(text: str, limit: int) -> list[str]:
     return [part for part in parts if part]
 
 
-def format_reply(text: str, limit: int = 3500) -> list[str]:
+def format_reply(text: str, limit: int = 10000) -> list[str]:
     text = BLOCK.sub("", text or "")
     pieces = FENCE.split(text)
     cleaned = "".join(piece if piece.startswith("```") else _clean_prose(piece) for piece in pieces)

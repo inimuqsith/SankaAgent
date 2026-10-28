@@ -161,9 +161,9 @@ def test_timeout_kills_process(tmp_path: Path, monkeypatch) -> None:
     assert proc.killed is True
 
 
-def test_output_is_last_16kb_and_marked(tmp_path: Path, monkeypatch) -> None:
+def test_output_is_tailed_and_marked(tmp_path: Path, monkeypatch) -> None:
     fake_runtimes(monkeypatch, {"podman"})
-    capture(monkeypatch, FakeProc(out=b"x" * 20_000 + b"TAIL"))
+    capture(monkeypatch, FakeProc(out=b"x" * 70000 + b"TAIL"))
 
     result = run(make_ctx(tmp_path, runtime="podman"))
 

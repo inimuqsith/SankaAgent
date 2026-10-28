@@ -1,5 +1,39 @@
 # LOG
 
+## 2026-10-28 (agent loop: run-till-answer, konteks bertahan, output utuh, buku kiriman)
+
+- `sanka/llm.py::LLM.run`: loop `for max_turns` diganti run-till-answer dengan budget wall-clock
+  `RUN_BUDGET_SECONDS = 240` (cek `time.monotonic()` tiap iterasi); saat habis, satu panggilan
+  final tanpa tool + reminder `BUDGET_TEXT`. `TURN_LIMIT_TEXT` dihapus total. Guard loop:
+  `(name, args-JSON)` yang sama 3x beruntun diganti error injeksi tanpa eksekusi.
+- `sanka/llm.py::LLM.run` pass konfirmasi kiriman: bila `ctx.sent` terisi, satu panggilan final
+  tanpa tool dengan nota `[Sudah terkirim via tool...]`; gagal = pakai teks awal (fail-open).
+- `sanka/salience.py::select`: tiebreak `min` dari `-ORDER.index` menjadi `ORDER.index`, sehingga
+  `memory`/`actions`/`skills` (belakang) selamat paling lama saat skor seri. `sanka/wa.py`:
+  `bonuses["memory"] = 0.35` bila `keyword_set` pesan ∩ memori tak kosong (berlaku walau tanpa affect).
+- `sanka/memory.py::_select`: klausa LIKE antar-term dari AND menjadi OR (recall tinggi, ranking
+  `_ranked` tetap mendahulukan cocok). Dua test supersede diperbarui ke kontrak OR.
+- `sanka/wa.py::handle_message`: `decision is None` + direct tidak lagi `fallback_only`/`hmm`;
+  lanjut jalur LLM normal dengan decision curt + `ground_tone`. Test diganti jadi
+  `test_decision_invalid_mention_gets_real_attempt`.
+- Budget output: `format_reply` default 3500→10000; `MAX_SEND_TEXT` 60k→100k dan `send_text`
+  memecah via `format_reply` (return `(... N bagian)` bila >1, string tunggal tak berubah);
+  `MAX_OUTPUT` 20k→40k + hint lanjutan di `TRUNCATED`; sandbox 16→64 KiB. Fixture
+  `test_format_reply`/`test_sandbox` diperbarui (sandbox simbolik ke `MAX_OUTPUT_BYTES`).
+- `sanka/tools/__init__.py::ToolContext.sent: list[dict]` baru; `send`/`send_to` sukses mencatat
+  `{tool, target, kind, summary}`, gagal tidak. `handle_message`: closing kosong + `sent` terisi
+  menjadi "Sudah kukirim." (bukan "(kosong)"). Izin tak berubah: enam family, `send`
+  OWNER_MEMBER, `send_to` OWNER_ONLY, cek tetap di `execute`.
+- Prompt: `DAILY_STYLE` (rekap tulis utuh), `PRO_STYLE` (format script utuh, runtime memecah
+  ~10k, jangan ringkas), `system_prompt` (nota kiriman + tulis utuh), `SOUL.md:15` (aturan
+  <200 karakter khusus obrolan).
+- Test baru: `test_memory_survives_tiebreak_when_nothing_matches`,
+  `test_search_matches_any_term_not_all`, `test_long_styled_rekap_arrives_whole_and_verbatim`,
+  `test_tool_send_empty_closing_confirms_not_kosong`; `ctx.sent` di-assert di `test_send.py`.
+- Verifikasi: `pytest -q` 247 lulus; `python -m sanka selftest` SELFTEST OK (sandbox SKIP,
+  docker tak ada); stub `LLM.run` menjawab setelah 25 langkah tool (bukan batas), guard
+  berulang memblokir eksekusi ke-3; `send_text` 25k → 3 kiriman + "(3 bagian)".
+
 ## 2026-10-28 (arah kesal: /mood, log lintas chat, dan grup)
 
 - Bug: `AffectStore._payload` mencari orang lewat `state.identity.relationship_id` (`sanka`),
