@@ -25,6 +25,39 @@ class ConfigError(RuntimeError):
     """Invalid configuration; the message is safe to show to the operator."""
 
 
+DEFAULT_SENSITIVE_COMMANDS: tuple[str, ...] = (
+    "rm *",
+    "rmdir *",
+    "shred *",
+    "dd *",
+    "truncate *",
+    "wipefs *",
+    "mkfs*",
+    "fdisk *",
+    "parted *",
+    "shutdown *",
+    "reboot *",
+    "poweroff *",
+    "halt *",
+    "systemctl *",
+    "service *",
+    "kill *",
+    "pkill *",
+    "killall *",
+    "chmod *",
+    "chown *",
+    "chgrp *",
+    "mount *",
+    "umount *",
+    "git reset --hard*",
+    "git clean -*f*",
+    "git push *--force*",
+    "git push -f*",
+    "find * -delete*",
+    "find * -exec rm*",
+)
+
+
 class Documents(Protocol):
     def get(self, name: str) -> str | None: ...
 
@@ -106,7 +139,8 @@ class ReplyConfig:
 @dataclass(frozen=True)
 class ApprovalConfig:
     mode: str = "yolo"  # yolo | off | strict
-    sensitive_tools: tuple[str, ...] = ("shell", "sandbox")
+    sensitive_tools: tuple[str, ...] = ()
+    sensitive_commands: tuple[str, ...] = DEFAULT_SENSITIVE_COMMANDS
     settings: bool = True
     ttl_seconds: int = 900
 
@@ -597,6 +631,7 @@ def load_config(
     approval_mode = str(approval_raw.get("mode") or "yolo").strip().lower()
     if approval_mode not in {"yolo", "off", "strict"}:
         raise ConfigError("approval.mode must be 'yolo', 'off', or 'strict'")
+    approval_commands = approval_raw.get("sensitive_commands")
     embedder_raw = _section(memory_raw, "embedder")
     privacy_raw = _section(memory_raw, "privacy")
 
@@ -632,8 +667,12 @@ def load_config(
         reply=ReplyConfig(quiet_seconds=int(_num(reply_raw.get("quiet_seconds"), 600))),
         approval=ApprovalConfig(
             mode=approval_mode,
-            sensitive_tools=_str_tuple(approval_raw.get("sensitive_tools"))
-            or ("shell", "sandbox"),
+            sensitive_tools=_str_tuple(approval_raw.get("sensitive_tools")),
+            sensitive_commands=(
+                DEFAULT_SENSITIVE_COMMANDS
+                if approval_commands is None
+                else _str_tuple(approval_commands)
+            ),
             settings=_bool(approval_raw.get("settings"), True),
             ttl_seconds=int(_num(approval_raw.get("ttl_seconds"), 900)),
         ),

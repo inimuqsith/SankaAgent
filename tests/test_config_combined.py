@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from sanka.engine.config import ConfigError, load_config, load_host
+from sanka.engine.config import DEFAULT_SENSITIVE_COMMANDS, ConfigError, load_config, load_host
 from sanka.engine.stores.documents import DocumentStore
 from support import database
 
@@ -132,3 +132,26 @@ def test_privacy_levels_clamp_invalid_values(tmp_path, monkeypatch) -> None:
     assert loaded.memory.privacy.enabled is False
     assert loaded.memory.privacy.default_level == 2
     assert loaded.memory.privacy.ask_level == 4
+
+
+def test_approval_defaults_to_command_patterns(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    write_folder(tmp_path)
+
+    loaded = load_config(tmp_path / "config.yaml", require_key=False)
+
+    assert loaded.approval.sensitive_tools == ()
+    assert loaded.approval.sensitive_commands == DEFAULT_SENSITIVE_COMMANDS
+
+
+def test_approval_sensitive_commands_override_and_disable(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SANKA_TEST_KEY", "x")
+    for value, expected in (([], ()), (["rm *"], ("rm *",))):
+        config = yaml.safe_load(yaml.safe_dump(BASE))
+        config["engine"]["approval"] = {"sensitive_commands": value}
+        write_folder(tmp_path, config=config)
+
+        loaded = load_config(tmp_path / "config.yaml", require_key=False)
+
+        assert loaded.approval.sensitive_tools == ()
+        assert loaded.approval.sensitive_commands == expected

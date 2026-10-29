@@ -54,9 +54,37 @@ engine:
     telemetry: false
   approval:
     mode: yolo
-    sensitive_tools:
-    - shell
-    - sandbox
+    sensitive_tools: []
+    sensitive_commands:
+    - rm *
+    - rmdir *
+    - shred *
+    - dd *
+    - truncate *
+    - wipefs *
+    - mkfs*
+    - fdisk *
+    - parted *
+    - shutdown *
+    - reboot *
+    - poweroff *
+    - halt *
+    - systemctl *
+    - service *
+    - kill *
+    - pkill *
+    - killall *
+    - chmod *
+    - chown *
+    - chgrp *
+    - mount *
+    - umount *
+    - git reset --hard*
+    - git clean -*f*
+    - git push *--force*
+    - git push -f*
+    - find * -delete*
+    - find * -exec rm*
     settings: true
     ttl_seconds: 900
   skills:

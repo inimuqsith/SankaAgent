@@ -177,6 +177,39 @@ def test_shell_requires_approval_then_approve_executes(tmp_path) -> None:
     assert env.agent.approvals.get(1).status == "approved"
 
 
+def test_sensitive_shell_command_waits_then_approve_executes(tmp_path) -> None:
+    class ToolLLM(FakeLLM):
+        async def run(self, system, content, specs, ctx, session=None):
+            self.ctx = ctx
+            self.call = await execute(
+                {handler.name: handler for handler in specs},
+                "shell",
+                {"command": "printf sanka-ok"},
+                ctx,
+            )
+            return f"tool: {self.call}"
+
+    env = make_agent(
+        tmp_path,
+        roles={
+            "owner": role("owner", tools=("*",), commands=("*",)),
+            "member": role("member", tools=("shell",), commands=("*",)),
+        },
+        approvals=ApprovalConfig(mode="yolo", sensitive_commands=("printf *",)),
+    )
+    env.agent.llm = ToolLLM()
+
+    handle(env, inbound_message("jalankan shell", chat_id=DM))
+
+    assert "pending approval #1" in env.gateway.sent[0][1]
+    from sanka.engine.commands.approve import COMMAND as APPROVE
+
+    ctx = env.agent.command_context(DM, "628111", (role("member"),), env.gateway, "1")
+    result = asyncio.run(APPROVE.fn(ctx))
+    assert "sanka-ok" in result
+    assert env.agent.approvals.get(1).status == "approved"
+
+
 def test_approve_rejects_other_sender(tmp_path) -> None:
     env = make_agent(tmp_path)
     async def create():

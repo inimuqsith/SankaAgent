@@ -250,8 +250,14 @@ memory to a third person. `memory.backend: null` disables Mem0; failures fail op
 
 Default `approval.mode: yolo` lets ordinary tools run. These need `/approve`:
 
-- every tool in `approval.sensitive_tools` (default `shell`, `sandbox`, globs allowed),
+- destructive shell commands matched against `approval.sensitive_commands` (default patterns:
+  `rm *`, `dd *`, `systemctl *`, `git reset --hard*`, `git push *--force*`, `find * -delete*`, …),
+  including the same command inside `sudo`/`env`/`xargs` wrappers, `;`/`&&`/`|` segments, and
+  `$(…)`/backtick substitutions,
+- destructive internal actions: `memory` `forget` and `skill` `archive`,
 - every internal change through the `settings` tool when `approval.settings: true`,
+- every tool in `approval.sensitive_tools` (empty by default; globs allowed) — set it to `[shell]`
+  to gate every shell call again,
 - privacy/disclosure confirmations (`kind=privacy|disclosure`),
 - in `strict` mode, every tool except read-only observation (`read`, `memory`, `skill`,
   `chat_history`, `web_search`).
@@ -260,7 +266,9 @@ Flow: the model receives `pending approval #ID`, tells the sender, and stops. `/
 `/approve ID` executes with the original role and re-checks permissions, `/deny ID` cancels. Pending
 items are bound to `chat_id` + sender, expire after `ttl_seconds` (default 900), and `/approve` never
 calls the LLM or changes emotion. An approved `shell` is host access by design; `settings` is the
-validated path for config changes.
+validated path for config changes. The command classifier is a coarse denylist: redirection,
+`python -c` one-liners, and script files are not gated, and `sensitive_commands: []` disables the
+command gate entirely.
 
 ## Status, settings, audit
 
@@ -583,8 +591,14 @@ level 2.
 
 Default `approval.mode: yolo` membiarkan tool biasa berjalan. Yang butuh `/approve`:
 
-- setiap tool di `approval.sensitive_tools` (default `shell`, `sandbox`, glob diizinkan),
+- shell command destruktif yang cocok dengan `approval.sensitive_commands` (pola default: `rm *`,
+  `dd *`, `systemctl *`, `git reset --hard*`, `git push *--force*`, `find * -delete*`, …), termasuk
+  perintah yang sama di dalam wrapper `sudo`/`env`/`xargs`, segmen `;`/`&&`/`|`, dan substitusi
+  `$(…)`/backtick,
+- aksi internal destruktif: `memory` `forget` dan `skill` `archive`,
 - setiap perubahan internal lewat tool `settings` saat `approval.settings: true`,
+- setiap tool di `approval.sensitive_tools` (default kosong; glob diizinkan) — isi `[shell]` untuk
+  menggerbangi semua shell lagi,
 - konfirmasi privasi/pengungkapan (`kind=privacy|disclosure`),
 - di mode `strict`, setiap tool kecuali observasi read-only (`read`, `memory`, `skill`,
   `chat_history`, `web_search`).
@@ -593,7 +607,9 @@ Alur: model menerima `pending approval #ID`, memberi tahu pengirim, lalu berhent
 mendaftar, `/approve ID` mengeksekusi dengan role asli dan mengecek ulang izin, `/deny ID`
 membatalkan. Item pending terikat `chat_id` + pengirim, kedaluwarsa setelah `ttl_seconds` (default
 900), dan `/approve` tidak pernah memanggil LLM atau mengubah emosi. `shell` yang disetujui berarti
-akses host secara desain; `settings` adalah jalur tervalidasi untuk perubahan config.
+akses host secara desain; `settings` adalah jalur tervalidasi untuk perubahan config. Klasifikasi
+command sengaja kasar: redirection, one-liner `python -c`, dan file script tidak digerbangi, dan
+`sensitive_commands: []` mematikan gerbang command sepenuhnya.
 
 ### Status, settings, audit
 

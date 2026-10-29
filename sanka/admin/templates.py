@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import yaml
 
+from ..engine.config import DEFAULT_SENSITIVE_COMMANDS
 from ..engine.soul import DEFAULT_SOUL
 
 HOST: dict = {
@@ -64,7 +65,8 @@ ENGINE: dict = {
     },
     "approval": {
         "mode": "yolo",
-        "sensitive_tools": ["shell", "sandbox"],
+        "sensitive_tools": [],
+        "sensitive_commands": list(DEFAULT_SENSITIVE_COMMANDS),
         "settings": True,
         "ttl_seconds": 900,
     },

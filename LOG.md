@@ -968,3 +968,39 @@
   engine + gateways + soul; a split config migrated with backup and loaded with `memory_admin`;
   `sanka console --takeover` smoke ran `/language en`, `/status` (`Language: en` plus privacy
   flags), `/language id`, `/quit`; `sanka selftest` reported SELFTEST OK with privacy PASS.
+
+## 2026-10-30 (approval: shell command patterns instead of gating every shell)
+
+- Problem: `approval.sensitive_tools: [shell, sandbox]` made every shell call and every sandbox
+  run wait for `/approve`, so ordinary work (`ls`, `git status`, sandbox probes) stalled while the
+  really dangerous operations were not distinguished. Fix: `shell` and `sandbox` are no longer
+  sensitive tools by default; `ApprovalPolicy.check` now gates (1) internal changes through
+  `settings`, (2) destructive shell commands matched against `approval.sensitive_commands`, and
+  (3) destructive internal actions `memory forget` and `skill archive`. `recipe`, `skill save`,
+  `memory add`/`veto`, and `sandbox` run free.
+- Classifier (`sanka/engine/safety.py`, deterministic, no LLM): `shlex` with punctuation chars
+  splits segments on `; && || | & ( )`; leading `VAR=…` assignments and wrappers
+  (`sudo`, `env`, `nohup`, `nice`, `ionice`, `time`, `command`, `builtin`, `exec`, `stdbuf`,
+  `xargs`, with their value-taking options) are stripped before `fnmatch` against the patterns;
+  `bash|sh|zsh|dash|ksh -c …` is re-scanned recursively; `$(…)`/backticks are re-scanned up to
+  depth 3; unparseable input or deeper nesting counts as sensitive. `SHELL_WRAPPERS`,
+  `WRAPPER_VALUES`, `SHELL_OPERATORS`, `DESTRUCTIVE_ACTIONS`, `MAX_DEPTH` sit next to it.
+- Config: `DEFAULT_SENSITIVE_COMMANDS` in `sanka/engine/config.py` (29 patterns: `rm *`, `dd *`,
+  `wipefs *`, `mkfs*`, `systemctl *`, `kill*`, `chmod *`, `mount *`, `git reset --hard*`,
+  `git clean -*f*`, `git push *--force*`, `find * -delete*`, …). Missing key → defaults; `[]` →
+  command gate off; `sensitive_tools` missing/`[]` → no fully gated tool, and `mode: off` still
+  bypasses the whole `SafetyPolicy` (the `settings` tool keeps its own `approval.settings` gate).
+  `sanka init` seed (`sanka/admin/templates.py`) and `config.example.yaml` write the new block.
+- Migration: local `config.yaml` `engine.approval` rewritten, then `sanka config import` →
+  `sanka config export`; the `engine` document in `.sanka/sanka.db` now holds
+  `sensitive_tools: []` + the 29 patterns, so the DB no longer overrides the file back to the old
+  behaviour. README (both languages) documents the new gate list and the coarse-denylist limits.
+- Verification: `pytest -q` 270 passed (new `tests/test_safety.py`: 23 cases over benign commands,
+  `rm`/`sudo`/`bash -c`/`$(…)`/`dd`/`git force-push`/`find -delete`/unterminated quote, sensitive
+  tool gate, strict mode, `mode: off`, destructive actions, empty pattern list; plus
+  `test_sensitive_shell_command_waits_then_approve_executes` and two `sensitive_commands` config
+  tests). `python -m sanka selftest` SELFTEST OK (memory/sandbox skipped: no Postgres/docker).
+  Loaded the live `config.yaml` through `build_safety`: `ls -la`/`printf`/`read`/`sandbox`/
+  `memory add`/`skill save`/`recipe remove` → allow; `rm -rf …`/`git push --force`/`memory forget`/
+  `skill archive` → pending. Wrapper and segment evasions (`FOO=1 rm`, `nohup rm`, `env -i rm`,
+  `xargs rm`, `sh -c`, `echo a; rm`, `(rm …)`, `git clean -xfd`) all stayed pending.
