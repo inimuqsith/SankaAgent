@@ -261,7 +261,7 @@ def _backup(path: Path) -> Path | None:
     if resolved.name not in MIRRORS or not resolved.is_file():
         return None
     target = resolved.with_name(f"{resolved.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
-    target.write_bytes(resolved.read_bytes())
+    target.write_bytes(resolved.read_bytes())  # NOSONAR - target nama mirror allow-list MIRRORS
     with contextlib.suppress(OSError):
         target.chmod(0o600)
     return target

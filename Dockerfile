@@ -24,10 +24,10 @@ COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /uvx /bin/
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-install-project --extra whatsapp --extra vibe --extra memory
+RUN uv sync --locked --no-build --no-install-project --extra whatsapp --extra vibe --extra memory
 
 COPY sanka ./sanka
-RUN uv sync --locked --extra whatsapp --extra vibe --extra memory
+RUN uv sync --locked --no-build --extra whatsapp --extra vibe --extra memory
 
 ENV PATH="/app/.venv/bin:$PATH" \
     HF_HOME=/app/.sanka/hf

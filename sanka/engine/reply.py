@@ -8,7 +8,6 @@ import re
 BLOCK = re.compile(r"<(reasoning|thought|tool_call)>.*?</\1>", re.IGNORECASE | re.DOTALL)
 FENCE = re.compile(r"(```.*?```)", re.DOTALL)
 FENCE_START = "```"
-HEADING = re.compile(r"^#{1,6}[ \t]+(.+)$", re.MULTILINE)
 BOLD = re.compile(r"\*\*(.+?)\*\*")
 BULLET = re.compile(r"^[-*]\s+", re.MULTILINE)
 LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -22,9 +21,18 @@ def strip_blocks(text: str) -> str:
     return BLOCK.sub("", text or "")
 
 
+def _heading(line: str) -> str:
+    """'## Judul' -> '*Judul*'; baris lain dikembalikan apa adanya."""
+    marks = len(line) - len(line.lstrip("#"))
+    rest = line[marks:]
+    if not 1 <= marks <= 6 or rest[:1] not in (" ", "\t") or len(rest) < 2:
+        return line
+    return f"*{rest.lstrip(' \t')}*"
+
+
 def clean_prose(chunk: str) -> str:
     """Markdown -> dialek chat (dipakai gateway WhatsApp; CLI memakai identitas)."""
-    chunk = HEADING.sub(r"*\1*", chunk)
+    chunk = "\n".join(_heading(line) for line in chunk.split("\n"))
     chunk = BOLD.sub(r"*\1*", chunk)
     chunk = BULLET.sub("• ", chunk)
     return LINK.sub(r"\1 (\2)", chunk)
