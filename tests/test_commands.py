@@ -153,6 +153,56 @@ def test_help_detail_respects_role_and_accepts_alias() -> None:
 
     ctx.args = "tidak-ada"
     assert "tidak dikenal" in asyncio.run(help_command(ctx))
+    fake_app = app()
+    fake_app.recipes = None
+    ctx.app = fake_app
+    assert "tidak dikenal" in asyncio.run(help_command(ctx))
+
+
+class FakeRecipe:
+    def __init__(self, name: str, roles: tuple[str, ...], usage: str = "") -> None:
+        self.name = name
+        self.roles = roles
+        self.usage = usage
+        self.description = f"Deskripsi {name}."
+
+
+class FakeRecipes:
+    def __init__(self, items: list[FakeRecipe]) -> None:
+        self.items = {item.name: item for item in items}
+
+    def names(self) -> list[str]:
+        return sorted(self.items)
+
+    def get(self, name: str):
+        return self.items.get(name)
+
+
+def test_help_lists_recipe_group_filtered_by_role() -> None:
+    fake_app = app()
+    fake_app.recipes = FakeRecipes([
+        FakeRecipe("rekap", ("owner", "member"), "[divisi]"),
+        FakeRecipe("rahasia", ("owner",)),
+    ])
+    ctx = SimpleNamespace(app=fake_app, role=RoleConfig("member"), args="", commands=())
+    text = asyncio.run(help_command(ctx))
+
+    assert "🧪 *Resep user*" in text
+    assert "/rekap [divisi] - Deskripsi rekap." in text
+    assert "rahasia" not in text
+
+
+def test_help_recipe_detail_and_role_lock() -> None:
+    fake_app = app()
+    fake_app.recipes = FakeRecipes([FakeRecipe("rekap", ("owner", "member"), "[divisi]")])
+    ctx = SimpleNamespace(app=fake_app, role=RoleConfig("member"), args="rekap", commands=())
+    text = asyncio.run(help_command(ctx))
+
+    assert text.splitlines()[0] == "🧪 */rekap*"
+    assert "• Pakai: /rekap [divisi]" in text
+
+    owner_only = SimpleNamespace(app=fake_app, role=RoleConfig("owner"), args="rekap", commands=())
+    assert "🧪 */rekap*" in asyncio.run(help_command(owner_only))
 
 
 class FakeAffect:

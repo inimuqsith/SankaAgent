@@ -34,6 +34,7 @@ class ToolContext:
         history=None,
         memory=None,
         skills=None,
+        recipes=None,
         send_file: Callable[[str, Path, str], Awaitable[str]] | None = None,
         send_message: Callable[[str, str], Awaitable[str]] | None = None,
         request: str = "",
@@ -46,6 +47,7 @@ class ToolContext:
         self.history = history
         self.memory = memory
         self.skills = skills
+        self.recipes = recipes
         self.send_file = send_file
         self.send_message = send_message
         self.request = request

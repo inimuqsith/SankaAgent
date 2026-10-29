@@ -1,5 +1,19 @@
 # LOG
 
+## 2026-10-29 (fix: modul recipes tertinggal, bot restart-loop)
+
+- Penyebab: commit 3b83d41 mereferensikan `sanka/recipes.py` (`__main__`, `config`, `wa`,
+  `test_reply`) tapi file tidak ikut ter-commit (untracked di laptop, luput dari
+  `git add`). Build image tetap "done" karena tak ada yang gagal, tapi container mati
+  saat start (`from .recipes import RecipeStore` → ModuleNotFoundError) lalu
+  restart-loop sejak ~03:36 UTC; log container kosong karena terus di-restart.
+- Perbaikan: commit `sanka/recipes.py` (`RecipeStore` + `run_recipe`),
+  `sanka/tools/recipe.py` (tool recipe: list/view/save/remove, family read),
+  `tests/test_recipes.py`, plus `ToolContext.recipes`, integrasi `/help` (grup
+  "Resep user" + detail per-resep, filter role), dan ekspektasi registry.
+- Verifikasi: `pytest -q` 236 lulus; `python -m sanka selftest` SELFTEST OK (venv
+  lokal). Push ke origin/main memicu rebuild; bot kembali online setelah deploy selesai.
+
 ## 2026-10-28 (agent loop: run-till-answer, konteks bertahan, output utuh, buku kiriman)
 
 - `sanka/llm.py::LLM.run`: loop `for max_turns` diganti run-till-answer dengan budget wall-clock
