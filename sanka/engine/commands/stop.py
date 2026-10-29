@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+from ..i18n import t
 from ..registry import Handler
 from . import CommandContext
 
@@ -11,17 +12,18 @@ MAX_MINUTES = 1440
 
 
 async def stop(ctx: CommandContext) -> str:
+    lang = ctx.lang
     raw = ctx.args.strip()
     if raw and not raw.isdigit():
-        return "pakai /stop atau /stop <menit> (0 = aktif lagi)."
+        return t("command.stop.invalid", lang)
     minutes = int(raw) if raw else max(1, int(ctx.agent.config.reply.quiet_seconds // 60))
     if minutes > MAX_MINUTES:
-        return f"maksimal {MAX_MINUTES} menit."
+        return t("command.stop.max", lang, max=MAX_MINUTES)
     if minutes <= 0:
         ctx.agent.quiet.pop(ctx.chat_id, None)
-        return "ok, aku aktif lagi."
+        return t("command.stop.active", lang)
     ctx.agent.quiet[ctx.chat_id] = time.time() + minutes * 60
-    return f"ok, aku diam {minutes} menit. Panggil /stop 0 kalau mau aku aktif lagi."
+    return t("command.stop.quiet", lang, minutes=minutes)
 
 
 COMMAND = Handler(

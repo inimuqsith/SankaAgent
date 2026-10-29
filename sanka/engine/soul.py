@@ -9,6 +9,8 @@ from pathlib import Path
 
 import yaml
 
+from .i18n import normalize_language
+
 log = logging.getLogger(__name__)
 
 MARKERS = ("yang", "kamu", "aku", "tidak", "dengan", "untuk", "bilang", "jangan")
@@ -69,22 +71,10 @@ Grounding:
 @dataclass(frozen=True)
 class Soul:
     name: str = "sanka"
-    language: str = "id"  # "id" | "en" only
+    language: str = "id"  # installed catalog code, e.g. "id" | "en"
     pronouns: str = "aku"
     persona: str = ""
     source: Path | None = None
-
-
-def normalize_language(value: object, default: str = "id") -> str:
-    """Map aliases to `en`/`id`; raise ValueError for anything unsupported."""
-    text = str(value or "").strip().lower()
-    if not text:
-        return default
-    if text in {"en", "english"}:
-        return "en"
-    if text in {"id", "in", "indonesian", "auto"}:
-        return "id"
-    raise ValueError("language must be 'id' or 'en'")
 
 
 def infer_language(text: str) -> str:

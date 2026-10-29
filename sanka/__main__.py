@@ -261,7 +261,8 @@ async def selftest(config: Config) -> int:
     from .engine.context import ChatMessage
     from .engine.db import Database
     from .engine.decision import Appraisal, Decision, RelationshipDelta
-    from .engine.llm import API_ERROR_TEXT, LLM
+    from .engine.i18n import t
+    from .engine.llm import LLM
     from .engine.mcp import Hub
     from .engine.permissions import commands_for, tool_patterns, tools_for
     from .engine.tools import REGISTRY, ToolContext, execute
@@ -404,7 +405,7 @@ async def selftest(config: Config) -> int:
 
         llm = LLM(config)
         answer = await llm.run("Reply with: ok", "ping", [], ctx, session="sanka-selftest")
-        passed = bool(answer.strip()) and answer != API_ERROR_TEXT
+        passed = bool(answer.strip()) and answer != t("agent.api_error", config.soul.language)
         results.append(_report("llm", "PASS" if passed else "FAIL", "" if passed else answer[:200]))
 
         affect.turn_start("selftest", "selftest-1")

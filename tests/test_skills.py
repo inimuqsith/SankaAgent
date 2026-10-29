@@ -142,6 +142,7 @@ def test_skill_command_list_view_and_read(tmp_path: Path) -> None:
 
     class FakeApp:
         skills = store
+        soul = SimpleNamespace(language="id")
 
     def out(args: str) -> str:
         ctx = CommandContext(

@@ -23,5 +23,15 @@ dev = ["pytest>=8", "neonize>=0.5.2,<0.6", "segno>=1.6"]
 [project.scripts]
 sanka = "sanka.__main__:main"
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["sanka*"]
+
+[tool.setuptools.package-data]
+sanka = ["lang/*.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

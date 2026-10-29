@@ -2,24 +2,26 @@
 
 from __future__ import annotations
 
+from ..i18n import t
 from ..registry import Handler
 from . import CommandContext
 
 
 async def calmdown(ctx: CommandContext) -> str:
+    lang = ctx.lang
     affect = ctx.agent.affect
     if affect is None:
-        return "state emosi belum aktif."
+        return t("command.calmdown.unavailable", lang)
     target = ctx.args.strip()
     try:
         was_upset = affect.calm(ctx.chat_id, target)
     except Exception:
-        return "aku belum bisa menenangkan diri sekarang. coba lagi bentar ya."
+        return t("command.calmdown.failed", lang)
     if not was_upset:
-        return "aku dari tadi tenang kok 🙃"
+        return t("command.calmdown.already", lang)
     if not target:
-        return "okeee... aku udah agak tenang 😌 makasih ya."
-    return f"yaudah, aku maafin {target} kali ini. tapi jangan diulang ya 🙃"
+        return t("command.calmdown.done", lang)
+    return t("command.calmdown.forgiven", lang, target=target)
 
 
 COMMAND = Handler(

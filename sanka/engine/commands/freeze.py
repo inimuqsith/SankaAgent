@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..i18n import t
 from ..registry import Handler
 from . import CommandContext
 
@@ -9,12 +10,9 @@ from . import CommandContext
 async def freeze(ctx: CommandContext) -> str:
     agent = ctx.agent
     if agent.lease is None:
-        return "error: lease tidak aktif"
+        return t("command.freeze.no_lease", ctx.lang)
     agent.request_freeze()
-    return (
-        "🧊 Freeze diminta. Aku berhenti membalas sebentar lagi; instance lain bisa "
-        "mengambil alih dengan `sanka console --takeover`."
-    )
+    return t("command.freeze.requested", ctx.lang)
 
 
 COMMAND = Handler(

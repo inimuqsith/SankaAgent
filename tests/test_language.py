@@ -14,11 +14,17 @@ from support import inbound_message, make_agent, make_runtime
 CHAT = "cli:local"
 
 
-def run_language(env, args: str) -> str:
+def run_command(env, name: str, args: str = "") -> str:
     roles = (env.config.roles.default_role(),)
     return asyncio.run(
-        env.agent._command("language", args, CHAT, "local", roles, env.gateway, inbound_message("/language"))
+        env.agent._command(
+            name, args, CHAT, "local", roles, env.gateway, inbound_message(f"/{name}")
+        )
     )
+
+
+def run_language(env, args: str) -> str:
+    return run_command(env, "language", args)
 
 
 def test_language_command_writes_soul_document_and_mirror(tmp_path, monkeypatch) -> None:
@@ -27,20 +33,23 @@ def test_language_command_writes_soul_document_and_mirror(tmp_path, monkeypatch)
 
     result = run_language(env, "en")
 
-    assert result.startswith("🗣️")
+    assert result == "🗣️ Reply language set to en."
     assert env.agent.soul.language == "en"
     assert "language: en" in env.documents.get("soul")
     mirror = yaml.safe_load(env.paths.config.read_text(encoding="utf-8"))
     assert mirror["soul"]["language"] == "en"
-    assert "en" in run_language(env, "")
-    assert run_language(env, "id").startswith("🗣️")
+    assert run_language(env, "") == "🗣️ Reply language: en. Available: en, id."
+    assert run_command(env, "ping") == "🏓 Pong! Sanka is alive and ready."
+
+    assert run_language(env, "id") == "🗣️ Bahasa balasan diatur ke id."
     assert env.agent.soul.language == "id"
+    assert run_command(env, "ping") == "🏓 Pong! Sanka hidup dan siap."
 
 
 def test_language_command_rejects_unknown_language(tmp_path, monkeypatch) -> None:
     env = make_runtime(tmp_path, monkeypatch, settings_approval=False)
-    result = run_language(env, "jv")
-    assert result.startswith("error:")
+    result = run_language(env, "xx")
+    assert result == "error: bahasa 'xx' tidak tersedia. Pilih: en, id."
     assert env.agent.soul.language == "id"
 
 

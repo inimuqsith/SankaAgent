@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from ..i18n import t
 from ..registry import Handler
 from . import CommandContext
 
 
 async def ping(ctx: CommandContext) -> str:
-    return "🏓 Pong! Sanka hidup dan siap."
+    return t("command.ping.pong", ctx.lang)
 
 
 COMMAND = Handler(

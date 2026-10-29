@@ -32,6 +32,7 @@ from .decision import (
     ensure_reply,
     ground_tone,
 )
+from .i18n import reload_catalogs, t
 from .inbound import Gateway, GatewayError, Inbound
 from .llm import LLM
 from .memory import MemoryBackend, MemoryContext, memory_status
@@ -670,7 +671,11 @@ class Agent:
                         tool_ctx,
                         session=f"sanka-{chat_id}",
                     )
-                    reply = answer if answer.strip() or not tool_ctx.sent else "Sudah kukirim."
+                    reply = (
+                        answer
+                        if answer.strip() or not tool_ctx.sent
+                        else t("agent.sent_ack", self.soul.language)
+                    )
                     review = await self.privacy.review(
                         inbound,
                         reply,
@@ -684,7 +689,9 @@ class Agent:
                 professional = bool(decision is not None and decision.mode == "professional")
                 humanize = self.config.humanize
                 if is_command or professional:
-                    chunks = split_text(gateway.render(reply or "")) or ["(kosong)"]
+                    chunks = split_text(gateway.render(reply or "")) or [
+                        t("agent.empty_reply", self.soul.language)
+                    ]
                     pace = False
                     quote_all = True
                 else:
@@ -692,7 +699,7 @@ class Agent:
                     chunks = [
                         gateway.render(chunk)
                         for chunk in human_chunks(reply or "", max_parts=planned)
-                    ] or ["(kosong)"]
+                    ] or [t("agent.empty_reply", self.soul.language)]
                     pace = bool(humanize.enabled)
                     quote_all = not pace
                 delivered = True
@@ -753,19 +760,25 @@ class Agent:
         inbound: Inbound,
     ) -> str:
         if not name:
-            return "Ketik /help untuk daftar command."
+            return t("agent.help_hint", self.soul.language)
         handler = self.commands.get(name)
         recipe = None
         if handler is None and self.recipes is not None:
             with contextlib.suppress(Exception):
                 recipe = self.recipes.get(name)
         if handler is None and recipe is None:
-            return f"🤔 Command /{name} tidak dikenal. Ketik /help untuk daftar command."
+            return t("agent.unknown_command", self.soul.language, name=name)
         names = {role.name for role in roles}
+        denied = t(
+            "agent.command_denied",
+            self.soul.language,
+            name=name,
+            roles=", ".join(sorted(names)),
+        )
         if recipe is not None and not (names & set(recipe.roles)):
-            return f"🔒 Command /{name} tidak diizinkan untuk role {', '.join(sorted(names))}."
+            return denied
         if handler is not None and not command_allowed(roles, handler.name):
-            return f"🔒 Command /{name} tidak diizinkan untuk role {', '.join(sorted(names))}."
+            return denied
         if recipe is not None:
             from .recipes import run_recipe
 
@@ -773,7 +786,7 @@ class Agent:
             if recipe.kind == "recipe":
                 return await run_recipe(recipe, args, ctx)
             if self.llm is None:
-                return "error: LLM tidak tersedia untuk resep prompt"
+                return t("agent.no_llm", self.soul.language)
             specs = self._specs(roles)
             return await self.llm.run(
                 system_prompt(
@@ -823,6 +836,7 @@ class Agent:
         """Muat ulang config/soul/role; tolak perubahan yang butuh restart."""
         from .config import ConfigError, load_config
 
+        reload_catalogs()
         loaded = load_config(
             self.config.paths.config, documents=self.documents, require_key=False
         )

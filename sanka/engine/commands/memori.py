@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..i18n import t
 from ..memory import MemoryHit
 from ..memory.privacy import PrivacyPolicy, clamp_level
 from ..registry import Handler
@@ -10,9 +11,15 @@ from . import CommandContext
 SCOPES = ("person", "chat", "global")
 
 
-def _line(hit: MemoryHit) -> str:
+SCOPE_KEYS = {"person": "scope_person", "chat": "scope_chat", "global": "scope_global"}
+
+
+def _line(hit: MemoryHit, lang: str) -> str:
     mark = "" if hit.confirmed else "?"
-    return f"• [{hit.scope}] L{hit.level}{mark} {hit.text}"
+    scope = t(f"command.memori.{SCOPE_KEYS[hit.scope]}", lang)
+    return t(
+        "command.memori.line", lang, scope=scope, level=hit.level, mark=mark, text=hit.text
+    )
 
 
 def _scope(raw: str) -> tuple[str, str]:
@@ -23,20 +30,21 @@ def _scope(raw: str) -> tuple[str, str]:
 
 
 async def _memori(ctx: CommandContext) -> str:
+    lang = ctx.lang
     memory = ctx.agent.memory
     if memory is None or not getattr(memory, "available", False):
         reason = getattr(memory, "reason", "tidak tersedia")
-        return f"error: memori tidak tersedia ({reason})"
-    config = ctx.config.memory.privacy
+        return t("command.memori.unavailable", lang, reason=reason)
+    config = ctx.agent.config.memory.privacy
     scope, raw = _scope(ctx.args.strip())
     inbound = ctx.inbound
     requester = (inbound.person_id if inbound is not None else "") or ctx.sender
     is_dm = bool(inbound is not None and inbound.is_dm)
     memory_admin = any(role.memory_admin for role in ctx.roles)
     if scope == "person" and not requester:
-        return "error: tidak ada pengirim"
+        return t("command.memori.no_sender", lang)
     if scope == "chat" and not ctx.chat_id:
-        return "error: tidak ada chat aktif"
+        return t("command.memori.no_chat", lang)
     action, _, rest = raw.partition(" ")
     action = action.lower()
     chat_id = ctx.chat_id if scope == "chat" else ""
@@ -48,11 +56,13 @@ async def _memori(ctx: CommandContext) -> str:
             scope=scope, person_id=person_id, chat_id=chat_id, limit=50
         )
         shown = [row for row in rows if policy.show(row, is_dm=is_dm)]
-        label = {"person": "tentangmu", "chat": "chat ini", "global": "global"}[scope]
+        label = t(f"command.memori.{SCOPE_KEYS[scope]}", lang)
         return (
-            "\n".join([f"🧠 Memori {label}:", *(_line(row) for row in shown)])
+            "\n".join(
+                [t("command.memori.list_head", lang, scope=label), *(_line(row, lang) for row in shown)]
+            )
             if shown
-            else "🧠 Belum ada memori."
+            else t("command.memori.none", lang)
         )
 
     if action in {"cari", "search"}:
@@ -65,14 +75,14 @@ async def _memori(ctx: CommandContext) -> str:
         )
         shown = [row for row in rows if policy.show(row, is_dm=is_dm)]
         return (
-            "\n".join(["🔎 Hasil memori:", *(_line(row) for row in shown)])
+            "\n".join([t("command.memori.results", lang), *(_line(row, lang) for row in shown)])
             if shown
-            else "🔎 Tidak ada memori yang cocok."
+            else t("command.memori.no_match", lang)
         )
 
     if action in {"hapus", "forget", "lupakan"}:
         if scope == "global" and not memory_admin:
-            return "error: memori global butuh memory_admin"
+            return t("command.memori.global_denied", lang)
         target = rest.strip()
         if target.isdigit():
             removed = await memory.forget(
@@ -81,7 +91,11 @@ async def _memori(ctx: CommandContext) -> str:
                 chat_id=ctx.chat_id,
                 allow_global=memory_admin,
             )
-            return "🧹 1 memori dihapus." if removed else "🧹 Tidak ada memori yang dihapus (atau bukan milikmu)."
+            return (
+                t("command.memori.deleted_one", lang)
+                if removed
+                else t("command.memori.no_delete_own", lang)
+            )
         rows = await memory.search(
             target, person_id=person_id, chat_id=chat_id, scopes=(scope,), limit=50
         )
@@ -96,13 +110,17 @@ async def _memori(ctx: CommandContext) -> str:
                 allow_global=memory_admin,
             ):
                 removed += 1
-        return f"🧹 {removed} memori dihapus." if removed else "🧹 Tidak ada memori yang dihapus."
+        return (
+            t("command.memori.deleted_many", lang, count=removed)
+            if removed
+            else t("command.memori.no_delete", lang)
+        )
 
     text = (rest if action in {"tambah", "add", "simpan"} else raw).strip()
     if not text:
-        return "🧠 Gunakan /memori [person|chat|global] tambah <teks>, cari <kata>, hapus <id|kata>, atau daftar."
+        return t("command.memori.usage", lang)
     if scope == "global" and not memory_admin:
-        return "error: memori global butuh memory_admin"
+        return t("command.memori.global_denied", lang)
     try:
         ids = await memory.add(
             text,
@@ -119,8 +137,14 @@ async def _memori(ctx: CommandContext) -> str:
     except ValueError as exc:
         return f"error: {exc}"
     if not ids:
-        return "error: memori tidak tersimpan"
-    return f"✅ Memori {ids[0]} disimpan ({scope}/L{config.default_level}/note)."
+        return t("command.memori.not_saved", lang)
+    return t(
+        "command.memori.saved",
+        lang,
+        id=ids[0],
+        scope=scope,
+        level=config.default_level,
+    )
 
 
 COMMAND = Handler(

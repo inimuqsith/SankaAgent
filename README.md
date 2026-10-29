@@ -142,17 +142,17 @@ Sanka always speaks exactly one language at a time, configured in YAML, never in
 
 ```yaml
 soul:
-  language: id   # id | en
+  language: id   # catalog code: sanka/lang/<code>.yaml
 ```
 
-- `/language` prints the current value; `/language en` or `/language id` changes it.
+- `/language` prints the current value and the installed codes; `/language <code>` changes it.
 - Only the owner role may run it (owner has `commands: ["*"]`; member/guest do not list it).
 - The command writes the `soul` document, mirrors `config.yaml`, and hot-reloads.
-- `auto`/`in` map to `id`; anything else is rejected with `language must be 'id' or 'en'`.
-- `/status` shows `Language: <id|en>`; the Self prompt block and `Reply in ...` line follow it.
+- `auto`/`in` map to `id`; a code with no catalog is rejected and the reply lists what is installed.
+- `/status` shows `Language: <code>`; the Self prompt block and `Reply in ...` line follow it.
 
-There is no Python translation catalogue: command and persona text is code/persona prose, while
-the model's replies follow `soul.language`.
+Every chat-visible string lives in `sanka/lang/<code>.yaml`; add a language by copying a catalog and
+translating its values, and `soul.language` selects which one the bot speaks.
 
 ## Privacy levels and disclosure
 
@@ -472,18 +472,18 @@ Sanka selalu berbicara dalam satu bahasa pada satu waktu, diatur di YAML, bukan 
 
 ```yaml
 soul:
-  language: id   # id | en
+  language: id   # catalog code: sanka/lang/<code>.yaml
 ```
 
-- `/language` menampilkan nilai sekarang; `/language en` atau `/language id` mengubahnya.
+- `/language` menampilkan nilai sekarang dan kode yang terpasang; `/language <kode>` mengubahnya.
 - Hanya role owner yang boleh menjalankannya (owner punya `commands: ["*"]`; member/guest tidak
   mencantumkannya).
 - Command ini menulis dokumen `soul`, mencerminkan `config.yaml`, dan hot-reload.
-- `auto`/`in` dipetakan ke `id`; nilai lain ditolak dengan `language must be 'id' or 'en'`.
-- `/status` menampilkan `Language: <id|en>`; blok Self dan baris `Reply in ...` mengikutinya.
+- `auto`/`in` dipetakan ke `id`; kode tanpa katalog ditolak dan balasannya menyebut yang terpasang.
+- `/status` menampilkan `Language: <kode>`; blok Self dan baris `Reply in ...` mengikutinya.
 
-Tidak ada katalog terjemahan Python: teks command dan persona adalah prosa kode/persona, sedangkan
-balasan model mengikuti `soul.language`.
+Setiap teks yang terlihat di chat ada di `sanka/lang/<kode>.yaml`; menambah bahasa berarti menyalin
+satu katalog lalu menerjemahkan nilainya, dan `soul.language` memilih katalog yang dipakai.
 
 ### Level privasi dan pengungkapan
 

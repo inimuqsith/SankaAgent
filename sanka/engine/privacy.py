@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from . import guard
 from .config import PrivacyConfig
+from .i18n import t
 from .memory import MemoryHit
 from .memory.privacy import AuditResult, PrivacyPolicy, PrivacyVerdict, clamp_level
 
@@ -37,33 +38,6 @@ LEVEL_WORDS = (
     ("publik", 0),
     ("public", 0),
 )
-
-_FALLBACK = {
-    "id": {
-        "level": (
-            "Sepertinya ini privat. Seberapa privat? 0 umum, 1 tim, 2 personal, "
-            "3 sensitif, 4 rahasia."
-        ),
-        "disclosure": "Itu menyentuh hal privat. Boleh aku sebutkan di sini? Balas ya atau tidak.",
-        "keep": "🔒 Oke, aku simpan sendiri.",
-        "unclear": "Balas ya atau tidak supaya aku tahu.",
-        "saved": "🔐 Tercatat di level {level}.",
-        "sent": "🔐 Boleh, aku sampaikan.",
-        "empty": "🔐 Boleh, tapi tidak ada draft yang bisa dikirim.",
-    },
-    "en": {
-        "level": (
-            "This sounds private. How private is it? 0 public, 1 team, 2 personal, "
-            "3 sensitive, 4 secret."
-        ),
-        "disclosure": "That touches something private. May I share it here? Reply yes or no.",
-        "keep": "🔒 Okay, I'll keep that to myself.",
-        "unclear": "Reply yes or no so I know what to do.",
-        "saved": "🔐 Noted at level {level}.",
-        "sent": "🔐 Approved, here it is.",
-        "empty": "🔐 Approved, but there was no draft to send.",
-    },
-}
 
 ASSESS_PROMPT = """You label the privacy of one chat turn for a personal assistant.
 Reply ONLY with JSON:
@@ -141,11 +115,10 @@ class PrivacyService:
 
     @property
     def _lang(self) -> str:
-        return "en" if str(self.agent.soul.language) == "en" else "id"
+        return str(self.agent.soul.language or "id")
 
     def _text(self, key: str, **kwargs) -> str:
-        template = _FALLBACK[self._lang][key]
-        return template.format(**kwargs) if kwargs else template
+        return t(f"privacy.{key}", self._lang, **kwargs)
 
     def _risky(self, hit: MemoryHit, *, is_dm: bool) -> bool:
         limit = self.config.dm_max_level if is_dm else self.config.group_max_level
@@ -198,7 +171,7 @@ class PrivacyService:
 
     def _question(self, audit: AuditResult) -> str:
         question = " ".join(str(audit.question or "").split())
-        return question or self._text("disclosure")
+        return question or self._text("ask_disclosure")
 
     async def _audit(
         self, reply: str, hits: Sequence[MemoryHit], inbound
@@ -270,7 +243,7 @@ class PrivacyService:
         )
         if not (verdict.ask and ids):
             return
-        question = verdict.question or self._text("level")
+        question = verdict.question or self._text("ask_level")
         approval = await self.agent.approvals.create(
             kind="privacy",
             chat_id=inbound.chat_id,

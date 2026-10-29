@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..i18n import t
 from ..registry import Handler
 from . import CommandContext
 
@@ -11,7 +12,7 @@ async def reload(ctx: CommandContext) -> str:
         summary = await ctx.agent.reload()
     except Exception as exc:
         return f"error: {type(exc).__name__}: {exc}"
-    return f"♻️ Reload selesai. {summary}".strip()
+    return t("command.reload.done", ctx.lang, summary=summary).strip()
 
 
 COMMAND = Handler(

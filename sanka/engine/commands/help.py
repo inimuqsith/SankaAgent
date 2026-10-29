@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..i18n import t
 from ..registry import Handler
 from . import CommandContext
 
@@ -10,20 +11,30 @@ def _aliases(handler: Handler) -> str:
     return f" ({', '.join(handler.aliases)})" if handler.aliases else ""
 
 
-def _detail(handler: Handler) -> str:
+def _description(handler: Handler, lang: str) -> str:
+    return t(f"command.{handler.name}.description", lang, default=handler.description)
+
+
+def _detail(handler: Handler, lang: str) -> str:
     usage = f"/{handler.name} {handler.usage}".strip()
     lines = [
-        f"🧭 */{handler.name}*",
-        f"• Fungsi: {handler.description}",
-        f"• Pakai: {usage}",
+        t(
+            "command.help.detail",
+            lang,
+            name=handler.name,
+            description=_description(handler, lang),
+            usage=usage,
+        )
     ]
     if handler.aliases:
-        lines.append(f"• Alias: {', '.join('/' + alias for alias in handler.aliases)}")
+        aliases = ", ".join("/" + alias for alias in handler.aliases)
+        lines.append(t("command.help.alias", lang, aliases=aliases))
     return "\n".join(lines)
 
 
 async def help_command(ctx: CommandContext) -> str:
     store = ctx.agent.recipes
+    lang = ctx.lang
     name = ctx.args.strip().lstrip("/").split(" ", 1)[0].lower()
     if name:
         from . import REGISTRY  # lazy: package REGISTRY belum ada saat discovery
@@ -37,19 +48,26 @@ async def help_command(ctx: CommandContext) -> str:
             if recipe is not None:
                 names = {role.name for role in ctx.roles}
                 if not (names & set(recipe.roles)):
-                    return f"🔒 Command /{name} tidak tersedia untuk role {ctx.role_names()}."
+                    return t("command.help.denied", lang, name=name, roles=ctx.role_names())
                 usage = f"/{recipe.name} {recipe.usage}".rstrip()
-                return f"🧪 */{recipe.name}*\n• Fungsi: {recipe.description}\n• Pakai: {usage}"
+                return t(
+                    "command.help.recipe_detail",
+                    lang,
+                    name=recipe.name,
+                    description=recipe.description,
+                    usage=usage,
+                )
         if handler is None:
-            return f"🤔 Command /{name} tidak dikenal. Ketik /help untuk daftar command."
+            return t("command.help.not_found", lang, name=name)
         if all(item.name != handler.name for item in ctx.commands):
-            return f"🔒 Command /{name} tidak tersedia untuk role {ctx.role_names()}."
-        return _detail(handler)
+            return t("command.help.denied", lang, name=name, roles=ctx.role_names())
+        return _detail(handler, lang)
 
-    lines = ["🧭 *Command Sanka*"]
+    lines = [t("command.help.title", lang)]
     for handler in ctx.commands:
         usage = f" {handler.usage}" if handler.usage else ""
-        lines.append(f"/{handler.name}{usage}{_aliases(handler)} - {handler.description}")
+        description = _description(handler, lang)
+        lines.append(f"/{handler.name}{usage}{_aliases(handler)} - {description}")
     if store is not None:
         try:
             names = store.names()
@@ -66,9 +84,9 @@ async def help_command(ctx: CommandContext) -> str:
                 usage = f" {recipe.usage}" if recipe.usage else ""
                 recipes.append(f"/{recipe.name}{usage} - {recipe.description}")
         if recipes:
-            lines.append("🧪 *Resep user*")
+            lines.append(t("command.help.recipes_title", lang))
             lines.extend(recipes)
-    lines.append("Ketik /help <command> untuk detail, atau ngobrol biasa tanpa slash.")
+    lines.append(t("command.help.footer", lang))
     return "\n".join(lines)
 
 

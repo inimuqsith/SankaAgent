@@ -13,6 +13,7 @@ from neonize.utils.jid import build_jid
 
 from ....engine.commands import CommandContext
 from ....engine.config import drop_session, secure_db
+from ....engine.i18n import t
 from ....engine.registry import Handler
 from .. import directory, history_sync
 
@@ -33,7 +34,7 @@ async def _notify(client: NewAClient, chat_id: str, text: str) -> None:
         log.exception("gagal mengirim notifikasi backfill ke %s", chat_id)
 
 
-async def _run(ctx: CommandContext) -> None:
+async def _run(ctx: CommandContext, lang: str) -> None:
     gateway = ctx.gateway
     agent = ctx.agent
     main = getattr(gateway, "client", None)
@@ -59,7 +60,7 @@ async def _run(ctx: CommandContext) -> None:
             await main.send_image(
                 _jid(ctx.chat_id),
                 image.getvalue(),
-                caption="Scan QR ini dari WhatsApp > Perangkat tertaut. QR cepat kedaluwarsa.",
+                caption=t("gateway.backfill.qr_caption", lang),
             )
         except Exception:
             log.exception("gagal mengirim QR backfill")
@@ -74,11 +75,7 @@ async def _run(ctx: CommandContext) -> None:
             log.info("backfill: nama grup tersinkron: %d", named)
         except Exception:
             log.exception("backfill gagal menyinkronkan nama grup")
-        await _notify(
-            main,
-            ctx.chat_id,
-            "Perangkat sementara tersambung. Menunggu history sync dari ponsel...",
-        )
+        await _notify(main, ctx.chat_id, t("gateway.backfill.connected", lang))
 
     @client.event(HistorySyncEv)
     async def on_history(accepted: NewAClient, ev) -> None:
@@ -117,16 +114,10 @@ async def _run(ctx: CommandContext) -> None:
         if done.is_set():
             await asyncio.sleep(2)
             await _notify(
-                main,
-                ctx.chat_id,
-                f"Backfill selesai: {total} pesan masuk ke arsip. Perangkat sementara akan logout.",
+                main, ctx.chat_id, t("gateway.backfill.finished", lang, count=total)
             )
         else:
-            await _notify(
-                main,
-                ctx.chat_id,
-                "Backfill tidak menerima history sync. Pastikan QR dipindai dan ponsel online.",
-            )
+            await _notify(main, ctx.chat_id, t("gateway.backfill.no_sync", lang))
     finally:
         logged_out = False
         if connected:
@@ -146,15 +137,16 @@ async def _run(ctx: CommandContext) -> None:
 
 async def backfill(ctx: CommandContext) -> str:
     gateway = ctx.gateway
+    lang = ctx.lang
     if getattr(gateway, "client", None) is None or getattr(gateway, "db", None) is None:
-        return "Arsip atau client WhatsApp belum siap."
+        return t("gateway.backfill.not_ready", lang)
     if ctx.chat_id.endswith("@g.us"):
-        return "Kirim /backfill lewat DM supaya QR tidak terekspos di grup."
+        return t("gateway.backfill.group_denied", lang)
     running = getattr(gateway, "backfill", None)
     if running is not None and not running.done():
-        return "Backfill masih berjalan."
-    gateway.backfill = asyncio.create_task(_run(ctx))
-    return "🗂️ Menyiapkan perangkat sementara. QR akan dikirim di DM ini; scan dari WhatsApp > Perangkat tertaut."
+        return t("gateway.backfill.running", lang)
+    gateway.backfill = asyncio.create_task(_run(ctx, lang))
+    return t("gateway.backfill.started", lang)
 
 
 COMMAND = Handler(

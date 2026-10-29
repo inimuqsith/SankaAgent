@@ -1,14 +1,15 @@
-"""Command /language: switch Sanka's reply language between English and Indonesian.
+"""Command /language: switch Sanka's reply language to any installed catalog code.
 
-The language lives in the `soul` document and its config.yaml mirror; nothing else changes.
+The language lives in the `soul` document and its config.yaml mirror; the catalog in
+`sanka/lang/<code>.yaml` supplies every chat-visible string.
 """
 
 from __future__ import annotations
 
 import yaml
 
+from ..i18n import available, normalize_language, t
 from ..registry import Handler
-from ..soul import normalize_language
 from . import CommandContext
 
 
@@ -21,28 +22,32 @@ def _soul_body(text: str) -> dict:
 
 async def language_command(ctx: CommandContext) -> str:
     agent = ctx.agent
+    lang = ctx.lang
     raw = ctx.args.strip()
+    codes = ", ".join(available())
     if not raw:
-        return f"🗣️ Bahasa balasan: {agent.soul.language}."
+        return t(
+            "command.language.current", lang, language=agent.soul.language, available=codes
+        )
     try:
         language = normalize_language(raw)
     except ValueError:
-        return "error: bahasa harus 'en' atau 'id'."
+        return t("command.language.invalid", lang, value=raw, available=codes)
     if agent.documents is None:
-        return "error: dokumen config tidak tersedia"
+        return t("command.language.no_documents", lang)
     body = _soul_body(agent.documents.get("soul") or "")
     body["language"] = language
     text = yaml.safe_dump(body, sort_keys=False, allow_unicode=True)
     agent.documents.put("soul", text, actor=ctx.sender)
     agent.documents.export_to_files()
     await agent.reload()
-    return f"🗣️ Bahasa balasan diatur ke {language}."
+    return t("command.language.set", language, language=language)
 
 
 COMMAND = Handler(
     name="language",
-    description="Switch Sanka's reply language between English and Indonesian (en/id).",
+    description="Switch Sanka's reply language (installed catalog code).",
     fn=language_command,
     aliases=("bahasa",),
-    usage="[en|id]",
+    usage="[code]",
 )

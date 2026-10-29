@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from ..i18n import t
 from ..registry import Handler
 from . import CommandContext
 
 
 async def _deny(ctx: CommandContext) -> str:
     agent = ctx.agent
+    lang = ctx.lang
     raw = ctx.args.strip()
     key, _, reason = raw.partition(" ")
     if key.lower() in {"last", "terakhir", ""}:
@@ -15,13 +17,13 @@ async def _deny(ctx: CommandContext) -> str:
     else:
         approval = agent.approvals.get(key.lstrip("#"))
     if approval is None:
-        return "Tidak ada approval pending."
+        return t("command.deny.none", lang)
     if approval.chat_id != ctx.chat_id or approval.sender != ctx.sender:
-        return "error: approval ini milik chat atau pengirim lain"
+        return t("command.deny.foreign", lang)
     if approval.status != "pending":
-        return f"error: approval #{approval.id} sudah {approval.status}"
+        return t("command.deny.already", lang, id=approval.id, status=approval.status)
     agent.approvals.mark(approval.id, "denied", ctx.sender, reason.strip())
-    return f"🚫 Approval #{approval.id} dibatalkan."
+    return t("command.deny.done", lang, id=approval.id)
 
 
 COMMAND = Handler(

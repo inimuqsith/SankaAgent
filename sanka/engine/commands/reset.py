@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..i18n import t
 from ..registry import Handler
 from . import CommandContext
 
@@ -13,7 +14,7 @@ async def reset(ctx: CommandContext) -> str:
             ctx.agent.history.reset(ctx.chat_id)
         except Exception:
             pass
-    return "🧹 Siap! Konteks percakapan di chat ini sudah direset. Arsip riwayat tetap tersimpan."
+    return t("command.reset.done", ctx.lang)
 
 
 COMMAND = Handler(

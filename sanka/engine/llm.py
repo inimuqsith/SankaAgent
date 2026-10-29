@@ -10,13 +10,13 @@ from openai import APIError, AsyncOpenAI
 
 from . import guard
 from .config import Config
+from .i18n import t
 from .registry import Handler
 from .tools import ToolContext, execute
 
 log = logging.getLogger(__name__)
 
 BUDGET_TEXT = "Time is up. Write the best answer from the tool results you already have; do not call tools again."
-API_ERROR_TEXT = "Maaf, model sedang error. Coba lagi sebentar."
 USER_AGENT = "sanka-agent/0.1"
 IMAGE_LOST = "[Image could not be attached to the model; use the path above with sandbox.]"
 DIGEST_PROMPT = """You summarize a chat group. Summarize the topic and extract explicit facts.
@@ -171,7 +171,7 @@ class LLM:
                     )
                 except (APIError, TimeoutError):
                     log.exception("LLM gagal")
-                    return API_ERROR_TEXT
+                    return t("agent.api_error", self.config.soul.language)
                 return (final.choices[0].message.content or "").strip()
             kwargs = {
                 "model": self.config.llm.model,
@@ -190,10 +190,10 @@ class LLM:
                     images = False
                     continue
                 log.exception("LLM gagal")
-                return API_ERROR_TEXT
+                return t("agent.api_error", self.config.soul.language)
             except TimeoutError:
                 log.exception("LLM gagal")
-                return API_ERROR_TEXT
+                return t("agent.api_error", self.config.soul.language)
             message = response.choices[0].message
             calls = message.tool_calls or []
             if not calls:
