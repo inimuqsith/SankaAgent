@@ -58,6 +58,11 @@ otherwise "".
 this should stay; otherwise "".
 "reason": at most 80 characters, never quoting a secret."""
 
+ASSESS_TOKENS_MIN = 800  # cukup untuk system prompt + reasoning turn sensitif
+ASSESS_TOKENS_MAX = 4000  # batas biaya per panggilan, bukan target
+ASSESS_CHARS_PER_EXTRA_TOKEN = 8  # curhat panjang dapat ruang reasoning lebih
+ASSESS_REASONING = "medium"
+
 ANSWER_PROMPT = """Classify the sender's answer to a pending confirmation.
 Reply ONLY with JSON: {"kind":"yes|no|level|unclear","level":0,"reason":""}
 - "level" when they name a privacy level (0-4, or public/team/personal/sensitive/secret).
@@ -94,6 +99,12 @@ def _json(text: str) -> dict | None:
     except json.JSONDecodeError:
         return None
     return body if isinstance(body, dict) else None
+
+
+def assess_budget(user: str) -> int:
+    """max_tokens dari panjang turn: ASSESS_TOKENS_MIN, +1 tiap ASSESS_CHARS_PER_EXTRA_TOKEN karakter."""
+    extra = len(str(user or "")) // ASSESS_CHARS_PER_EXTRA_TOKEN
+    return min(ASSESS_TOKENS_MAX, ASSESS_TOKENS_MIN + extra)
 
 
 def _flag(value: object) -> bool:
@@ -216,6 +227,9 @@ class PrivacyService:
             return
         if self.config.enabled and self.agent.llm is not None:
             verdict = await self._assess(f"{text}\n{reply}")
+            if verdict is None:
+                log.warning("privacy assess gagal; capture dilewati chat=%s", inbound.chat_id)
+                return
         else:
             verdict = PrivacyVerdict(level=self.config.default_level, ask=False)
         owner = inbound.person_id or self.agent._sender(inbound)
@@ -257,12 +271,23 @@ class PrivacyService:
         log.info("privacy pending chat=%s approval=%s", inbound.chat_id, approval.id)
         await self.agent.send_text(inbound.chat_id, question, gateway=gateway)
 
-    async def _assess(self, text: str) -> PrivacyVerdict:
+    async def _assess(self, text: str) -> PrivacyVerdict | None:
+        """Label privasi satu turn; None kalau model dua kali tidak memberi JSON."""
         user = f"Turn:\n{text}\n\nSoul language: {self._lang}"
-        raw = await self.agent.llm.complete(ASSESS_PROMPT, user, max_tokens=160)
-        body = _json(raw)
+        budget = assess_budget(user)
+        body = None
+        for tokens, effort in ((budget, ASSESS_REASONING), (budget * 2, "")):
+            raw = await self.agent.llm.complete(
+                ASSESS_PROMPT, user, max_tokens=tokens, reasoning_effort=effort
+            )
+            body = _json(raw)
+            if body is not None:
+                break
+            log.warning(
+                "privacy assess tanpa JSON (max_tokens=%s effort=%s)", tokens, effort or "-"
+            )
         if body is None:
-            return PrivacyVerdict(level=self.config.default_level, ask=False)
+            return None
         try:
             level = int(body.get("level"))
         except (TypeError, ValueError):

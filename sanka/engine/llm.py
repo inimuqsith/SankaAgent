@@ -254,20 +254,24 @@ class LLM:
         max_tokens: int = 300,
         temperature: float = 0.2,
         session: str = "",
+        reasoning_effort: str = "",
     ) -> str:
         """Satu panggilan tanpa tool untuk keputusan/ringkasan; gagal = string kosong."""
         messages = [
             {"role": "system", "content": str(system or "")},
             {"role": "user", "content": str(user or "")},
         ]
+        kwargs: dict = {
+            "model": self.config.llm.model,
+            "messages": messages,
+            "max_tokens": max(1, int(max_tokens)),
+            "temperature": float(temperature),
+            "extra_headers": {"x-opencode-session": session or f"{USER_AGENT}-bg"},
+        }
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
         try:
-            response = await self.client.chat.completions.create(
-                model=self.config.llm.model,
-                messages=messages,
-                max_tokens=max(1, int(max_tokens)),
-                temperature=float(temperature),
-                extra_headers={"x-opencode-session": session or f"{USER_AGENT}-bg"},
-            )
+            response = await self.client.chat.completions.create(**kwargs)
         except (APIError, TimeoutError, OSError) as exc:  # jalur latar selalu best-effort
             log.warning("panggilan LLM latar gagal: %s", exc)
             return ""

@@ -10,6 +10,7 @@ from sanka.engine.config import DatabaseConfig, PrivacyConfig
 from sanka.engine.memory import MemoryHit
 from sanka.engine.memory.mem0 import Mem0Backend
 from sanka.engine.memory.privacy import PrivacyPolicy
+from sanka.engine.privacy import assess_budget
 from sanka.engine.roles import Role
 from support import FakeLLM, FakeMem0, build_config, inbound_message, make_agent
 
@@ -67,6 +68,21 @@ class ScriptLLM(FakeLLM):
             return json.dumps(self.assess)
         if "Classify the sender" in system:
             return json.dumps(self.answer_payload)
+        return await super().complete(system, user, **kwargs)
+
+
+class SequencedLLM(FakeLLM):
+    """Jawaban assess berurutan; "" berarti model kehabisan budget."""
+
+    def __init__(self, replies: list[str]):
+        super().__init__()
+        self.replies = list(replies)
+        self.assess_calls: list[dict] = []
+
+    async def complete(self, system, user, **kwargs):
+        if "privacy of one chat turn" in system:
+            self.assess_calls.append(kwargs)
+            return self.replies.pop(0) if self.replies else ""
         return await super().complete(system, user, **kwargs)
 
 
@@ -204,6 +220,43 @@ def test_capture_skips_credentials_and_resolves_subject(tmp_path) -> None:
     named = inbound_message("budi baru pindah kerja", chat_id="628111@s.whatsapp.net")
     asyncio.run(env.agent.privacy.capture_turn(named, "oh", env.gateway))
     assert env.memory.captures[0]["subject_id"] == "628999"
+
+
+def test_assess_budget_grows_with_the_turn_and_stays_capped() -> None:
+    assert assess_budget("x" * 100) == 812
+    assert assess_budget("x" * 3000) == 1175
+    assert assess_budget("x" * 100_000) == 4000
+
+
+def test_capture_retries_assess_with_a_bigger_budget(tmp_path) -> None:
+    env = make_agent(tmp_path)
+    env.agent.llm = SequencedLLM(
+        ["", json.dumps({"level": 3, "subject": "", "ask": False})]
+    )
+    inbound = inbound_message("aku lagi banyak pikiran", chat_id="628111@s.whatsapp.net")
+
+    asyncio.run(env.agent.privacy.capture_turn(inbound, "oke", env.gateway))
+
+    assert env.memory.captures[0]["level"] == 3
+    assert env.memory.captures[0]["confirmed"] is True
+    assert len(env.agent.llm.assess_calls) == 2
+    first, retry = env.agent.llm.assess_calls
+    assert first["reasoning_effort"] == "medium"
+    assert retry["reasoning_effort"] == ""
+    assert first["max_tokens"] >= 800
+    assert retry["max_tokens"] == first["max_tokens"] * 2
+
+
+def test_capture_is_skipped_when_assess_returns_nothing(tmp_path) -> None:
+    env = make_agent(tmp_path)
+    env.agent.llm = SequencedLLM(["", ""])
+    inbound = inbound_message("halo apa kabar semuanya", chat_id="628111@s.whatsapp.net")
+
+    asyncio.run(env.agent.privacy.capture_turn(inbound, "baik", env.gateway))
+
+    assert env.memory.captures == []
+    assert env.agent.approvals.latest("628111@s.whatsapp.net", "628111") is None
+    assert len(env.agent.llm.assess_calls) == 2
 
 
 def test_privacy_confirmation_sets_level_and_confirmation(tmp_path) -> None:

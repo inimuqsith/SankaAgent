@@ -1,5 +1,38 @@
 # LOG
 
+## 2026-10-30 (fix: privacy assessment spent its budget on reasoning, sensitive turns stored at L2)
+
+- Problem: `PrivacyService._assess` asked for a level with `max_tokens=160` and no
+  effort override. `deepseek-v4.1-flash` is a reasoning model and reasoning tokens count
+  against `max_tokens`, so the call ended `finish=length` with
+  `LLM latar kosong (max_tokens=160 finish=length session=bg)` and `_assess` returned
+  `PrivacyVerdict(level=default_level=2, ask=False)`. The turn was then captured at L2 with
+  `confirmed=True`, and L0-L2 stay fluid everywhere, so sensitive content became freely
+  shareable; nothing was skipped and no one was asked. Measured on the live endpoint: 5 of
+  6 probe turns came back empty at 160 tokens, exactly the production symptom.
+- Fix: `LLM.complete` gained `reasoning_effort`, sent only when non-empty, so the six
+  existing callers keep today's behaviour. `sanka/engine/privacy.py` now computes the
+  assessment budget from the turn length (`assess_budget`: 800 tokens plus one per 8
+  characters, capped at 4000), asks for `medium` reasoning, retries once at double budget
+  without the effort parameter so a provider that rejects it still gets a chance, and
+  `_assess` returns `None` when both attempts give no JSON. `capture_turn` refuses to store
+  that turn and logs `privacy assess gagal; capture dilewati`, instead of silently pinning
+  it to `default_level`. The `enabled=False`/no-LLM branch still stores at `default_level`:
+  that is explicit configuration, not a failed assessment. No config key, schema, or
+  chat-visible string changed.
+- Budget sizing came from the endpoint, not from guessing: 12/12 non-empty at 800 tokens
+  for the two sensitive turns (worst reasoning 533, worst total 565); 608 was too tight
+  (one level-4 turn needed 309 reasoning on one call and more than 608 on the next), which
+  is why the minimum is 800 with 8 characters per extra token. Reasoning does not grow with
+  input length: an 18k-character vent used 216 reasoning tokens inside a 3064 budget.
+- Verification: `pytest -q` 278 passed with three new contracts in `tests/test_privacy.py`
+  (budget growth and cap, retry with doubled budget and dropped effort, capture skipped on
+  two empty replies); `python -m sanka selftest` SELFTEST OK. Live through
+  `PrivacyService._assess` against OpenCode Go: six varied turns one call each, levels
+  1/2/1/3/4/3, no empty completion, $0.00009-$0.00043 per turn; the legacy 160-token probe
+  still reproduces the empty answer, so the check exercises the real failure. The deployed
+  image needs a rebuild before the server sees this.
+
 ## 2026-10-30 (fix: ambient digest crashed with NameError MEMORY_KINDS)
 
 - Problem: every group digest died with `NameError: name 'MEMORY_KINDS' is not
