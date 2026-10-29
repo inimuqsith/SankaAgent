@@ -1,5 +1,25 @@
 # LOG
 
+## 2026-10-29 (fix: affect tidak dikirim ke App, emosi beku)
+
+- Penyebab: di 3b83d41 baris `affect=affect` tertimpa `recipes=recipes` saat menyusun
+  `App(...)` (`sanka/__main__.py`). `App.__init__` punya default `affect=None`, jadi
+  tidak ada error — semua blok `if app.affect is not None` di `wa.py` dilewati
+  diam-diam: `turn_start`/`turn_end` tak pernah jalan, PAD beku di baseline,
+  `trust/affection/annoyance`/`drives`/`topics` tak tercatat, `/mood` menjawab
+  "state emosi belum aktif". File `emotions/sanka.json` tetap tersentuh karena
+  `Ambient` masih menerima `affect` (decay/pulse jalan tanpa turn).
+- Perbaikan: satu baris — tambahkan `affect=affect` ke `App(...)` di `__main__.py`,
+  sejajar `recipes`/`style`/`anima`. Satu-satunya konstruksi `App(` produksi.
+- Masalah kedua (terpisah, belum difix): sejak 2026-10-28 13:54 UTC model menulis
+  appraisal `neutral` dengan delta 0.0/0.0/0.0 (188 turn), sehingga PAD hanya meluruh
+  ke baseline walau turn tercatat. Bukan gate kode: `turn_end` meneruskan delta apa
+  adanya (weight min 0.2) dan diff prompt 349b241→3b83d41 tidak menyentuh appraisal.
+  Perlu observasi pasca-deploy: kalau `/mood` bergerak lagi, bug #1 beres dan tinggal
+  urusan prompt/model di #2.
+- Verifikasi: `pytest -q` 236 lulus; `python -m sanka selftest` SELFTEST OK (venv
+  lokal). Push ke origin/main memicu rebuild.
+
 ## 2026-10-29 (fix: modul recipes tertinggal, bot restart-loop)
 
 - Penyebab: commit 3b83d41 mereferensikan `sanka/recipes.py` (`__main__`, `config`, `wa`,

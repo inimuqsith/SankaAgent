@@ -286,6 +286,7 @@ async def run_bot(config: Config) -> None:
             memory=memory,
             skills=skills,
             recipes=recipes,
+            affect=affect,
             style=style,
             anima=vibe,
         )
