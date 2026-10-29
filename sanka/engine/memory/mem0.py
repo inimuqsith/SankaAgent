@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from openai import OpenAI
 from sqlalchemy.engine import make_url
 
 from ..config import Config
@@ -22,6 +23,7 @@ log = logging.getLogger(__name__)
 
 SCOPES = ("global", "person", "chat")
 VETO_FIELDS = ("vetoed", "vetoed_by", "vetoed_at")
+MEM0_SESSION = "sanka-agent-mem0"
 
 CUSTOM_INSTRUCTIONS = """\
 Extract only explicit, durable facts about the people in the conversation.
@@ -185,6 +187,15 @@ class Mem0Backend:
         if inspect.isawaitable(created):
             created = await created
         self._memory = created
+        llm = getattr(created, "llm", None)
+        if llm is None or not hasattr(llm, "client"):
+            log.warning("mem0 LLM client tidak mendukung header sesi; capture bisa gagal")
+            return
+        llm.client = OpenAI(
+            api_key=self.config.api_key(),
+            base_url=self.config.llm.base_url,
+            default_headers={"x-opencode-session": MEM0_SESSION},
+        )
 
     def configure_limits(self, memory) -> None:
         self._limits = memory

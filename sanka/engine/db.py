@@ -18,6 +18,7 @@ from .schema import engine_control, metadata, schema_meta
 log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
+UPSERT_BATCH_ROWS = 500
 
 
 def redact_dsn(url: str) -> str:
@@ -121,22 +122,28 @@ class Database:
     ) -> int:
         if not rows:
             return 0
+        items = list(rows)
         dialect = conn.dialect.name
         insert_fn = pg_insert if dialect == "postgresql" else sqlite_insert
-        statement = insert_fn(table).values(list(rows))
-        if update is None:
-            update = {
-                column.name: statement.excluded[column.name]
-                for column in table.columns
-                if column.name not in index_elements
-            }
-        elif callable(update):
-            update = update(statement)
-        statement = statement.on_conflict_do_update(
-            index_elements=list(index_elements), set_=update
-        )
-        result = conn.execute(statement)
-        return int(result.rowcount or 0)
+        total = 0
+        for start in range(0, len(items), UPSERT_BATCH_ROWS):
+            chunk = items[start : start + UPSERT_BATCH_ROWS]
+            statement = insert_fn(table).values(chunk)
+            if update is None:
+                conflict = {
+                    column.name: statement.excluded[column.name]
+                    for column in table.columns
+                    if column.name not in index_elements
+                }
+            elif callable(update):
+                conflict = update(statement)
+            else:
+                conflict = update
+            statement = statement.on_conflict_do_update(
+                index_elements=list(index_elements), set_=conflict
+            )
+            total += int(conn.execute(statement).rowcount or 0)
+        return total
 
     def dispose(self) -> None:
         with contextlib.suppress(Exception):

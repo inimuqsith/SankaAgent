@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -38,6 +40,25 @@ def test_config_dict_maps_providers(tmp_path, monkeypatch) -> None:
     assert body["llm"]["config"]["api_key"] == "key"
     assert body["embedder"]["provider"] == "huggingface"
     assert body["embedder"]["config"]["embedding_dims"] == 384
+
+
+def test_ready_sets_opencode_session_header(tmp_path, monkeypatch) -> None:
+    backend, _fake = make_backend(tmp_path, monkeypatch)
+
+    class FakeAsyncMemory:
+        def __init__(self) -> None:
+            self.llm = SimpleNamespace(client=None)
+
+        @classmethod
+        def from_config(cls, body):
+            return cls()
+
+    monkeypatch.setitem(sys.modules, "mem0", SimpleNamespace(AsyncMemory=FakeAsyncMemory))
+    asyncio.run(backend.ready())
+
+    client = backend._memory.llm.client
+    assert client.default_headers["x-opencode-session"] == "sanka-agent-mem0"
+    client.close()
 
 
 def test_add_maps_identity_scope_and_infer_false(tmp_path, monkeypatch) -> None:

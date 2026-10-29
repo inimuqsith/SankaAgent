@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from types import SimpleNamespace
 
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
 from sanka.engine.db import Database, redact_dsn
-from sanka.engine.schema import documents, state
+from sanka.engine.schema import documents, messages, state
 from sanka.engine.stores.history import HistoryStore
 from support import database
 
@@ -48,6 +50,45 @@ def test_upsert_partial_update_keeps_other_columns(tmp_path) -> None:
         )
     row = db.fetch_one(select(documents).where(documents.c.name == "soul"))
     assert row["content"] == "y" and row["updated_at"] == 1.0
+
+
+def test_upsert_chunks_postgres_parameter_limit() -> None:
+    db = Database("sqlite+pysqlite://")
+    rows = [
+        {
+            "id": i,
+            "chat_id": "chat",
+            "msg_id": f"m{i}",
+            "ts": float(i),
+            "sender_id": "",
+            "sender_name": "",
+            "sender_address": "",
+            "text": "x",
+            "outgoing": False,
+            "data": {},
+            "media_ref": None,
+            "quote_media_ref": None,
+        }
+        for i in range(5500)
+    ]
+    seen: list[int] = []
+
+    class FakeConnection:
+        dialect = SimpleNamespace(name="postgresql")
+
+        def execute(self, statement):
+            compiled = statement.compile(dialect=postgresql.dialect())
+            seen.append(len(compiled.params))
+            return SimpleNamespace(rowcount=500)
+
+    try:
+        total = db.upsert(FakeConnection(), messages, rows, ["id"])
+    finally:
+        db.dispose()
+
+    assert total == 5500
+    assert len(seen) == 11
+    assert max(seen) <= 6000
 
 
 def test_state_roundtrip(tmp_path) -> None:

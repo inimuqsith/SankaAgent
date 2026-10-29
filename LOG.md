@@ -1,5 +1,65 @@
 # LOG
 
+## 2026-10-30 (fix: ambient digest crashed with NameError MEMORY_KINDS)
+
+- Problem: every group digest died with `NameError: name 'MEMORY_KINDS' is not
+  defined` at `sanka/engine/llm.py:70` inside `parse_digest`, so `ambient.py` never
+  stored the topic, keywords, or extracted facts — the loop logged
+  `ambient digest gagal` and retried on every cycle. `parse_digest` compared each
+  model-provided `kind` against a whitelist that was never declared; the crash fired
+  only when the model returned at least one fact, which is why the suite stayed green
+  (`tests/support.py` `FakeLLM.digest` returns a dict directly and bypasses parsing).
+- Fix: `sanka/engine/llm.py` declares `MEMORY_KINDS = ("fact", "preference", "rule",
+  "note")` next to `DIGEST_PROMPT`, matching the digest prompt's `fact|preference|rule`
+  and the memory tool schema's `note` fallback; unknown kinds normalize to `note`.
+- Verification: `pytest -q` 275 passed with the new `tests/test_llm.py`
+  (`kind` normalization, secret/injection drop, garbage payload); `python -m sanka
+  selftest` SELFTEST OK. Live digest smoked against OpenCode Go with a transcript
+  containing a preference, a plan, and an API key: the call returned
+  `fact`/`preference`/`rule` entries for Ana and Budi, dropped the key line, and no
+  longer raised. An AST scan for other undefined globals then found only dead code:
+  `sanka/engine/context.py` `_hydrate` called `download_media`, which never existed in
+  core (the gateway owns it) and the function had no callers, so it was deleted and
+  `Config` joined the module's `TYPE_CHECKING` block; the scan is clean now. Still
+  pending on the server: the deployed image must be rebuilt — the running container
+  still shows this traceback and, from the same log, the `missing x-opencode-session`
+  mem0 400 that the mem0 patch below fixes.
+
+## 2026-10-30 (fix: postgres parameter limit on import, mem0 capture without session header)
+
+- Problem: the cutover from `2bc2834` (SQLite) to `15097fd` (Postgres) broke in two
+  places. `sanka db import` passed every row of a table to `Database.upsert` in one
+  statement: 5,571 messages × 12 columns ≈ 66k bind parameters, and PostgreSQL rejects
+  anything above 65,535 (`psycopg.OperationalError: number of parameters must be between
+  0 and 65535`). Mem0 auto-capture returned `HTTP 400 Request is missing
+  x-opencode-session`, because the adapter lets Mem0 build its own OpenAI client while
+  `engine/llm.py` is the only place that sends the header; replies and retrieval worked,
+  new memories were never extracted.
+- Fix: `sanka/engine/db.py` gained `UPSERT_BATCH_ROWS = 500` and `Database.upsert`
+  iterates 500-row chunks — one conflict statement per chunk, `rowcount` summed. The
+  `update` contract is unchanged: `None` still derives `excluded` columns per chunk, a
+  callable is called once per chunk with that chunk's statement (`HistoryStore.add_many`),
+  a mapping is reused because it holds literals/column expressions only. Widest table is
+  `people` (19 columns) → 9,500 parameters per chunk. `sanka/admin/database.py` needs no
+  edit; its single `db.upsert` per table now chunks upstream.
+  `sanka/engine/memory/mem0.py` replaces the extraction client after
+  `AsyncMemory.from_config` with `OpenAI(api_key, base_url=llm.base_url,
+  default_headers={"x-opencode-session": "sanka-agent-mem0"})`; the embedder stays local
+  HuggingFace, so no other client needs the header. If a future Mem0 drops `.llm.client`,
+  startup logs a warning and retrieval keeps working (capture stays broken until the
+  adapter is revised).
+- Verification: `pytest -q` 272 passed, including
+  `test_upsert_chunks_postgres_parameter_limit` (5,500 rows → 11 compiled statements of
+  6,000 parameters; the single-statement form compiles 66,001) and
+  `test_ready_sets_opencode_session_header`; `python -m sanka selftest` SELFTEST OK.
+  Real `mem0ai 2.2.1` checked directly: `AsyncMemory.from_config(...).llm` is `OpenAILLM`
+  with a synchronous `OpenAI` `.client` that keeps the header and `base_url`. Multi-chunk
+  merge smoked on SQLite: 2,400 `add_many` tuples over 1,200 ids → 1,200 rows, with the
+  richer `text`/`sender_name` preserved on both sides of the 500-row boundary. Pending
+  server side: re-import the production legacy folder (expect `messages: 5571`, no
+  parameter error), one fresh DM with no `missing x-opencode-session` in the log, and
+  `sanka_memories` growing by ≥ 1.
+
 ## 2026-10-29 (feature: Sanka knows group names, contacts, and DM chats)
 
 - Problem: the archive held only 15 groups and almost none had a name, so `send_to`

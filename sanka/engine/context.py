@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .config import Config
     from .stores.history import HistoryStore
 
 log = logging.getLogger(__name__)
@@ -501,14 +502,6 @@ def _message_lines(
         number = numbers.get(_media_key(config, entry.media), 0)
         lines.extend(_media_lines(config, entry.media, number, entry is current))
     return lines
-
-
-async def _hydrate(config: Config, chat_id: str, entry: ChatMessage, client) -> None:
-    if entry.media is not None:
-        await download_media(client, config, chat_id, entry.id, entry.media)
-    if entry.quote is not None and entry.quote.media is not None:
-        quote_id = entry.quote.id or f"{entry.id}-quote"
-        await download_media(client, config, chat_id, quote_id, entry.quote.media)
 
 
 async def build_user_content(
