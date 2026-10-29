@@ -12,7 +12,7 @@ from neonize.aioze.events import ConnectedEv, HistorySyncEv
 from neonize.utils.jid import build_jid
 
 from ..config import drop_session, secure_db
-from ..history import history_props
+from ..history import history_props, sync_group_names
 from ..registry import Handler
 from . import CommandContext
 
@@ -69,6 +69,11 @@ async def _run(ctx: CommandContext) -> None:
         nonlocal connected
         connected = True
         secure_db(session)
+        try:
+            named = await sync_group_names(accepted, store)
+            log.info("backfill: nama grup tersinkron: %d", named)
+        except Exception:
+            log.exception("backfill gagal menyinkronkan nama grup")
         await _notify(main, ctx.chat_id, "Perangkat sementara tersambung. Menunggu history sync dari ponsel...")
 
     @client.event(HistorySyncEv)

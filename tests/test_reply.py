@@ -630,6 +630,38 @@ def test_unaddressed_group_skips_decision_and_reply(tmp_path) -> None:
     assert llm.decisions == []  # tanpa panggilan: model pun tidak ditanya
 
 
+def test_group_name_is_fetched_when_archive_has_none(tmp_path) -> None:
+    from neonize.proto.Neonize_pb2 import GroupInfo
+
+    from sanka.history import HistoryStore
+
+    llm = DecisionLLM()
+    store = HistoryStore(tmp_path / "history.db", tmp_path)
+    chat_id = "1234567890@g.us"
+    calls: list[str] = []
+
+    async def get_group_info(jid) -> GroupInfo:
+        calls.append(Jid2String(jid))
+        info = GroupInfo()
+        info.GroupName.Name = "Grup Server"
+        return info
+
+    async def flow():
+        client, _, _ = transport()
+        client.get_group_info = get_group_info
+        app = App(rich_config(tmp_path), llm, FakeHub(), Sessions(store=store))
+        app.bot_digits = {"628567770837"}
+        await handle_message(client, group_event("@sanka halo", event_id="3EB0NAME1"), app)
+        await handle_message(client, group_event("@sanka lagi", event_id="3EB0NAME2"), app)
+
+    asyncio.run(flow())
+
+    assert store.chat_name(chat_id) == "Grup Server"
+    assert llm.calls[0].startswith('Konteks WhatsApp "Grup Server"')
+    assert calls == [chat_id]  # turn kedua tidak menanya server lagi
+    store.close()
+
+
 def test_mention_decision_ignore_is_overridden_to_reply(tmp_path) -> None:
     llm = DecisionLLM(decision=verdict("ignore", addressed="other", tone="warm"))
 

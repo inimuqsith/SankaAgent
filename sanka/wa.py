@@ -45,6 +45,7 @@ from .decision import (
     ground_tone,
 )
 from .format import format_reply, humanize_reply, typing_delay
+from .history import group_name
 from .llm import LLM
 from .mcp import Hub
 from .memory import SENSITIVE
@@ -68,6 +69,8 @@ PHOTO_MAGIC = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
 REFLECT_MIN_CHARS = 8
 REFLECT_MESSAGES = 8
 REFLECT_CONTEXT_CHARS = 3000
+GROUP_INFO_TIMEOUT = 10.0
+GROUP_NAME_RETRY = 300.0
 
 
 def _webp_shape(head: bytes) -> tuple[int, int, bool] | None:
@@ -157,6 +160,7 @@ class App:
         self.backfill: asyncio.Task | None = None
         self.tasks: set[asyncio.Task] = set()
         self.reactions: dict[str, float] = {}
+        self.name_retry: dict[str, float] = {}  # chat_id -> kapan terakhir coba ambil nama grup
         self.answered: dict[str, frozenset[str]] = {}
         self.backlog: dict[str, int] = {}  # pesan lama per chat: arsip, bukan antrean
         self.quiet: dict[str, float] = {}  # chat_id -> sampai kapan diam (epoch detik)
@@ -336,6 +340,29 @@ def _jid(chat_id: str):
 
 def is_group(chat_jid: str) -> bool:
     return chat_jid.endswith("@g.us")
+
+
+async def ensure_group_name(client: NewAClient, app: App, chat_id: str) -> None:
+    """Nama grup yang belum ada di arsip: ambil sekali dari server, simpan bila dapat."""
+    if app.sessions.chat_name(chat_id):
+        return
+    store = getattr(app.sessions, "store", None)
+    getter = getattr(client, "get_group_info", None)
+    if store is None or not callable(getter):
+        return
+    moment = time.monotonic()
+    if moment - app.name_retry.get(chat_id, 0.0) < GROUP_NAME_RETRY:
+        return
+    app.name_retry[chat_id] = moment
+    try:
+        info = await asyncio.wait_for(getter(_jid(chat_id)), GROUP_INFO_TIMEOUT)
+    except Exception:
+        log.debug("gagal mengambil nama grup %s", chat_id, exc_info=True)
+        return
+    name = group_name(info)
+    if name:
+        app.sessions.set_chat_name(chat_id, name)
+        log.info("nama grup %s: %s", chat_id, name)
 
 
 def digits(value: str) -> str:
@@ -797,6 +824,9 @@ async def handle_message(client: NewAClient, ev, app: App) -> None:
         return
     if sender_digits and sender_digits in app.bot_digits:
         return
+
+    if is_group(chat):
+        await ensure_group_name(client, app, chat_id)
 
     # Pesan yang menumpuk saat bot mati bukan antrean: masuk arsip, tanpa LLM dan tanpa emosi.
     backlog = int(app.config.whatsapp.backlog_seconds or 0)

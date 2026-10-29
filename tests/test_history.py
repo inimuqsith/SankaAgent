@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from neonize.proto.waCommon.WACommon_pb2 import MessageKey
+from neonize.proto.Neonize_pb2 import GroupInfo
 from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import Message
 from neonize.proto.waHistorySync.WAWebProtobufsHistorySync_pb2 import (
     Conversation,
@@ -20,12 +21,15 @@ from neonize.proto.waWeb.WAWebProtobufsWeb_pb2 import WebMessageInfo
 
 from sanka.chat import ChatMessage, Sessions
 from sanka.config import Config, LLMConfig, RoleConfig, SandboxConfig, WhatsAppConfig
-from sanka.history import HistoryStore, history_props
+from sanka.history import HistoryStore, history_props, sync_group_names
 from sanka.tools import REGISTRY as TOOLS
 from sanka.tools import ToolContext, execute
 
 CHAT = "120363000000000001@g.us"
 OTHER = "120363000000000002@g.us"
+NAMED = "120363000000000009@g.us"
+LID = "999@lid"
+PN = "628999999999@s.whatsapp.net"
 
 
 def make_config(root: Path) -> Config:
@@ -246,3 +250,51 @@ def test_archive_permissions_and_group_history_flag(tmp_path: Path) -> None:
     assert props.requireFullSync is True
     assert props.historySyncConfig.fullSyncDaysLimit == 730
     assert b"\x78\x01" in props.historySyncConfig.SerializeToString()
+
+
+class GroupListClient:
+    """Client tiruan: hanya get_joined_groups yang menjawab, tanpa transport."""
+
+    def __init__(self, groups) -> None:
+        self.groups = groups
+
+    async def get_joined_groups(self):
+        return self.groups
+
+
+def group_info(jid: str, name: str) -> GroupInfo:
+    info = GroupInfo()
+    user, _, server = jid.partition("@")
+    info.JID.User = user
+    info.JID.Server = server
+    if name:
+        info.GroupName.Name = name
+    return info
+
+
+def test_sync_joined_group_names_fills_archive(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    store = HistoryStore(config.whatsapp.history_db, config.workspace)
+    client = GroupListClient(
+        [group_info(NAMED, "Grup Server"), group_info("120363000000000008@g.us", "")]
+    )
+
+    named = asyncio.run(sync_group_names(client, store))
+
+    assert named == 1
+    assert store.chat_name(NAMED) == "Grup Server"
+    assert store.chat_name("120363000000000008@g.us") == ""  # tanpa nama: tidak ada baris
+    store.close()
+
+
+def test_dm_chat_name_falls_back_to_contact(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    store = HistoryStore(config.whatsapp.history_db, config.workspace)
+    store.set_lid(LID, PN)
+    store.set_contact(PN, name="Budi Kontak")
+    sessions = Sessions(store=store)
+
+    assert sessions.contact_name(LID) == "Budi Kontak"  # prasyarat: kontak memang terbaca
+    assert sessions.chat_name(LID) == "Budi Kontak"
+    assert store.chat_name(LID) == "Budi Kontak"  # hasil fallback ikut tersimpan
+    store.close()

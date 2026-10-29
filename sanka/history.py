@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -237,6 +238,38 @@ def _fts_query(query: str) -> str:
 
 def _like_terms(query: str) -> list[str]:
     return re.findall(r"\w+", query, re.UNICODE) or [query.strip()]
+
+
+GROUP_LIST_TIMEOUT = 30.0
+
+
+def group_name(info) -> str:
+    """Nama grup dari GroupInfo Neonize; string kosong bila tidak ada."""
+    return " ".join(str(getattr(getattr(info, "GroupName", None), "Name", "") or "").split())
+
+
+async def sync_group_names(client, store: "HistoryStore", timeout: float = GROUP_LIST_TIMEOUT) -> int:
+    """Simpan nama semua grup yang diikuti ke tabel chats; sekali setelah connect."""
+    getter = getattr(client, "get_joined_groups", None)
+    if store is None or not callable(getter):
+        return 0
+    try:
+        groups = await asyncio.wait_for(getter(), timeout)
+    except Exception:
+        log.warning("gagal mengambil daftar grup", exc_info=True)
+        return 0
+    saved = 0
+    for info in groups:
+        name = group_name(info)
+        if not info.JID.User or not name:
+            continue
+        jid = f"{info.JID.User}@{info.JID.Server}"
+        try:
+            store.set_chat_name(jid, name)
+            saved += 1
+        except Exception:
+            log.exception("gagal menyimpan nama grup %s", jid)
+    return saved
 
 
 class HistoryStore:

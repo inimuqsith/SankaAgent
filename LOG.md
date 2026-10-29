@@ -1,5 +1,25 @@
 # LOG
 
+## 2026-10-29 (fitur: Sanka tahu nama grup, kontak, dan chat DM)
+
+- Masalah: arsip hanya memuat 15 grup dan hampir semuanya tanpa nama, jadi `send_to`
+  tidak menemukan grup yang disebut user. Penyebab: `chats.name` hanya terisi dari
+  `GroupInfoEv` (hanya saat metadata grup berubah) dan `Conversation.name` saat history
+  sync; `client.get_joined_groups()` tidak pernah dipakai. Nama chat DM hanya terisi
+  saat ada pesan masuk, tidak pernah jatuh ke tabel `contacts` yang sudah berisi nama
+  hasil `whatsmeow_contacts`/inline contact.
+- Perbaikan: `history.sync_group_names` (dipanggil di `ConnectedEv` bot, backfill CLI,
+  dan `/backfill`) menyimpan nama semua grup yang diikuti ke `chats`; grup yang belum
+  bernama diambil lazily lewat `wa.ensure_group_name` pada pesan pertamanya (cooldown
+  `GROUP_NAME_RETRY = 300s` agar grup tak terbaca tidak dihubungi berulang);
+  `Sessions.chat_name` untuk `@s.whatsapp.net`/`@lid` jatuh ke `contact_name` lalu
+  menyimpannya; `Sessions.set_chat_name` baru untuk rename grup dari server. Tanpa
+  perubahan skema. Bug "versi WhatsApp Anda tidak mendukungnya" tidak disentuh.
+- Verifikasi: `pytest -q` 239 lulus (3 test baru: `sync_joined_group_names_fills_archive`,
+  `dm_chat_name_falls_back_to_contact`, `group_name_is_fetched_when_archive_has_none`);
+  `python -m sanka selftest` SELFTEST OK. Setelah deploy, log harus memuat
+  `nama grup tersinkron: N` dengan `N > 0`.
+
 ## 2026-10-29 (fix: affect tidak dikirim ke App, emosi beku)
 
 - Penyebab: di 3b83d41 baris `affect=affect` tertimpa `recipes=recipes` saat menyusun

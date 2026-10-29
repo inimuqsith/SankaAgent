@@ -28,7 +28,7 @@ try:
         secure_db,
     )
     from .decision import Appraisal, Decision, RelationshipDelta
-    from .history import HistoryStore, history_props
+    from .history import HistoryStore, history_props, sync_group_names
     from .llm import API_ERROR_TEXT, LLM
     from .mcp import Hub
     from .memory import MemoryStore
@@ -362,6 +362,12 @@ async def run_bot(config: Config) -> None:
                     await asyncio.to_thread(store.import_contacts, config.whatsapp.session_db)
                 except Exception:
                     log.exception("gagal menyegarkan kontak")
+                try:
+                    named = await sync_group_names(accepted, store)
+                    if named:
+                        log.info("nama grup tersinkron: %d", named)
+                except Exception:
+                    log.exception("gagal menyinkronkan nama grup")
             log.info("Sanka tersambung ke WhatsApp")
 
         log.info("Sanka siap. Scan QR bila ini pairing pertama.")
@@ -402,6 +408,11 @@ async def backfill(config: Config) -> int:
         nonlocal paired
         paired = True
         secure_db(session)
+        try:
+            named = await sync_group_names(accepted, store)
+            log.info("backfill: nama grup tersinkron: %d", named)
+        except Exception:
+            log.exception("backfill gagal menyinkronkan nama grup")
         log.info("backfill tersambung; menunggu history sync dari ponsel")
 
     @client.event(HistorySyncEv)

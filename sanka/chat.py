@@ -180,20 +180,31 @@ class Sessions:
         if self.store is None:
             return ""
         try:
-            return self.store.chat_name(chat_id)
+            name = self.store.chat_name(chat_id)
         except Exception:
             log.exception("gagal membaca nama chat=%s", chat_id)
             return ""
+        if name or not chat_id.endswith(("@s.whatsapp.net", "@lid")):
+            return name
+        fallback = self.contact_name(chat_id)
+        if not fallback:
+            return ""
+        self.set_chat_name(chat_id, fallback)
+        return fallback
 
-    def remember_name(self, chat_id: str, name: str) -> None:
-        if self.store is None or not name.strip():
-            return
-        if self.chat_name(chat_id):
+    def set_chat_name(self, chat_id: str, name: str) -> None:
+        """Simpan nama chat walau sudah ada (rename grup dari server)."""
+        if self.store is None or not str(name or "").strip():
             return
         try:
             self.store.set_chat_name(chat_id, name)
         except Exception:
             log.exception("gagal menyimpan nama chat=%s", chat_id)
+
+    def remember_name(self, chat_id: str, name: str) -> None:
+        if not str(name or "").strip() or self.chat_name(chat_id):
+            return
+        self.set_chat_name(chat_id, name)
 
     def contact_name(self, jid: str) -> str:
         if self.store is None or not jid:
