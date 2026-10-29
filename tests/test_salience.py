@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from sanka.chat import keyword_set
-from sanka.salience import COMPETING, MANDATORY, ORDER, select
+from sanka.engine.context import keyword_set
+from sanka.engine.salience import COMPETING, MANDATORY, ORDER, select
 
 
 def names(kept: list[tuple[str, str]]) -> list[str]:
@@ -17,8 +17,8 @@ def test_all_blocks_fit_are_kept_in_order() -> None:
 
     assert dropped == []
     assert names(kept) == [name for name in ORDER if name in blocks]
-    assert names(kept) == ["base", "topic", "emotion", "memory", "skills"]
-    assert kept[1] == ("topic", "T")
+    assert names(kept) == ["base", "emotion", "topic", "memory", "skills"]
+    assert kept[1] == ("emotion", "E")
 
 
 def test_disabled_salience_never_drops_blocks() -> None:
@@ -40,10 +40,10 @@ def test_tight_budget_keeps_mandatory_blocks_only() -> None:
 
     kept, dropped = select(blocks, max_chars=300)
 
-    assert set(names(kept)) == {"base", "emotion"}
-    assert set(dropped) == {"memory", "topic"}
+    assert set(names(kept)) == {"base", "emotion", "memory"}
+    assert set(dropped) == {"topic"}
     assert set(dropped) <= set(COMPETING)
-    assert set(MANDATORY) & set(names(kept)) == {"base", "emotion"}
+    assert set(MANDATORY) & set(names(kept)) == {"base", "emotion", "memory"}
 
 
 def test_keyword_overlap_survives_before_unrelated_block() -> None:
@@ -55,13 +55,13 @@ def test_keyword_overlap_survives_before_unrelated_block() -> None:
     assert dropped == ["topic"]
 
 
-def test_bonus_keeps_skills_over_memory() -> None:
+def test_bonus_keeps_skills_but_never_drops_memory() -> None:
     blocks = {"base": "b" * 10, "memory": "m" * 40, "skills": "s" * 40}
 
     kept, dropped = select(blocks, max_chars=55, bonuses={"skills": 0.2})
 
-    assert names(kept) == ["base", "skills"]
-    assert dropped == ["memory"]
+    assert names(kept) == ["base", "memory"]
+    assert dropped == ["skills"]
 
 
 def test_memory_survives_tiebreak_when_nothing_matches() -> None:

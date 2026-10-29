@@ -1,4 +1,4 @@
-"""Kontrak resep user: store persisten, validasi, eksekutor rantai tool."""
+"""Kontrak resep user: store persisten di database, validasi, eksekutor rantai tool."""
 
 from __future__ import annotations
 
@@ -7,22 +7,20 @@ from pathlib import Path
 
 import pytest
 
-from sanka.config import Config, LLMConfig, RoleConfig, SandboxConfig, WhatsAppConfig
-from sanka.recipes import RecipeStore, run_recipe
-from sanka.registry import Handler
-from sanka.tools import ToolContext
+from sanka.engine.config import Config
+from sanka.engine.registry import Handler
+from sanka.engine.schema import recipes as recipes_table
+from sanka.engine.stores.recipes import RecipeStore, run_recipe
+from sanka.engine.tools import ToolContext
+from support import build_config, database, role
 
 
 def make_config(root: Path) -> Config:
-    return Config(
-        persona="p",
-        llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
-        workspace=root / "workspace",
-        whatsapp=WhatsAppConfig(session_db=root / "wa.db"),
-        roles={"owner": RoleConfig("owner")},
+    return build_config(
+        root,
+        roles={"owner": role("owner")},
         default_role="owner",
-        sandbox=SandboxConfig(),
-        mcp={},
+        workspace=root / "workspace",
     )
 
 
@@ -30,40 +28,40 @@ def echo_specs() -> dict:
     async def echo(args: dict, ctx: ToolContext) -> str:
         return f"got:{args.get('q')}"
 
-    return {"echo": Handler(name="echo", description="e", fn=echo, defaults={"owner": True})}
+    return {"echo": Handler(name="echo", description="e", fn=echo)}
 
 
 def test_store_round_trip_and_persistence(tmp_path: Path) -> None:
-    root = tmp_path / "recipes"
-    store = RecipeStore(root)
-    target = store.save(
-        "rekap",
-        "recipe",
-        "Rekap mingguan.",
-        usage="[divisi]",
-        steps=[{"tool": "echo", "args": {"q": "x {{args}}"}}],
+    db = database(tmp_path)
+    store = RecipeStore(db)
+    assert (
+        store.save(
+            "rekap",
+            "recipe",
+            "Rekap mingguan.",
+            usage="[divisi]",
+            steps=[{"tool": "echo", "args": {"q": "x {{args}}"}}],
+        )
+        == "rekap"
     )
 
-    assert target == root / "rekap.yaml"
-    assert target.is_file()
     recipe = store.get("rekap")
     assert recipe is not None and recipe.kind == "recipe"
     assert recipe.roles == ("owner", "member")
     assert recipe.steps[0]["args"] == {"q": "x {{args}}"}
     assert "- /rekap [divisi] — Rekap mingguan." in store.index()
 
-    reopened = RecipeStore(root)
+    reopened = RecipeStore(db)
     assert reopened.get("rekap") is not None
 
     store.remove("rekap")
     assert store.names() == []
-    assert not target.exists()
     with pytest.raises(KeyError):
         store.remove("rekap")
 
 
 def test_store_validation_rejects_bad_definitions(tmp_path: Path) -> None:
-    store = RecipeStore(tmp_path / "recipes")
+    store = RecipeStore(database(tmp_path))
     good = [{"tool": "echo", "args": {}}]
     with pytest.raises(ValueError):
         store.save("Bad Name!", "recipe", "d", steps=good)
@@ -81,28 +79,54 @@ def test_store_validation_rejects_bad_definitions(tmp_path: Path) -> None:
         store.save("ok", "recipe", "", steps=good)
 
 
-def test_store_skips_corrupt_files(tmp_path: Path) -> None:
-    root = tmp_path / "recipes"
-    root.mkdir()
-    (root / "rusak.yaml").write_text("name: [unclosed", encoding="utf-8")
-    (root / "salah.yaml").write_text(
-        "name: beda\nkind: prompt\ndescription: d\nprompt: p\n", encoding="utf-8"
-    )
-    store = RecipeStore(root)
+def test_store_duplicate_and_overwrite(tmp_path: Path) -> None:
+    store = RecipeStore(database(tmp_path))
+    store.save("prompt", "prompt", "Versi satu.", prompt="lakukan")
+    with pytest.raises(FileExistsError):
+        store.save("prompt", "prompt", "Versi dua.", prompt="lakukan lagi")
+    store.save("prompt", "prompt", "Versi dua.", prompt="lakukan lagi", overwrite=True)
+    recipe = store.get("prompt")
+    assert recipe is not None and recipe.description == "Versi dua."
+    assert recipe.kind == "prompt" and recipe.prompt == "lakukan lagi"
+
+
+def test_store_skips_corrupt_rows(tmp_path: Path) -> None:
+    db = database(tmp_path)
+    with db.connect() as conn:
+        db.upsert(
+            conn,
+            recipes_table,
+            [
+                {"name": "rusak", "body": "name: [unclosed", "updated_at": 0.0},
+                {
+                    "name": "salah",
+                    "body": "name: beda\nkind: prompt\ndescription: d\nprompt: p\n",
+                    "updated_at": 0.0,
+                },
+            ],
+            ["name"],
+        )
+    store = RecipeStore(db)
 
     assert store.names() == []
+    assert store.get("rusak") is None
 
 
 def test_run_recipe_chain_substitution_and_failure(tmp_path: Path) -> None:
-    store = RecipeStore(tmp_path / "recipes")
+    store = RecipeStore(database(tmp_path))
     config = make_config(tmp_path)
-    ctx = ToolContext(config, config.roles["owner"], ("*",))
+    ctx = ToolContext(config, config.roles.default_role(), ("*",))
     specs = echo_specs()
 
-    store.save("ok", "recipe", "d", steps=[
-        {"tool": "echo", "args": {"q": "a {{args}} b"}},
-        {"tool": "echo", "args": {"q": "last"}},
-    ])
+    store.save(
+        "ok",
+        "recipe",
+        "d",
+        steps=[
+            {"tool": "echo", "args": {"q": "a {{args}} b"}},
+            {"tool": "echo", "args": {"q": "last"}},
+        ],
+    )
     assert asyncio.run(run_recipe(store.get("ok"), "DIV", ctx, specs)) == "got:last"
 
     store.save("satu", "recipe", "d", steps=[{"tool": "echo", "args": {"q": "[{{args}}]"}}])

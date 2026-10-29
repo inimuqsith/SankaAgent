@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Ablasi perilaku Sanka dari arsip lokal: replay gerbang, anggaran prompt, keputusan.
+"""Ablasi perilaku Sanka dari arsip di database: replay gerbang, anggaran prompt, keputusan.
 
+Harness read-only: tidak mengirim pesan, tidak memanggil `handle`, dan tidak menulis state.
 Jalankan dari root repo: `.venv/bin/python scripts/ablate.py --last 100`.
-Harness read-only: tidak mengirim pesan, tidak memanggil `handle_message`, dan tidak
-menulis state runtime. `--llm-sample N` memanggil LLM sungguhan lewat `decide` saja.
 """
 
 from __future__ import annotations
@@ -19,18 +18,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from sanka import ablate
-from sanka.affect import AffectStore
-from sanka.config import load_config, load_env
-from sanka.history import HistoryStore
-from sanka.llm import LLM
-from sanka.memory import MemoryStore
-from sanka.skills import SkillStore
-from sanka.style import StyleStore
+from sanka.engine import ablate
+from sanka.engine.config import load_config, load_env, load_host, resolve_database_url
+from sanka.engine.db import Database
+from sanka.engine.llm import LLM
+from sanka.engine.memory import build_memory
+from sanka.engine.stores.affect import AffectStore
+from sanka.engine.stores.documents import DocumentStore
+from sanka.engine.stores.history import HistoryStore
+from sanka.engine.stores.skills import SkillStore
+from sanka.engine.stores.style import StyleStore
+
+
+def open_stores(config, db, memory) -> dict:
+    stores: dict = {"memory": memory}
+    with suppress(Exception):
+        stores["skills"] = SkillStore(db, config.skills.max_index_chars)
+    if config.affect.enabled:
+        with suppress(Exception):
+            stores["affect"] = AffectStore(db, config.affect, soul=config.soul.persona)
+    if config.style.enabled:
+        with suppress(Exception):
+            stores["style"] = StyleStore(db, config.style)
+    return stores
 
 
 def blocks_for(chat: str, stores: dict):
-    """Blok prompt opsional per pesan; sumber yang gagal menjadi string kosong."""
     memory = stores.get("memory")
     skills = stores.get("skills")
     affect = stores.get("affect")
@@ -38,11 +51,17 @@ def blocks_for(chat: str, stores: dict):
 
     def build(message) -> dict:
         blocks = dict.fromkeys(ablate.salience.COMPETING, "")
-        if memory is not None:
+        if memory is not None and getattr(memory, "available", False):
             with suppress(Exception):
-                blocks["memory"] = memory.context(chat, include_global=True, query=message.text)
+                blocks["memory"] = asyncio.run(
+                    memory.context(
+                        person_id=message.sender_id or "",
+                        chat_id=chat,
+                        query=message.text,
+                    )
+                )
             with suppress(Exception):
-                blocks["actions"] = memory.actions_context()
+                blocks["actions"] = ""  # ledger dipisah; ablasi ini fokus blok prompt
         if skills is not None:
             with suppress(Exception):
                 blocks["skills"] = skills.index()
@@ -57,22 +76,6 @@ def blocks_for(chat: str, stores: dict):
         return blocks
 
     return build
-
-
-def open_stores(config) -> dict:
-    """Buka store yang datanya memang sudah ada; konstruktor tidak boleh membuat state baru."""
-    stores: dict = {}
-    if config.memory.path.is_file():
-        stores["memory"] = MemoryStore(
-            config.memory.path, config.memory.max_items, config.memory.max_chars
-        )
-    if config.skills.dir.is_dir():
-        stores["skills"] = SkillStore(config.skills.dir, config.skills.max_index_chars)
-    if config.affect.enabled and config.affect.path.is_file():
-        stores["affect"] = AffectStore(config.affect.path, config.affect, soul=config.persona)
-    if config.style.enabled and config.style.path.is_file():
-        stores["style"] = StyleStore(config.style.path, config.style)
-    return stores
 
 
 def report(chat: str, replay: dict, budget: dict, shift: dict | None) -> str:
@@ -105,16 +108,15 @@ def report(chat: str, replay: dict, budget: dict, shift: dict | None) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Ablasi perilaku Sanka dari arsip lokal.")
+    parser = argparse.ArgumentParser(description="Ablasi perilaku Sanka dari arsip database.")
+    parser.add_argument("--config", default=None, help="path config.yaml")
     parser.add_argument("--chat", default=None, help="JID chat (default: chat terbaru)")
     parser.add_argument("--last", type=int, default=200, help="jumlah pesan arsip (default 200)")
     parser.add_argument(
         "--llm-sample", type=int, default=0, help="jumlah pesan untuk replay keputusan LLM"
     )
     parser.add_argument(
-        "--ablate",
-        default="emotion,vibe,away",
-        help="blok gate yang diabsi (emotion,vibe,away)",
+        "--ablate", default="emotion,vibe,away", help="blok gate yang diabsi (emotion,vibe,away)"
     )
     parser.add_argument("--json", type=Path, default=None, help="tulis hasil lengkap ke path JSON")
     args = parser.parse_args()
@@ -127,52 +129,66 @@ def main() -> int:
         raise SystemExit("--last harus > 0 dan --llm-sample tidak boleh negatif")
 
     load_env()
-    config = load_config(require_key=False)  # replay/prompt tetap jalan tanpa API key
-    history_path = config.whatsapp.history_db
-    if not history_path.is_file():
-        raise SystemExit(f"arsip tidak ditemukan: {history_path}")
-    store = HistoryStore(history_path, config.workspace, config.whatsapp.session_db)
-    chat = args.chat or next(iter(store.recent_chats(1)), "")
+    host, paths = load_host(args.config)
+    url = resolve_database_url(host.database)
+    if not url:
+        raise SystemExit("database URL kosong")
+    config = load_config(args.config, require_key=False)
+    db = Database(url, pool_size=host.database.pool_size, pool_timeout=host.database.pool_timeout)
+    documents = DocumentStore(db, paths, sync=host.sync_documents)
+    documents.seed()
+    history = HistoryStore(db, config.workspace)
+    chat = args.chat or next(iter(history.recent_chats(1)), "")
     if not chat:
+        db.dispose()
         raise SystemExit("arsip kosong: belum ada chat untuk diabsi")
-    messages = store.recent(chat, args.last)
+    messages = history.recent(chat, args.last)
     if not messages:
+        db.dispose()
         raise SystemExit(f"chat {chat} tidak punya pesan di arsip")
-    rows = ablate.classify(messages, bot_name=config.whatsapp.bot_name)
-    stores = open_stores(config)
-    budget = ablate.prompt_budget(
-        config,
-        messages,
-        sample=0,
-        blocks_for=blocks_for(chat, stores),
-    )
-    shift = None
-    if args.llm_sample > 0:
-        if not os.environ.get(config.llm.api_key_env):
-            print(f"lewati decision_shift: env {config.llm.api_key_env} belum diisi", flush=True)
-        else:
-            shift = asyncio.run(
-                ablate.decision_shift(
-                    LLM(config),
-                    config,
-                    rows,
-                    sample=args.llm_sample,
-                    ablate=names,
-                    chat_id=chat,
-                    history=messages,
-                    affect=stores.get("affect"),
+    rows = ablate.classify(messages, bot_name=config.soul.name)
+    memory = asyncio.run(build_memory(config, db=db))
+    stores = open_stores(config, db, memory)
+    try:
+        budget = ablate.prompt_budget(
+            config,
+            messages,
+            sample=0,
+            blocks_for=blocks_for(chat, stores),
+        )
+        shift = None
+        if args.llm_sample > 0:
+            if not os.environ.get(config.llm.api_key_env):
+                print(
+                    f"lewati decision_shift: env {config.llm.api_key_env} belum diisi",
+                    flush=True,
                 )
-            )
-    print(report(chat, ablate.replay_metrics(rows), budget, shift))
-    if args.json is not None:
-        payload = {
-            "chat": chat,
-            "replay": ablate.replay_metrics(rows),
-            "prompt_budget": budget,
-            "decision_shift": shift,
-        }
-        args.json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"json    : {args.json}")
+            else:
+                shift = asyncio.run(
+                    ablate.decision_shift(
+                        LLM(config),
+                        config,
+                        rows,
+                        sample=args.llm_sample,
+                        ablate=names,
+                        chat_id=chat,
+                        history=messages,
+                        affect=stores.get("affect"),
+                    )
+                )
+        print(report(chat, ablate.replay_metrics(rows), budget, shift))
+        if args.json is not None:
+            payload = {
+                "chat": chat,
+                "replay": ablate.replay_metrics(rows),
+                "prompt_budget": budget,
+                "decision_shift": shift,
+            }
+            args.json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"json    : {args.json}")
+    finally:
+        asyncio.run(memory.close())
+        db.dispose()
     return 0
 
 

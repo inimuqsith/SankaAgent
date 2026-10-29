@@ -915,3 +915,30 @@
 - Verifikasi: `pytest -q` 76 lulus; smoke handler nyata dengan store sementara menghasilkan semua
   kartu command yang diharapkan; `python -m sanka selftest` SELFTEST OK; bot live di-restart
   (PID 115972) dan tersambung ke WhatsApp.
+
+## 2026-10-29 — Soul engine + gateway refactor
+
+- Core pindah ke `sanka/engine/` (agent, config, DB, prompt, store, tools, commands). `sanka/wa.py`
+  dihapus; WhatsApp dan CLI sekarang gateway di `sanka/gateways/`.
+- Satu database (SQLAlchemy Core; Postgres runtime, SQLite test). Transcript, affect, style, vibe,
+  skill, resep, dokumen config/soul/persona/role, approval, audit, dan lease ada di DB.
+  `engine.yaml`/`soul.yaml`/`SOUL.md`/`roles/` hanya seed + mirror.
+- Memori semantik pindah ke Mem0 OSS dengan scope `person`/`chat`/`global`; identitas lintas chat,
+  transcript tetap per chat, memori privat orang lain tidak pernah di-query. `memory_legacy` +
+  `sanka memory migrate` untuk data lama.
+- `engine_lease` + supervisor: satu primary, instance lain standby/freeze; `/freeze` dan
+  `sanka console --takeover` memindahkan lease.
+- Approval deterministik: `shell`, `sandbox`, dan `settings` menunggu `/approve` (default `yolo`).
+  Tool `settings` memvalidasi lewat loader, menulis dokumen DB + mirror, backup, audit, lalu reload.
+- Prompt scaffolding Inggris; bahasa balasan dari `soul.language`; blok `Self`/`Roles`/`Memory`
+  wajib masuk prompt.
+- Perintah migrasi: `sanka config migrate` → `sanka db upgrade` → `sanka db import --sqlite .sanka`
+  → `sanka memory migrate`; salin `whatsapp.db`, workspace, `.env`.
+- Verifikasi: `pytest -q` 207 lulus; `sanka selftest` OK; `sanka console --takeover` menjawab dengan
+  LLM nyata, `/status` lengkap, `/quit` melepas lease. Lease dua proses diuji: A primary, B takeover,
+  A freeze, B quit, A promote kembali.
+- Postgres 16 + pgvector diuji nyata: `db upgrade`, impor 386 pesan SQLite lama, dan perbaikan
+  sequence `messages_id_seq` setelah impor id eksplisit. Mem0 nyata diuji dengan pgvector:
+  `sanka memory migrate` memindahkan 3 baris dan idempoten, plus add/search/context/forget adapter.
+  Embedder HuggingFace belum terpasang di mesin dev (Python 3.15 belum punya wheel torch/onnxruntime);
+  verifikasi memakai server embedding OpenAI-compatible deterministik, produksi memakai HF di Docker.

@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from sanka.config import SandboxConfig, load_config
-from sanka.tools import sandbox
+from sanka.engine.config import ConfigError, SandboxConfig, load_config
+from sanka.engine.tools import sandbox
 
 
 class FakeProc:
@@ -202,14 +202,9 @@ def test_load_config_reads_host_workspace_and_rejects_file(tmp_path: Path, monke
     target = tmp_path / "config.yaml"
     target.write_text(
         f"""
-persona: p
-llm:
-  api_key_env: SANKA_TEST_KEY
+database:
+  url: "sqlite+pysqlite://"
 workspace: ".sanka/workspace"
-roles:
-  owner:
-    tools: ["*"]
-default_role: owner
 sandbox:
   runtime: ""
   host_workspace: "{host_ws}"
@@ -217,6 +212,13 @@ sandbox:
   env: ["NO_PROXY"]
 """,
         encoding="utf-8",
+    )
+    (tmp_path / "engine.yaml").write_text(
+        "llm:\n  api_key_env: SANKA_TEST_KEY\ndefault_role: owner\n", encoding="utf-8"
+    )
+    (tmp_path / "roles").mkdir()
+    (tmp_path / "roles" / "owner.yaml").write_text(
+        'name: owner\ntools: ["*"]\n', encoding="utf-8"
     )
 
     loaded = load_config(str(target))
@@ -231,5 +233,5 @@ sandbox:
         target.read_text(encoding="utf-8").replace(str(host_ws), str(tmp_path / "not-a-dir")),
         encoding="utf-8",
     )
-    with pytest.raises(SystemExit):
+    with pytest.raises(ConfigError):
         load_config(str(target))

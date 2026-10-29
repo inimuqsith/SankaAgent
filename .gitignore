@@ -13,3 +13,11 @@ workspace/
 
 # ekspor chat pribadi untuk analisis lokal (jangan di-commit)
 references/
+
+# config host/engine/soul/role (berisi nomor pengguna)
+gateway.yaml
+engine.yaml
+soul.yaml
+roles/
+config.yaml.bak-*
+compose.yaml

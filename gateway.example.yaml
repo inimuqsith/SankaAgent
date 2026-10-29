@@ -1,0 +1,11 @@
+gateways:
+  whatsapp:
+    enabled: true
+    session_db: .sanka/whatsapp.db
+    backlog_seconds: 600
+  cli:
+    enabled: false
+    role: owner
+    user: local
+    chat_id: cli:local
+    chat_name: Terminal

@@ -3,7 +3,9 @@ name = "sanka-agent"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-  "neonize>=0.5.2,<0.6",
+  "SQLAlchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4",
+  "psycopg-pool>=3.2,<4",
   "openai>=2,<4",
   "mcp>=2.3,<3",
   "PyYAML>=6",
@@ -11,11 +13,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-vibe = [
-  "torch>=2.2",
-  "transformers>=4.40,<6",
-]
-dev = ["pytest>=8"]
+# Mem0 pin protobuf<7 sedangkan Neonize butuh protobuf>=7; install mem0ai dengan
+# `pip install --no-deps "mem0ai>=2.2,<3"` setelah extra whatsapp (lihat README).
+memory = ["mem0ai>=2.2,<3", "sentence-transformers>=5.2,<6"]
+whatsapp = ["neonize>=0.5.2,<0.6", "segno>=1.6"]
+vibe = ["torch>=2.2", "transformers>=4.40,<6"]
+dev = ["pytest>=8", "neonize>=0.5.2,<0.6", "segno>=1.6"]
+
+[project.scripts]
+sanka = "sanka.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,122 +1,22 @@
-# persona/soul ada di SOUL.md
-
-llm:
-  base_url: "https://opencode.ai/inference/go/openai/v1"
-  model: deepseek-v4.1-flash
-  api_key_env: OPENCODE_GO_API_KEY
-  max_turns: 20
-  timeout_seconds: 120
-  temperature: 0.9          # balasan utama
-
-# Path relatif di-resolve dari folder config.yaml, jadi data tetap di dalam project.
-workspace: ".sanka/workspace"
-
-whatsapp:
-  session_db: ".sanka/whatsapp.db"
-  history_db: ".sanka/history.db"
-  bot_name: sanka
-  backlog_seconds: 600   # pesan lebih tua dari ini hanya diarsipkan, tidak dibalas
-  quiet_seconds: 600     # durasi default /stop
-
-roles:
-  # tools/commands yang tidak ditulis -> pakai default dari registry handler.
-  # Kalau ditulis, isi YAML ini yang menang (pola glob: "*", "mcp__*").
-  # `tools: []` atau `commands: []` berarti role itu tidak boleh memakai apa pun.
-  owner:
-    users: ["6280000000000"]      # isi nomor owner, international format tanpa +
-    tools: ["*"]
-    commands: ["*"]
-  member:
-    tools: ["read", "web_search", "chat_history", "memory", "skill", "recipe", "send", "mcp__*"]
-    commands: ["help", "ping", "reset", "whoami", "status", "tools", "cari", "memori", "skill", "kirim", "mood"]
-    # user/panitia: memori chat + global (scope pada tool memory), baca skill, kirim file.
-    # Hapus memori dan simpan skill tetap owner-only. Batasi `users:` bila bot
-    # menerima DM publik.
-default_role: member
-
+database:
+  url_env: SANKA_DATABASE_URL
+  url: ''
+  pool_size: 5
+  pool_timeout: 30
+workspace: .sanka/workspace
+gateway_file: gateway.yaml
+engine_file: engine.yaml
+roles_dir: roles
+sync_documents: true
 sandbox:
-  runtime: docker          # podman | docker | kosong = autodetect (podman dulu)
-  image: "docker.io/library/python:3.12-slim"
+  runtime: ''
+  image: docker.io/library/python:3.12-slim
   timeout_seconds: 120
-  network: none            # none | bridge (container sandbox tanpa jaringan = default)
-  # Wajib diisi bila runtime menunjuk daemon Docker di HOST (mis. socket di-mount):
-  # path source bind mount diresolusi di host, bukan di dalam container.
-  # host_workspace: /home/advin/sanka/.sanka/workspace
-  # env: ["NO_PROXY"]      # selain TZ/LANG, variabel ini saja yang diteruskan ke sandbox
-
+  network: none
+  host_workspace: null
+  env: []
 web_search:
-  base_url: ""          # instance SearXNG, mis. "http://127.0.0.1:8080"; kosong = hanya ddgs
+  base_url: ''
   timeout_seconds: 10
-
-memory:
-  # fakta/preferensi lintas sesi; DB dibuat 0600, di luar workspace
-  path: ".sanka/memory.db"
-  max_items: 20          # per scope (global/chat) yang diinjeksi
-  max_chars: 3000        # batas total blok memori di system prompt
-  auto_extract: true     # AI mengekstrak memori tahan lama setelah tiap turn
-
-skills:
-  # prosedur lokal: <dir>/<nama>/SKILL.md (frontmatter: name, description)
-  dir: ".sanka/skills"
-  max_index_chars: 3000  # hanya nama + deskripsi yang masuk prompt
-
-recipes:
-  # command dinamis user: <dir>/<nama>.yaml, didaftarkan agent via tool recipe
-  dir: ".sanka/recipes"
-
-affect:
-  enabled: true
-  path: ".sanka/affect.db"     # hubungan, orang, topik, drives
-  state_dir: ".sanka/emotions"  # satu file state emotion-engine (sanka.json) untuk semua chat
-  volatility: expressive        # steady | expressive | dramatic_test
-  grudge_half_life_hours: 1.5   # kesal reda sendiri di detak jantung; 0 = mati
-  vibe:
-    enabled: true               # default aktif; butuh torch + transformers (extra "vibe")
-    model: "Aardiiiiy/EmoSense-ID-Indonesian-Emotion-Classifier"
-    max_length: 128             # potong teks panjang sebelum klasifikasi
-    state_path: ".sanka/vibe.json"
-    attack: 0.35                # seberapa cepat pesan baru menarik mood
-    baseline_influence: 0.05    # seberapa cepat mood dasar ikut bergeser
-    hold_seconds: 1.2           # jeda sebelum decay mulai setelah satu pesan
-    neutral_floor: 0.35         # keyakinan minimum; di bawah ini dianggap netral
-    tick_seconds: 1.0           # detak decay
-
-humanize:
-  enabled: true
-  cpms: 25.0
-  min_delay: 0.5
-  max_delay: 5.0
-  between_delay: 0.7
-  max_bubbles: 3
-  reaction_stickers: ["stickers/aku-punya-ide.webp"]
-
-prompt:
-  salience: true      # blok opsional bersaing saat prompt balasan > max_chars
-  max_chars: 9000     # anggaran karakter system prompt
-
-style:
-  enabled: true
-  path: ".sanka/style.json"
-  max_chars: 800
-
-ambient:
-  enabled: true
-  tick_seconds: 10
-  digest_every: 12
-  digest_cooldown: 900
-  history_window: 30
-  idle_minutes: 20
-  proactive: true
-  research_cooldown: 21600
-  research_per_day: 6
-  research_results: 5
-
 mcp:
   servers: {}
-  # contoh:
-  # time:
-  #   command: uvx
-  #   args: ["mcp-server-time"]
-  #   env: {}
-  # gworkspace:
-  #   url: http://google-workspace-mcp:8080/mcp

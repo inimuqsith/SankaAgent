@@ -7,19 +7,17 @@ from pathlib import Path
 
 import pytest
 
-from sanka.commands import CommandContext
-from sanka.commands.skill import COMMAND as SKILLCMD
-from sanka.config import Config, LLMConfig, RoleConfig, SandboxConfig, WhatsAppConfig
-from sanka.skills import SkillStore, parse_frontmatter
-from sanka.tools import REGISTRY as TOOLS
-from sanka.tools import ToolContext, execute
+from sanka.engine.commands import CommandContext
+from sanka.engine.commands.skill import COMMAND as SKILLCMD
+from sanka.engine.config import Config
+from sanka.engine.db import Database
+from sanka.engine.schema import skill_files
+from sanka.engine.stores.skills import SkillStore, parse_frontmatter
+from sanka.engine.tools import REGISTRY as TOOLS
+from sanka.engine.tools import ToolContext, execute
+from support import build_config, database, role
 
-SKILL = """---
-name: deploy-aman
-description: Deploy service dengan cek test dan rollback.
----
-
-# Deploy aman
+SKILL_BODY = """# Deploy aman
 
 1. Jalankan test.
 2. Deploy.
@@ -27,64 +25,73 @@ description: Deploy service dengan cek test dan rollback.
 
 
 def make_config(root: Path) -> Config:
-    return Config(
-        persona="p",
-        llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
-        workspace=root / "workspace",
-        whatsapp=WhatsAppConfig(session_db=root / "wa.db"),
-        roles={"owner": RoleConfig("owner")},
-        default_role="owner",
-        sandbox=SandboxConfig(),
-        mcp={},
+    return build_config(
+        root, roles={"owner": role("owner")}, default_role="owner", workspace=root / "workspace"
     )
 
 
-def test_parse_frontmatter_and_invalid_files(tmp_path: Path) -> None:
-    data, body = parse_frontmatter(SKILL)
+def add_file(db: Database, skill: str, path: str, content: str) -> None:
+    with db.connect() as conn:
+        db.upsert(
+            conn,
+            skill_files,
+            [
+                {
+                    "skill": skill,
+                    "path": path,
+                    "content": content.encode("utf-8"),
+                    "updated_at": 0.0,
+                }
+            ],
+            ["skill", "path"],
+        )
+
+
+def test_parse_frontmatter_and_empty_store(tmp_path: Path) -> None:
+    data, body = parse_frontmatter(
+        "---\nname: deploy-aman\ndescription: Deploy service.\n---\n\n" + SKILL_BODY
+    )
     assert data["name"] == "deploy-aman"
     assert body.startswith("# Deploy aman")
     assert parse_frontmatter("# tanpa frontmatter")[0] == {}
 
-    root = tmp_path / "skills"
-    (root / "bad").mkdir(parents=True)
-    (root / "bad" / "SKILL.md").write_text("# tanpa frontmatter", encoding="utf-8")
-    store = SkillStore(root)
+    store = SkillStore(database(tmp_path))
     assert store.names() == []
+    assert store.index() == ""
 
 
-def test_index_view_read_and_refresh(tmp_path: Path) -> None:
-    root = tmp_path / "skills"
-    folder = root / "deploy"
-    folder.mkdir(parents=True)
-    (folder / "SKILL.md").write_text(SKILL, encoding="utf-8")
-    (folder / "references").mkdir()
-    (folder / "references" / "checklist.md").write_text("cek dulu", encoding="utf-8")
-    outside = tmp_path / "secret.txt"
-    outside.write_text("rahasia", encoding="utf-8")
+def test_index_view_read_and_usage(tmp_path: Path) -> None:
+    db = database(tmp_path)
+    store = SkillStore(db)
+    store.save("deploy-aman", "Deploy service dengan cek test dan rollback.", SKILL_BODY)
+    add_file(db, "deploy-aman", "references/checklist.md", "cek dulu")
 
-    store = SkillStore(root)
     assert "deploy-aman: Deploy service" in store.index()
     assert "dipakai" not in store.index()
     assert "# Deploy aman" in store.view("deploy-aman")
     assert "dipakai 1×" in store.index()
-    assert (root / ".usage.json").is_file()
     assert "cek dulu" in store.read("deploy-aman", "references/checklist.md")
     with pytest.raises(PermissionError):
         store.read("deploy-aman", "../secret.txt")
+    with pytest.raises(FileNotFoundError):
+        store.read("deploy-aman", "references/missing.md")
 
-    second = root / "lain"
-    second.mkdir()
-    (second / "SKILL.md").write_text(
-        "---\nname: lain\ndescription: Skill kedua.\n---\n\n# Lain\n",
-        encoding="utf-8",
-    )
+    store.save("lain", "Skill kedua.", "# Lain\n")
     assert set(store.names()) == {"deploy-aman", "lain"}
 
 
+def test_index_clips_at_budget(tmp_path: Path) -> None:
+    store = SkillStore(database(tmp_path), max_index_chars=200)
+    for index in range(12):
+        store.save(f"skill-{index}", f"Prosedur nomor {index}.", f"# {index}\n")
+    text = store.index()
+    assert "- ..." in text
+    assert len(text.splitlines()) < 13
+
+
 def test_save_duplicate_and_overwrite(tmp_path: Path) -> None:
-    store = SkillStore(tmp_path / "skills")
-    path = store.save("deploy", "Deploy aman.", "# Deploy\n")
-    assert path.is_file()
+    store = SkillStore(database(tmp_path))
+    assert store.save("deploy", "Deploy aman.", "# Deploy\n") == "deploy"
     assert "deploy" in store.names()
     with pytest.raises(FileExistsError):
         store.save("deploy", "Lagi.", "# Lagi\n")
@@ -95,9 +102,11 @@ def test_save_duplicate_and_overwrite(tmp_path: Path) -> None:
 
 
 def test_skill_tool_autonomous_lifecycle(tmp_path: Path) -> None:
-    store = SkillStore(tmp_path / "skills")
+    store = SkillStore(database(tmp_path))
     store.save("deploy", "Deploy aman.", "# Deploy\n")
-    ctx = ToolContext(make_config(tmp_path), RoleConfig("member"), ("skill",), chat_id="chat", skills=store)
+    ctx = ToolContext(
+        make_config(tmp_path), role("member"), ("skill",), chat_id="chat", skills=store
+    )
 
     async def call(args: dict) -> str:
         return await execute(TOOLS.by_name, "skill", args, ctx)
@@ -108,24 +117,43 @@ def test_skill_tool_autonomous_lifecycle(tmp_path: Path) -> None:
         call({"action": "save", "name": "lain", "description": "Lain.", "body": "# Lain\n"})
     )
     assert "skill disimpan" in asyncio.run(
-        call({"action": "save", "name": "deploy", "description": "Deploy v2.", "body": "# V2\n", "overwrite": True})
+        call(
+            {
+                "action": "save",
+                "name": "deploy",
+                "description": "Deploy v2.",
+                "body": "# V2\n",
+                "overwrite": True,
+            }
+        )
     )
     assert "Deploy v2." in store.index()
-    assert "skill diarsipkan" in asyncio.run(call({"action": "archive", "name": "lain"}))
+    assert "diarsipkan" in asyncio.run(call({"action": "archive", "name": "lain"}))
     assert "lain" not in store.names()
 
 
 def test_skill_command_list_view_and_read(tmp_path: Path) -> None:
-    store = SkillStore(tmp_path / "skills")
-    folder = store.save("deploy", "Deploy aman.", "# Deploy\n")
-    (folder.parent / "refs").mkdir()
-    (folder.parent / "refs" / "x.md").write_text("detail", encoding="utf-8")
+    db = database(tmp_path)
+    store = SkillStore(db)
+    store.save("deploy", "Deploy aman.", "# Deploy\n")
+    add_file(db, "deploy", "refs/x.md", "detail")
+
+    from types import SimpleNamespace
 
     class FakeApp:
         skills = store
 
     def out(args: str) -> str:
-        return asyncio.run(SKILLCMD.fn(CommandContext(FakeApp(), "chat", RoleConfig("owner"), args, (), ())))
+        ctx = CommandContext(
+            agent=FakeApp(),
+            gateway=None,
+            roles=(role("owner"),),
+            chat_id="chat",
+            args=args,
+            commands=(),
+            tools=(),
+        )
+        return asyncio.run(SKILLCMD.fn(ctx))
 
     assert "deploy: Deploy aman." in out("")
     assert "# Deploy" in out("deploy")

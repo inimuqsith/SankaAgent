@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from sanka.commands import REGISTRY as COMMANDS
-from sanka.config import RoleConfig
-from sanka.permissions import commands_for, tool_patterns, tools_for
-from sanka.registry import RegistryError, discover
-from sanka.tools import FAMILIES
-from sanka.tools import REGISTRY as TOOLS
+from sanka.engine.commands import REGISTRY as COMMANDS
+from sanka.engine.permissions import commands_for, tool_patterns, tools_for
+from sanka.engine.roles import Role
+from sanka.engine.registry import RegistryError, discover
+from sanka.engine.tools import FAMILIES
+from sanka.engine.tools import REGISTRY as TOOLS
 
 
 def package(root: Path, name: str, files: dict[str, str]) -> Path:
@@ -31,14 +31,18 @@ def clear_modules(prefix: str) -> None:
 
 def test_builtin_handlers_discovered() -> None:
     assert set(COMMANDS.names()) == {
-        "backfill",
+        "approve",
         "calmdown",
         "cari",
+        "deny",
+        "freeze",
         "help",
         "kirim",
         "memori",
         "mood",
+        "pending",
         "ping",
+        "reload",
         "reset",
         "skill",
         "status",
@@ -53,8 +57,7 @@ def test_builtin_handlers_discovered() -> None:
         "read",
         "recipe",
         "sandbox",
-        "send",
-        "send_to",
+        "settings",
         "shell",
         "skill",
         "web_search",
@@ -69,13 +72,13 @@ def test_drop_in_tool_discovered(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         "plug_valid",
         {
             "echo.py": (
-                "from sanka.registry import Handler\n"
+                "from sanka.engine.registry import Handler\n"
                 "\n"
                 "async def fn(args, ctx):\n"
                 '    return "ok"\n'
                 "\n"
                 'TOOL = Handler(name="echo", family="read", description="Uji.", fn=fn,\n'
-                '               parameters={"type": "object", "properties": {}}, defaults={})\n'
+                '               parameters={"type": "object", "properties": {}})\n'
             )
         },
     )
@@ -93,7 +96,7 @@ def test_invalid_modules_aggregate_errors(tmp_path: Path, monkeypatch: pytest.Mo
         "plug_invalid",
         {
             "bad_name.py": (
-                "from sanka.registry import Handler\n"
+                "from sanka.engine.registry import Handler\n"
                 "\n"
                 "async def fn(args, ctx):\n"
                 '    return ""\n'
@@ -114,42 +117,18 @@ def test_invalid_modules_aggregate_errors(tmp_path: Path, monkeypatch: pytest.Mo
         assert fragment in message
 
 
-def test_explicit_empty_permissions_deny_all() -> None:
-    denied = RoleConfig("member", tools=(), commands=())
-    assert tool_patterns(denied) == ()
-    assert tools_for(denied) == []
-    assert commands_for(denied) == []
+def test_role_permissions_are_explicit_only() -> None:
+    denied = Role("member", tools=(), commands=())
+    assert tool_patterns((denied,)) == ()
+    assert tools_for(TOOLS, (denied,)) == []
+    assert commands_for(COMMANDS, (denied,)) == []
 
-    default = RoleConfig("member")
-    assert set(tool_patterns(default)) == {
-        "chat_history",
-        "memory",
-        "read",
-        "recipe",
-        "send",
-        "skill",
-        "web_search",
-        "mcp__*",
-    }
-    assert {handler.name for handler in tools_for(default)} == {
-        "chat_history",
-        "memory",
-        "read",
-        "recipe",
-        "send",
-        "skill",
-        "web_search",
-    }
-    assert set(COMMANDS.patterns("member", default.commands)) == {
-        "cari",
-        "help",
-        "kirim",
-        "memori",
-        "mood",
-        "ping",
-        "reset",
-        "skill",
-        "status",
-        "tools",
-        "whoami",
-    }
+    bare = Role("member")
+    assert tool_patterns((bare,)) == ()
+    assert tools_for(TOOLS, (bare,)) == []
+
+    allowed = Role("member", tools=("read", "mcp__*"), commands=("help", "ping"))
+    assert set(tool_patterns((allowed,))) == {"read", "mcp__*"}
+    assert {handler.name for handler in tools_for(TOOLS, (allowed,))} == {"read"}
+    assert {handler.name for handler in commands_for(COMMANDS, (allowed,))} == {"help", "ping"}
+    assert COMMANDS.patterns(allowed.commands) == ("help", "ping")

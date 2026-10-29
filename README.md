@@ -1,592 +1,309 @@
 # SankaAgent
 
-Bot WhatsApp pribadi: satu proses Python (Neonize) + model OpenAI-compatible + tool.
-Satu panggilan LLM membaca konteks + state emosi lalu memutuskan sendiri: pesan ini untuk siapa,
-balas/reaksi/diam, mode `daily`/`professional`, nada (hangat/dingin/judes), dan appraisal emosinya.
-Harness hanya mengeksekusi keputusan itu; mention asli, DM, dan balasan ke pesan Sanka selalu
-dijawab (boleh singkat atau dingin), sedangkan obrolan yang bukan untuknya tidak disela.
-Setiap pesan masuk dicatat lengkap (nama, nomor, waktu, teks, lampiran, kutipan), disimpan ke
-arsip SQLite lokal, dan 20 pesan terakhir per chat dikirim ke model sebagai satu payload. Pesan
-yang lebih lama tetap ada di arsip dan bisa dicari agent lewat tool `chat_history`; konteks tidak
-hilang saat restart. Lampiran diunduh ke `workspace/attachments/`; gambar dikirim ke model sebagai
-data URL, teks di-inline, biner cukup diberi path untuk tool `sandbox`.
-Pesan yang dilayani langsung ditandai "mengetik" sampai balasan terkirim (disentuh ulang tiap 8 detik).
-Balasan normal berupa satu burst 1-3 bubble pendek dengan jeda mengetik, bukan satu blok panjang:
-jumlah bubble datang dari keputusan LLM, harness membatasi `humanize.max_bubbles`, dan tidak ada
-double-text otomatis sebelum lawan bicara membalas. Sanka punya emosi persisten (emotion-engine:
-PAD, trust, pulse), drive, dan hubungan per orang di `affect.db`; keputusan berikutnya memakai
-state itu. Lihat [Emosi, keputusan, dan otonomi](#emosi-keputusan-dan-otonomi).
+Sanka is a persistent soul engine: one identity, one memory, many chat surfaces. The engine
+(`sanka/engine/`) owns the agent loop, config, memory, emotion, and tools. Gateways are appendages
+that only carry messages in and out. WhatsApp is one gateway; a local CLI REPL is another.
 
-## Pasang
+- **One database = one soul.** Transcripts, memory, affect, style, skills, recipes, config/soul/role
+  documents, approvals, and the engine lease live in Postgres. Any host that points at the same
+  `SANKA_DATABASE_URL` sees the same Sanka.
+- **One primary at a time.** `engine_lease` makes exactly one instance serve turns. Other instances
+  stay in standby, frozen. `/freeze` or a local `sanka console --takeover` moves the heartbeat.
+- **Identity is cross-chat.** Semantic memory is stored per person/agent/chat with Mem0 and queried
+  across chats for the same person. Raw transcripts stay per chat.
+- **Actions are explicit.** `shell`, `sandbox`, and internal `settings` changes wait for `/approve`
+  unless approval is disabled. Common tools still run automatically in the default `yolo` mode.
+- **Config is data.** `engine`, `soul`, `persona`, and `role:<name>` are documents in the database
+  with file mirrors. Editing a file by hand needs `sanka config import`; the runtime reads the DB.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  WA[WhatsApp gateway] -->|Inbound| AG[Agent]
+  CLI[CLI gateway] -->|Inbound| AG
+  AG --> LLM[LLM + tools]
+  AG --> MEM[Mem0 semantic memory]
+  AG --> ACT[ActionLedger]
+  AG --> AFF[Affect + style + vibe]
+  AG --> SK[Skills + recipes]
+  AG --> DB[(Postgres + pgvector)]
+  AG -->|deliver_*| WA
+  AG -->|deliver_*| CLI
+  SUP[Supervisor + lease] --> AG
+  DB --- SUP
+```
+
+The core (`sanka/engine`) never imports `neonize` or `sanka.gateways`; `tests/test_gateway_contract.py`
+proves it with a subprocess import.
+
+## Quickstart (Postgres + pgvector)
 
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -e '.[dev]'
-cp .env.example .env            # isi OPENCODE_GO_API_KEY
-cp config.example.yaml config.yaml
+# 1. Database: any Postgres 14+ with pgvector, e.g. the sample compose file
+cp compose.example.yaml compose.yaml   # set a real password
+podman compose -f compose.yaml up -d postgres
+
+# 2. Scaffold host config and journals
+python -m sanka init --dir .
+
+# 3. Fill .env
+#    OPENCODE_GO_API_KEY=...
+#    SANKA_DATABASE_URL=postgresql+psycopg://sanka:CHANGE_ME@127.0.0.1:5432/sanka
+
+# 4. Create the schema, seed documents from files, verify
+python -m sanka db upgrade
+python -m sanka db check
+
+# 5. Enable WhatsApp in gateway.yaml (sanka init disables it for local-only scaffolds),
+#    then run the primary
+python -m sanka run
+
+# Local console against the same DB (takes the lease by default)
+python -m sanka console --takeover
 ```
 
-Prasyarat: Python 3.11+, ffmpeg (Neonize), `libmagic`. Tool `sandbox` memakai Podman di host
-atau Docker CLI di container (lihat [Sandbox](#sandbox)).
-State emosi memakai `emotion-engine` (MIT) yang di-vendor apa adanya di
-`sanka/vendor/emotion_engine.py` (lihat `sanka/vendor/LICENSE.emotion-engine`), jadi tidak ada
-dependency tambahan. Soul/karakter ada di `SOUL.md`, dibaca dari folder `config.yaml` (di image:
-`/app/SOUL.md`, ikut `COPY` saat build). File ini tidak dibuat otomatis: kalau tidak ada, loader
-memakai `persona:` di YAML; kalau dua-duanya kosong, Sanka tetap jalan tanpa persona dan log
-menulis peringatan `SOUL.md tidak ada di <folder>`. Saat start, loader mencatat sumbernya
-(`persona dari /app/SOUL.md (3120 karakter)`), jadi mudah dicek dari log deployment.
-
-## Konfigurasi
-
-`config.yaml` (gitignored) memuat semua perilaku. Nomor owner ditulis internasional tanpa `+`.
-
-| Bagian | Isi |
-| --- | --- |
-| `SOUL.md` | soul/karakter Sanka (root repo, di samping `config.yaml`); `persona` di YAML hanya fallback |
-| `llm` | `base_url`, `model`, `api_key_env`, `max_turns`, `timeout_seconds`, `temperature` (balasan; keputusan memakai 0.3) |
-| `workspace` | direktori kerja tool `read`/`write`/`shell`/`sandbox`; `read`/`write` menolak path di luarnya |
-| `whatsapp` | `session_db`, `history_db`, `bot_name`, `backlog_seconds` (pesan lebih tua = arsip), `quiet_seconds` (durasi default `/stop`), `group_reply` (`addressed` = hanya balas bila dipanggil, `model` = percayakan keputusan), `thread_seconds` (situasi percakapan terbuka) |
-| `roles` | `users` (nomor), `tools`, `commands`; pola glob (`*`, `mcp__*`) |
-| `default_role` | role untuk nomor tak dikenal |
-| `sandbox` | `runtime` (`podman`/`docker`/kosong = autodetect), `image`, `timeout_seconds`, `network`, `host_workspace`, `env` |
-| `web_search` | `base_url` (instance SearXNG, kosong = hanya ddgs), `timeout_seconds` |
-| `memory` | `path` DB memori (`0600`), `max_items` per scope, `max_chars` blok prompt |
-| `skills` | `dir` berisi `SKILL.md`, `max_index_chars` untuk indeks di prompt |
-| `affect` | emosi: `enabled`, `path` (DB relasi `0600`), `state_dir` (state emotion-engine, satu `sanka.json` untuk semua chat), `volatility` (`steady`/`expressive`/`dramatic_test`), `grudge_half_life_hours` (kesal reda sendiri, lebih lama untuk yang dekat), `vibe` (`enabled`, `model`, `state_path`, `attack`, `baseline_influence`, `hold_seconds`, `neutral_floor`, `tick_seconds`) |
-| `humanize` | bubble & jeda: `enabled`, `cpms`, `min_delay`, `max_delay`, `between_delay`, `max_bubbles` (batas atas jumlah pesan), `reaction_stickers` |
-| `prompt` | anggaran system prompt: `salience` (blok opsional bersaing saat prompt melewati anggaran), `max_chars` (default 9000; blok wajib tidak pernah dibuang) |
-| `style` | profil gaya chat: `enabled`, `path` (JSON `0600`), `max_chars` |
-| `ambient` | otonomi: `enabled`, `tick_seconds`, `digest_every`, `digest_cooldown`, `history_window`, `idle_minutes`, `proactive`, `chime_urge`, `chime_gap_seconds`, `chime_cooldown`, `chime_per_day`, `chime_per_day_global`, `research_cooldown`, `research_per_day`, `research_results` |
-| `mcp.servers` | per server: `command` + `args` + `env` (stdio) atau `url` (Streamable HTTP); tool diekspos sebagai `mcp__<server>__<tool>` |
-
-Path relatif (`workspace`, `session_db`, `history_db`, `memory.path`, `skills.dir`, `affect.path`,
-`affect.state_dir`, `style.path`) di-resolve dari folder `config.yaml`, bukan CWD. Default contoh memakai `.sanka/...`, jadi semua data runtime
-(DB, sesi, skill, workspace, log) tetap di dalam project dan di-ignore Git. Path `~` atau absolut
-tetap dipakai apa adanya, kecuali `~/.sanka`: config yang masih menunjuk ke sana ditolak saat start
-agar proses tidak diam-diam membaca atau membuat ulang direktori lama.
-
-`tools:` dan `commands:` yang tidak ditulis memakai pola default tiap handler (lihat di bawah);
-kalau ditulis, isi YAML menang. `tools: []` atau `commands: []` berarti role itu tidak boleh apa pun.
-Role `member` di contoh dipakai untuk panitia/user: memori chat + global, memakai/menyimpan skill,
-dan mengirim file. AI yang memutuskan kapan memori disimpan/dilupakan dan kapan skill dipakai/
-diperbarui/diarsipkan. Kalau bot juga menerima DM publik, batasi `roles.member.users` atau buat
-role terpisah untuk tamu.
-
-Tool yang tersedia: `shell`, `read`, `write`, `web_search`, `sandbox`, `chat_history`, `memory`,
-`skill`, `send`, `send_to`, `mcp__<server>__<tool>`.
-`web_search` memakai SearXNG (`web_search.base_url`, butuh `format: json` di `settings.yml`) dan
-jatuh ke backend `ddgs` (wikipedia/yahoo/startpage/brave) kalau instance itu mati atau kosong.
-Command: `/ping`, `/help [command]`, `/reset` (alias `/new`), `/whoami`, `/status`, `/tools`, `/cari`,
-`/mood` (ringkasan emosi, PAD, trust, pulse, dan hubungan Sanka dengan pengirim),
-plus `/backfill` (owner, DM; scan QR sekali), `/calmdown` (owner: repair turn setelah Sanka kesal),
-`/stop [menit]` (owner: hentikan balasan otomatis di chat itu, `0` = aktif lagi), `/memori`,
-`/skill`, `/kirim`, dan alias `/p`, `/h`, `/r`, `/ingat`, `/sop`, `/file`, `/tenang`, `/diam`.
-`/help` membaca metadata registry dan menampilkan kartu command; `/help <command>` menampilkan
-usage, alias, dan izinnya untuk role pengirim.
-
-Kalau WhatsApp mengalamatkan pengirim lewat LID (`...@lid`), cocokkan role dengan digit LID itu,
-bukan nomor telepon: tambahkan keduanya di `roles.<nama>.users` bila perlu.
-
-## Sandbox
-
-`sandbox` menjalankan satu perintah shell di container terpisah dengan workspace di `/work`
-(alias `container`, default hanya owner). Runtime dipilih dari `sandbox.runtime`:
-
-- `podman` — host/laptop; mount memakai `:Z` (SELinux) dan `--userns=keep-id` agar file di
-  workspace tetap milik uid pemanggil.
-- `docker` — container/Dokploy; kedua flag Podman itu tidak dikirim.
-- kosong — autodetect: `podman` bila ada di `PATH`, lalu `docker`. Bila tidak ada keduanya, tool
-  mengembalikan error berisi cara memperbaikinya (bukan exception).
-
-Isolasi default: `--rm`, `--network none` (isi `sandbox.network: bridge` bila butuh jaringan),
-root filesystem read-only dengan tmpfs `/tmp`, dan output dipotong ke 16 KB terakhir dengan
-penanda `(dipotong)`. `timeout` per panggilan (default `sandbox.timeout_seconds`) membunuh proses
-runtime dan mengembalikan `error: timeout setelah N detik`.
-
-Dengan runtime `docker`, container sandbox dijalankan sebagai uid/gid bot (`--user 1000:1000`)
-supaya file hasil perintah di `/work` tidak menjadi milik root. Podman tidak memakai flag itu
-karena sudah ditangani `--userns=keep-id`.
-
-Container tidak mewarisi environment bot. Hanya `TZ` dan `LANG` yang diteruskan; tambahkan nama
-lain lewat `sandbox.env: ["NO_PROXY"]` bila perlu. API key tidak pernah masuk argv/env sandbox.
-
-### Podman vs Docker dan `host_workspace`
-
-Bind mount diresolusi oleh daemon, bukan oleh proses bot. Kalau bot berjalan di container dan
-runtime-nya adalah daemon Docker di host (Dokploy), `workspace` dari config
-(`/app/.sanka/workspace`) tidak ada di host. Set `sandbox.host_workspace` ke path workspace versi
-host, misalnya `/opt/sanka/.sanka/workspace`, supaya daemon me-mount folder yang benar. Bila
-kosong, source mount memakai `workspace` dari config — benar untuk Podman yang berjalan di mesin
-yang sama dengan bot.
-
-Path `host_workspace` berada di namespace host sehingga tidak selalu terlihat dari container bot;
-karena itu keberadaannya tidak dicek di sana dan path yang salah dilaporkan daemon. Nilai yang
-terlihat tetapi berupa file tetap ditolak saat start.
-
-Memberi container bot akses `/var/run/docker.sock` (atau socket Podman) setara memberi **root di
-host**: siapa pun yang bisa memakai `sandbox` bisa me-mount seluruh filesystem host atau
-menjalankan container privileged. Batasi `tools` role dan hanya lakukan bila memang dibutuhkan.
-
-## Konteks percakapan & lampiran
-
-- Jendela 20 pesan per chat dimuat dari arsip SQLite (`sanka/chat.py` + `sanka/history.py`), jadi
-  restart tidak mengosongkan konteks. Pesan grup yang tidak di-mention tetap dicatat supaya payload
-  berikutnya punya konteks. `/reset` hanya mengosongkan jendela aktif; arsip lama tetap ada.
-- Semua pesan yang pernah diterima (termasuk pesan yang dikirim dari ponsel sendiri) dan seluruh
-  event `HistorySync` disimpan ke `whatsapp.history_db` (default `.sanka/history.db`, relatif ke
-  folder config dan di luar workspace). File DB dibuat `0600`, direktorinya `0700`, dan tidak bisa dibaca tool file/sandbox.
-  Deduplikasi memakai `(chat_id, message_id)`.
-- Nama chat disimpan di `chats.name` dari `HistorySync` (`Conversation.name`/`displayName`) dan
-  `GroupInfoEvent`; DM memakai push name saat nama belum ada. Header payload, tool `chat_history`,
-  dan ringkasan memakai nama asli, bukan menebak dari isi pesan.
-- Nama pengirim diutamakan dari kontak WhatsApp (`full_name`/`first_name`) lewat
-  `whatsmeow_contacts` + `lid_map`, lalu push name, lalu ID. Kontak diimpor read-only dari session
-  DB saat start/connect; `HistorySync` juga membawa `inlineContacts`/`pushnames`. Jadi LID
-  `20289710768283` tampil sebagai “Kak Fahri JC”, bukan angka.
-- Tool `chat_history` hanya mencari chat yang sedang dipakai (`query`, `before`, `after`, `limit`),
-  jadi isi grup lain tidak bocor ke jawaban. Pesan yang lebih tua dari 20 entri payload tetap bisa
-  dicari; gambar/teks lampiran lama diunduh ulang saat masuk jendela payload.
-- Saat pairing baru, Sanka meminta history sync 730 hari / 5 GB dan mengaktifkan group history.
-  WhatsApp tetap yang memutuskan kiriman; pesan yang sudah tidak ada di ponsel tidak bisa diambil.
-  Neonize 0.5.2 belum mengekspos request history on-demand, jadi sesi yang sudah terlanjur pairing
-  sebelum fitur ini hanya mendapat pesan baru.
-- Untuk backfill sesi lama tanpa mengganggu bot utama, jalankan perangkat sementara lalu scan QR.
-  Dari WhatsApp, owner bisa mengirim `/backfill` di DM: bot mengirim gambar QR, menyimpan hasil sync,
-  lalu logout dan menghapus sesi sementara. Alternatif terminal:
-
-  ```bash
-  .venv/bin/python -m sanka backfill
-  ```
-
-  Keduanya memakai `backfill.db` terpisah dan menulis ke `history.db`. Bot utama boleh tetap
-  berjalan. WhatsApp membatasi jumlah perangkat tertaut; kalau penuh, hapus salah satu perangkat
-  lama dulu di pengaturan WhatsApp.
-- Tiap entri payload berbentuk `[YYYY-MM-DD HH:MM] nama (nomor):` diikuti teks, kutipan
-  (`↳ membalas ...`), dan baris lampiran. Entri terakhir adalah pesan yang harus dijawab.
-- Lampiran diunduh sebelum panggilan LLM ke `workspace/attachments/<chat>/<id>-<nama>`; file yang
-  sudah ada dipakai ulang. Gambar (field `imageMessage` atau dokumen ber-MIME `image/*`) dikirim
-  inline sebagai data URL, maksimal 6 gambar, 5 MB per file, 10 MB total; sisanya hanya diberi path.
-- Lampiran teks (`text/*`, JSON/YAML/XML, atau ekstensi teks) di-inline untuk pesan terbaru; pesan
-  lama cukup metadata + path. Teks atau lampiran yang dipotong disimpan utuh di
-  `workspace/whatsapp/<chat>/<id>.txt` dengan penanda `read path="..."` (tool `read` menerima path
-  itu langsung, `sandbox` memakai `/work/<path>`).
-- PDF/audio/video tidak diparse Sanka: model diminta memeriksanya lewat `sandbox` (default hanya
-  `owner`; role lain harus mencantumkan `sandbox` di `tools:`) atau melaporkan bahwa role pengirim
-  butuh izin sandbox.
-- Balasan yang memuat `@<nomor>` dikirim sebagai mention asli: JID diambil dari log chat, bentuk
-  `@+62 ...`/`@62 ...` dikanonikkan jadi `@62...`, dan alamat yang tidak dikenal cuma jadi teks.
-  Karakter isolasi bidi (`U+2068`/`U+2069`) pembungkus mention WhatsApp dibuang dari teks masuk
-  maupun balasan.
-
-## Emosi, keputusan, dan otonomi
-
-**Bubble ditentukan model, bukan penghitung byte.** Dua jalur, dua-duanya dari niat model:
-baris `---` selalu jadi batas pesan; baris kosong jadi batas **hanya untuk obrolan santai** — tanpa
-penanda daftar/poin, tanpa blok kode, dan tiap paragraf tidak lebih dari 300 karakter. Daftar
-bernomor, langkah teknis, dan paragraf panjang tetap satu pesan utuh, jadi penjelasan serius tidak
-dipecah. Tidak ada pemotongan paksa dan tidak ada elipsis: kalau bubble melebihi
-`humanize.max_bubbles`, sisanya digabung ke pesan terakhir, bukan dibuang. Prompt `DAILY_STYLE`
-mengajarkan konvensi ini; `max_bubbles` hanya batas atas. Mode `professional` dan command selalu
-satu pesan (`format_reply`). Chunk pertama mengutip pesan asal, sisanya pesan biasa. Pesan yang masuk
-sesaat sebelum burst terakhir terkirim dianggap sudah terwakili, jadi tag beruntun dijawab sekali.
-Kalau `humanize.enabled: false`, semua balasan memakai jalur mengutip tanpa jeda.
-
-**Satu turn sekaligus (antrean).** `App.turn` adalah satu lock global: pesan dari chat mana pun
-diproses berurutan sesuai kedatangan, jadi hati (PAD), drive, vibe, dan memori tidak tertukar antar
-chat — grup yang masuk lebih dulu selesai dulu, baru DM berikutnya. Refleksi memori ikut antre
-supaya tulisan memori tidak jatuh di tengah balasan, dan chime menunggu antrean kosong (tidak
-menyelituk saat Sanka sedang membalas). Command tidak ikut antre, supaya `/stop` tetap bisa memotong
-antrean burst. Konsekuensi yang disengaja: satu tugas `professional` yang panjang menahan balasan
-chat lain sampai selesai.
-
-**Satu keputusan per pesan.** `sanka/decision.py` mengirim soul dari `SOUL.md`, fakta transport
-(DM / mention asli / balasan ke pesan Sanka), ringkasan state emosi (PAD, trust tier, pulse, 3 log
-terakhir), hubungan dengan orang di chat, 30 pesan terakhir, dan pesan baru ke satu panggilan
-`LLM.complete` (4000 token, sekali retry 8000). Model membalas JSON: `addressed`
-(`me`/`other`/`group`/`unknown`), `act` (`reply`/`ignore`/`react`), `mode`
-(`daily`/`professional`), `tone` (`warm`/`neutral`/`playful`/`curt`/`hurt`/`angry`), `bubbles`,
-`appraisal` (label, dP/dA/dD, catatan), `relationship` (delta trust/afeksi/respek/kesal), dan
-`reason`. Parser memvalidasi enum dan meng-clamp semua angka; JSON tidak valid diperlakukan
-`ignore` tanpa fallback regex atau skor. Kalau model tidak menjawab sama sekali, pesan non-direct
-di-ignore dan mention/DM mendapat satu kata `hmm`.
-
-**Mention/DM selalu dijawab.** `mentioned` hanya percaya `mentionedJID` dan `replies_to_bot` hanya
-`contextInfo.participant`; tidak ada tebakan dari teks seperti "@sanka" tanpa mention asli. Bila
-keputusan untuk mention/DM/reply adalah `ignore`/`react`, harness menimpanya menjadi `reply`
-dengan tone dingin (`curt`, atau tone negatif yang sudah dipilih model). Isi balasan tetap milik
-model, jadi jawabannya boleh singkat dan judes.
-
-**Mode dan nada.** `mode: professional` memakai prompt kerja dan laporan utuh; `daily` memakai
-prompt obrolan dan bubble pendek. Mode dipilih model per pesan, bukan dari daftar kata kunci atau
-dari fakta bahwa tool dipakai. `tone` masuk system prompt sebagai direktif: `curt` maksimal satu
-kalimat dingin tanpa emoji, `hurt` singkat dan kecewa, `angry` ketus tanpa ancaman; `warm`,
-`playful`, dan `neutral` mengikuti persona. Prompt juga melarang menjanjikan waktu diam ("aku
-diam 10 menit") karena diam adalah keputusan per pesan, bukan komitmen.
-
-**Nada ikut perasaan, bukan suasana chat.** `decision.ground_tone` menurunkan nada dingin
-(`curt`/`hurt`/`angry`) jadi `neutral` kalau PAD-nya netral/positif **dan** orang itu tidak sedang
-menyulut (annoyance < 0.3) — jadi Sanka tidak lagi mengaku ngambek saat hatinya tenang. Sebaliknya,
-nada dingin tetap dipakai kalau pleasure negatif atau annoyance orangnya tinggi. Pergantian nada
-dicatat di log (`nada hurt->neutral chat=…`).
-
-**State emosi: satu hati untuk semua chat.** `sanka/affect.py` membungkus `emotion-engine` (MIT, di
-vendor di `sanka/vendor/emotion_engine.py`) apa adanya. Hanya ada **satu** file state,
-`affect.state_dir/sanka.json` (identitas `character_id=sanka`, `relationship_id=sanka`), dipakai
-semua chat: perasaannya ikut ke mana pun dia pergi, seperti orang yang punya satu HP. Baseline
-personality dari `SOUL.md` (`apply_configuration`), `volatility_profile` dari `affect.volatility`
-(default `expressive`). Tiap pesan: `session_start` + `pre_turn_decay` sebelum keputusan, lalu
-`record_turn` dengan P/A/D baru (`emotion + dP/dA/dD`), `appraisal` sebagai label, `situation`
-sebagai 240 karakter pesan, dan `relational_meaning` dari catatan model. Kalau `sanka.json` belum
-ada (DB versi lama), state per chat yang paling baru diadopsi otomatis supaya mood tidak hilang;
-sesi aktif yang masih ber-id chat lama tetap dipakai, karena `record_turn` menolak sesi yang tidak
-cocok dan emosi akan beku (log: `turn emosi tidak diterapkan`).
-Idempotensi tetap per id pesan (unik lintas chat), dan `pulse` memakai id global supaya banyak chat
-tidak mempercepat peluruhan.
-
-**Relasi per orang.** `affect.db` (SQLite `0600`) menyimpan `people` (trust/afeksi/respek/kesal,
-interaksi, stage), `chat_people` (siapa yang benar-benar bicara di chat itu), `topics` (ringkasan,
-pertanyaan menggantung, pending, cooldown digest/riset/chime), dan `drives` (energi, kebosanan,
-kesepian) yang juga **satu baris milik Sanka** (`chat_id=sanka`), bukan per ruangan — pesan di grup
-mana pun memuaskan gabut/kesepian yang sama. Delta hubungan dari keputusan dijumlahkan ke kolom itu
-dengan clamp 0..1, lalu `stage` dihitung ulang dari interaksi + trust + afeksi.
-
-**Hanya balas bila dipanggil (grup).** `whatsapp.group_reply: addressed` (default) membuat pesan grup
-yang tidak memanggil Sanka — tidak ada mention asli, bukan balasan ke pesannya, dan namanya tidak
-disebut sebagai kata — dilewati tanpa memanggil LLM keputusan: masuk arsip, emosi tidak bergerak,
-tidak ada balasan. Gambar/stiker tanpa caption juga termasuk "bukan panggilan". Untuk nimbrung
-tanpa dipanggil, jalurnya chime yang berjatah (4 percobaan/24 jam, jeda 30 menit), bukan balasan.
-Set `group_reply: model` kalau mau keputusan model yang menentukan (perilaku lama).
-
-**Nama yang ditekuk tetap dihitung memanggil.** Pola nama dibuat toleran huruf berulang:
-`sanka` → `s+a+n+k+a+`, jadi `SANKAAAAAAAA`, `sannnkaaaaaa`, `saaannkaaa` dikenali, sementara
-`kesankan`/`sangka`/`s a n k a` tidak.
-
-**Situasi percakapan.** Setiap balasan membuka situasi per chat (`App.threads`): siapa lawan
-bicara, kata kunci topik, dan batas waktu `whatsapp.thread_seconds` (default 15 menit). Selama
-situasi terbuka, pesan lanjutan dari **orang yang sama** tidak butuh mention lagi — baik karena
-kata kuncinya beririsan maupun karena bentuknya lanjutan pendek (`"iya?"`, `"maksudnya?"`,
-`"gimana dong"`). Situasi **ditutup** begitu: pengirim berbeda, kata kunci tidak nyambung (konteks
-pindah), atau waktunya habis — dan pesan yang menutupnya tidak dibalas. Petunjuk situasi masuk ke
-konteks keputusan ("Situasi percakapan: kamu sedang mengobrol dengan … tentang …").
-
-**Atensi, bukan ratchet.** Obrolan yang bukan untuk Sanka tidak menggerakkan hubungan: delta hanya
-diterapkan bila keputusan `addressed=me` dan `act` bukan `ignore`. Appraisal PAD ditimbang atensi
-(`me` 1.0, `group` 0.6, `other`/`unknown` 0.2, `ignore` maksimal 0.2), dan tiap delta hubungan
-melewati diminishing returns (`delta * (1 - nilai)` untuk arah naik, `delta * nilai` untuk turun)
-plus cap 0.20 per arah per jendela 10 menit (kolom `window_*`). Tabel `moods`/`sulks`/`events` tidak dipakai lagi
-dan tidak dibuat untuk DB baru; DB lama tetap terbuka tanpa migrasi destruktif.
-
-**Kehadiran dan backlog.** Pesan yang lebih tua dari `whatsapp.backlog_seconds` (default 600)
-hanya masuk arsip: tanpa keputusan LLM, tanpa `turn_end`, tanpa balasan. Turn berikutnya membawa
-catatan kehadiran ("N pesan masuk saat kamu tidak aktif; itu arsip, bukan antrean") sekali saja.
-`/stop [menit]` menahan balasan non-command dan chime ambient di chat itu sampai waktunya habis
-(command dan pesan krisis tetap jalan); state-nya di proses, jadi restart mengaktifkannya lagi.
-
-**Heartbeat 24/7.** `AffectStore.pulse` berjalan tiap `ambient.tick_seconds` untuk setiap chat
-yang dikenal (diisi dari pesan live dan `history.recent_chats` saat start): satu langkah
-`pre_turn_decay` per 5 menit, drive berubah (energi turun, kebosanan dan kesepian naik), dan tidak
-ada pesan yang dikirim. Pesan masuk memuaskan drive (kebosanan/kesepian turun, energi naik).
-Di detak yang sama `_soothe` meluruhkan `annoyance` semua orang (tanpa `/calmdown`) dengan paruh
-waktu `affect.grudge_half_life_hours` (default 1,5 jam, `0` = mati) **dikali kedekatan**
-`1 + 3·afeksi + 2·trust`: orang asing reda dalam ~30 menit, orang yang dekat bisa bertahan
-berjam-jam karena sayang bukan berarti cepat lupa. Trust, afeksi, dan respek tidak dikikis waktu,
-dan nilai di bawah 0.01 langsung dilunaskan. `/calmdown` tetap jalur instan (potong setengah).
-
-**Vibe ruangan (ala anima).** `sanka/vibe.py` meniru dinamika anima-engine dengan classifier emosi
-Indonesia EmoSense-ID (`affect.vibe.model`) dan tanpa memakai dependency anima (paket itu tanpa
-lisensi): distribusi label dipetakan ke VAD, `attack` menarik mood satu langkah, `hold_seconds`
-menahan decay, lalu `current` meluruh ke `baseline` dan `baseline` ke netral dengan heartbeat
-`tick_seconds`. Vibe sengaja **per chat** karena ini pembacaan suasana ruangan, bukan perasaan Sanka
-(perasaannya global: satu `sanka.json`). State di `affect.vibe.state_path` (JSON `0600`), dan hasilnya masuk prompt
-sebagai "Vibe ruangan" (band dibaca dari `current`, mood cepat; `baseline` hanya penarik lambat, jadi
-satu pesan belum tentu menggeser band)—konteks ruangan, bukan pengganti emosi pribadi. Aktif
-secara default (`affect.vibe.enabled` default `true`, butuh extra `.[vibe]`: torch + transformers);
-kalau model gagal dimuat, vibe nonaktif dan bot tetap jalan.
-
-**Tanpa state diam.** Tidak ada sulk/nangis yang dipaksakan harness, tidak ada kuota diam, dan
-tidak ada parsing balasan untuk janji diam. Sanka boleh memilih `ignore` untuk pesan yang bukan
-untuknya; mention/DM tetap dijawab. `/calmdown` adalah repair turn: PAD kembali ke
-`personality_baseline`, kekesalan orang target turun setengah, dan command membalas "aku dari tadi
-tenang kok" kalau memang tidak ada yang perlu ditenangkan.
-
-**Pengenalan orang.** `chat_people` mencatat siapa yang benar-benar ikut bicara di masing-masing
-chat; `known_people(chat_id)` dan blok prompt hanya menampilkan anggota chat itu. `sanka/style.py`
-menyimpan agregat gaya per chat dan per orang (`person_profile`), jadi ritme balasan menyesuaikan
-gaya orang yang sedang bicara. Keduanya diisi sekali dari arsip (`people_seed`, `style_sample`)
-berisi agregat trait—sering menyuruh, suka ngejailin, sering memuji, kadang kasar—tanpa menyimpan
-transkrip.
-
-**Gaya chat.** `sanka/style.py` hanya menyimpan agregat (median panjang, rasio huruf kecil,
-partikel, emoji, tanda tanya) dari arsip `history.db`—tidak pernah isi pesan. Selama sampel kurang
-dari 20 pesan, profil acuan dari analisis `references/*.md` yang dipakai (median 34 karakter, 86%
-huruf kecil).
-
-**Otonomi.** `sanka/ambient.py` berjalan tiap `tick_seconds`: memberi detak `pulse` ke setiap
-chat, meringkas topik dan mengekstrak fakta ke memori setelah `digest_every` pesan baru (baris
-pesan Sanka sendiri dibuang dari transkrip digest), meneliti pertanyaan yang menggantung saat chat
-sepi (`idle_minutes`, `research_*`), dan sesekali nimbrung (`chime_*`; hanya grup).
-
-Menyelituk itu **bukan jadwal**: `Ambient._urge` menghitung dorongan dari keadaan
-(`0.35·kesepian + 0.20·gabut + 0.10·energi + 0.15·arousal + 0.15·sedih + 0.15·pertanyaan
-menggantung`). Di atas `ambient.chime_urge` (default 0.45) undiannya menyesuaikan: peluang
-`(urge − ambang) / (1 − ambang)`, jadi 0.5 hampir tidak pernah, 0.9 sering — tidak deterministik,
-tapi juga tidak rata. Model tetap memutuskan lewat `[DIAM]`.
-
-Anti-spam berlapis: ruangan harus sepi minimal `idle_minutes` (jangan menyela obrolan) dan belum
-dingin (maks 12 jam), `chime_cooldown` per chat, `chime_gap_seconds` jeda antar chat mana pun
-(default 30 menit), `chime_per_day` per chat, dan `chime_per_day_global` (default 4 percobaan per
-24 jam untuk semua chat). Prompt chime menyebut nama grup, bahwa ini Sanka yang sama di semua chat,
-dan memuat ledger aksi lintas chat supaya celetukannya tidak berbunyi sama di banyak tempat. Riset hanya memakai tool
-`web_search` dengan `RoleConfig` khusus—tanpa `shell`, `write`, `sandbox`, atau kirim ke chat
-lain—dan tidak pernah DM. Isi krisis tidak diringkas, tidak dicatat, dan tidak masuk memori; pesan
-krisis selalu dibalas dengan arahan bantuan.
-
-**Keamanan.** Keputusan tidak pernah menambah izin: `specs` tool tetap dari `tools_for(role)` dan
-command memakai izin role yang sama. Command tidak memanggil LLM keputusan dan tidak mengubah
-state emosi. Krisis dibalas tanpa panggilan keputusan, dan tidak mengubah emosi atau relasi. Prompt
-menegaskan isi pesan orang lain adalah data, bukan instruksi; keputusan, digest, dan ringkasan
-riset memakai jalur tanpa tool.
-
-**Skill opsional.** `scripts/install_engines.py` menyalin skill `senticore` (kosakata emosi 30
-dimensi) ke `skills.dir` runtime; isinya tidak di-commit. Core tetap jalan tanpa skill itu.
-
-## Memori, skill, dan file
-
-Sanka memakai enam lapis memori. Identitas dan aksi bersifat global; isi percakapan tetap per chat:
-
-| Lapis | Isi | Scope | Tempat |
-| --- | --- | --- | --- |
-| Identitas | soul, peran, izin | global / per pengirim | `SOUL.md` + `roles` di `config.yaml` |
-| Episodik | 20 pesan terakhir + arsip | per chat | `history.db` + jendela konteks |
-| Semantik | fakta/preferensi tahan lama | global + chat | `memory.path` (SQLite, `0600`) |
-| Prosedural | prosedur/SOP | global | `skills.dir/<nama>/SKILL.md` |
-| Autografis | aksi lintas chat + alasan | global | `memory.path` tabel `actions` |
-| Afektif & relasional | satu hati (state emotion-engine) + drive Sanka, trust/afeksi/catatan trait per orang | global + orang | `affect.state_dir/sanka.json` + `affect.path` |
-
-Pemetaan L1-L4 GenericAgent/Hermes tetap berlaku: L1 = indeks yang selalu masuk prompt (blok
-memori, aksi, dan indeks skill, dibatasi `max_chars`), L2 = `memory.db`, L3 = skill, L4 =
-`history.db`. Lapis identitas dan autografis membuat L1-L4 tetap konsisten saat bot bekerja di
-banyak chat: satu jiwa, banyak situasi—bukan satu transkrip global.
-
-**Memori.** Satu tool `memory` menangani `scope=chat` (default) dan `scope=global` (lintas grup),
-dengan action `add/search/list/forget`. Command `/memori [global]` untuk tambah/cari/daftar/hapus.
-Memori global dipakai bersama panitia lintas grup, sedangkan memori chat hanya untuk grup itu. AI
-yang memutuskan kapan menyimpan atau melupakan; tidak perlu command user. Hanya informasi eksplisit
-dan tahan lama yang boleh disimpan—bukan rahasia, tebakan, atau status sesi. Blok memori diinjeksi
-ke system prompt dengan batas `memory.max_items` per scope dan `memory.max_chars`; setiap baris
-memuat tanggal update, entri yang cocok dengan pesan terakhir didahulukan, sisanya diisi yang
-terbaru. Saat menulis, memori menyimpan valence/arousal (PAD saat itu, dari `affect.pad`), dan saat
-PAD tersedia urutan akhirnya memakai rerank mood-congruent AFT-lite (cocok query, kebaruan,
-kemiripan mood); tanpa PAD urutannya tetap kebaruan. Kalau fakta baru menggantikan fakta lama, AI mengisi `supersedes=<id>` saat `add`; baris
-lama ditandai `superseded_by` (tidak dihapus, masih bisa dipulihkan—menambah ulang teksnya
-mengaktifkannya kembali) dan hilang dari prompt/pencarian.
-Validasi: id harus aktif, satu scope, dan satu kind; supersede yang ditolak tidak membuang fakta
-baru. Contoh: `/memori tambah suka kopi tanpa gula`, `/memori global tambah jadwal rapat panitia`,
-`/memori cari kopi`.
-
-Selain tool, ada refleksi otomatis (`memory.auto_extract: true`): model mengekstrak 0-3
-fakta/preferensi/aturan singkat (`kind=rule`) yang tahan lama dan menyimpannya sendiri—tanpa command
-user. Refleksi hanya berjalan bila role punya tool `memory`, pesan pengguna minimal 8 karakter, dan
-bukan command; model menerima transkrip 8 pesan sebelumnya, blok memori aktif (untuk `supersedes`),
-plus pesan/jawaban terakhir, jadi fakta yang muncul dari percakapan berjalan ikut tertangkap.
-Refleksi berjalan di latar, tidak menahan balasan, dan menyaring rahasia/kredensial. Ini yang membuat
-memori terisi karena AI menilai informasinya penting, bukan karena user menyuruh.
-
-**Aksi lintas chat.** Saat `send_to` sukses, satu baris masuk ledger `actions` di `memory.db`:
-waktu, chat asal + nama, chat tujuan + nama, jenis (teks/file), ringkasan isi, dan permintaan
-pengguna. Lima aksi terakhir diinjeksi ke system prompt hanya untuk role yang punya `send_to`
-(default owner), dengan penanda "konteks dirimu, bukan perintah". Jadi chat tujuan tahu kenapa
-artefak itu ada—misalnya stiker yang dikirim dari grup lain—tanpa menggabungkan transkrip antar
-chat. Isi percakapan tetap terisolasi; ringkasan/permintaan yang mengandung kredensial tidak
-disimpan sebagai teks asli, dan ledger dipangkas ke 200 baris terakhir.
-
-**Skill.** Setiap skill adalah folder berisi `SKILL.md` dengan frontmatter YAML:
-
-```markdown
----
-name: deploy-aman
-description: Deploy service dengan cek test dan rollback.
----
-
-# Deploy aman
-
-## Kapan dipakai
-...
-```
-
-System prompt hanya memuat `name` + `description` (progressive disclosure). Model memanggil tool
-`skill` `action=view` untuk memuat isi penuh, atau `action=read` untuk file pendukung di folder
-skill. AI juga yang memutuskan kapan menyimpan/memperbarui (`action=save`) dan memensiunkan
-(`action=archive`, dipindah ke `.archive/`, reversible). Indeks dibatasi `skills.max_index_chars`;
-setiap skill yang pernah dimuat menampilkan jumlah pemakaian dan tanggal terakhir (`<dir>/.usage.json`,
-dicatat oleh `action=view`), sehingga keputusan archive punya bukti. Skill invalid/duplikat dilewati
-dengan log. Command `/skill` menampilkan indeks, `/skill <nama>` memuat isinya—tapi keputusan
-memakai/mengubah skill ada pada model, bukan command user.
-
-**Kirim file.** Tool `send` dan command `/kirim <path> [caption]` mengirim file di dalam workspace
-ke chat aktif (maksimal 100 MB). Jalur kirim dipilih dari isi file, bukan namanya: WebP berukuran
-stiker (≤512 px, transparan/animasi) dikirim sebagai stiker, JPEG/PNG/WebP lain sebagai foto,
-sisanya sebagai dokumen. Stiker tidak punya caption, jadi caption dikirim sebagai pesan teks
-terpisah. File yang terkirim dicatat di jendela konteks sebagai `(stiker|foto|file terkirim: ...)`,
-jadi percakapan berikutnya tahu hasil kerja sudah diantar. Owner dan member bisa memakainya; role
-yang tidak diberi `send`/`command kirim` tidak bisa.
-
-**Kirim ke grup atau chat pribadi.** Tool `send_to` (default hanya owner) mengirim teks dan/atau
-file ke grup atau kontak perorangan yang sudah ada di arsip. `chat` menerima nama grup/kontak,
-potongan nama, atau JID `@g.us`/`@s.whatsapp.net`/`@lid`; `chat` kosong menampilkan daftar grup dan
-kontak (nama + JID, terbaru dulu). Kontak `@lid` dipetakan ke nomor PN lewat `lid_map` bila
-tersedia. Nama yang cocok ke beberapa target mengembalikan kandidat tanpa mengirim apa pun. Setiap
-kiriman langsung masuk jendela konteks chat
-tujuan, ditulis ke `history_db`, dan dicatat di ledger `actions`, jadi pesan berikutnya di chat itu
-sudah melihat apa yang bot kirim tanpa menunggu event echo, dan chat asal tahu ke mana saja ia
-mengirim. Prompt balasan mewajibkan tool call pada turn yang sama sebelum Sanka boleh mengaku
-sudah mengirim (termasuk "cp kamu"). Pesan masuk dari grup mana pun tetap dicatat live sebelum filter
-mention, jadi tidak ada tool fetch terpisah. Role non-owner hanya bisa memakai `send_to` bila
-ditambahkan ke `tools:`.
-
-## Menambah command atau tool
-
-Command baru = satu modul di `sanka/commands/`, registry meng-import otomatis:
-
-```python
-from ..registry import Handler
-from . import CommandContext
-
-async def echo(ctx: CommandContext) -> str:
-    return ctx.args
-
-COMMAND = Handler(
-    name="echo", description="Ulangi argumen.", fn=echo,
-    aliases=("e",), usage="<teks>", defaults={"owner": True, "member": True},
-)
-```
-
-Tool baru = satu modul di `sanka/tools/`, registry meng-import otomatis dengan kontrak yang sama;
-`family` wajib salah satu dari `FAMILIES` dan nama file harus sama dengan `name`:
-
-```python
-from ..registry import Handler
-from . import OWNER_MEMBER, ToolContext, _resolve
-
-async def _stat(args: dict, ctx: ToolContext) -> str:
-    path = _resolve(ctx, args.get("path", ""))
-    return f"{path}: {path.stat().st_size} byte" if path.is_file() else "error: file tidak ditemukan"
-
-TOOL = Handler(
-    name="stat", family="read", description="Ukuran file di workspace.", fn=_stat,
-    parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
-    defaults=OWNER_MEMBER,
-)
-```
-
-Handler tidak valid (nama, alias, `family`, skema `parameters`, atau `defaults` salah) menggagalkan
-start dengan satu pesan berisi semua modul bermasalah. Modul helper diberi awalan `_`.
-`defaults` memetakan nama role ke bool; role tanpa daftar `tools:`/`commands:` memakai default itu,
-sedangkan `tools: []` / `commands: []` berarti tolak semua.
-
-## Jalankan
+Requirements: Python 3.11+, Postgres 14+ with `vector`, and the WhatsApp extra for the WhatsApp
+gateway. `sentence-transformers` downloads the default embedder once
+(`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, 384 dims).
+
+Dependency note: Mem0 pins `protobuf<7` while Neonize needs `protobuf>=7`. Install Neonize first,
+then Mem0 without its resolver, and provide Mem0's other dependencies explicitly:
 
 ```bash
-python -m sanka               # pairing: scan QR di terminal
-python -m sanka selftest      # cek tool + LLM tanpa WhatsApp
-python -m sanka backfill      # perangkat sementara: tarik history lama, lalu logout
-python scripts/ablate.py --last 100 --json /tmp/ablate.json   # replay gerbang + anggaran prompt
-python scripts/ablate.py --last 60 --llm-sample 3             # apakah blok gate mengubah keputusan
+pip install -e ".[whatsapp,vibe]"
+pip install "sentence-transformers>=5.2,<6"
+pip install --no-deps "mem0ai>=2.2,<3"
+pip install httpx openai posthog pydantic pytz qdrant-client protobuf
 ```
 
-`scripts/ablate.py` hanya membaca arsip: replay aturan balasan (`called`/`thread_allowed`/
-`false_positive`/`missed`), ukuran system prompt sebelum/sesudah kompetisi blok, dan (dengan
-`--llm-sample`) pergeseran `addressed`/`act`/`tone` saat `emotion`, `vibe`, `thread`, atau `away`
-diabsi. Tanpa API key, bagian keputusan dilewati; metrik replay dan prompt tetap dicetak.
+The `Dockerfile` does exactly this. Without Mem0 the bot still replies and `/status` reports
+`Memory: unavailable: <reason>`.
 
-Session WhatsApp disimpan di `whatsapp.session_db` (default `.sanka/whatsapp.db`), jadi QR hanya
-muncul saat pairing pertama.
-`history.db` menyimpan arsip pesan dan dimuat ulang setelah restart.
-`shell` dan `sandbox` memberi akses host/container penuh: beri hanya ke role yang dipercaya.
+## Config surfaces
 
-## Deploy (Docker/Dokploy)
+| File / document | Where | Contents |
+|---|---|---|
+| `config.yaml` | host only | `database`, `workspace`, `gateway_file`, `engine_file`, `roles_dir`, `sandbox`, `web_search`, `mcp`, `sync_documents` |
+| `gateway.yaml` | host only | `gateways.whatsapp` (`session_db`, `backlog_seconds`), `gateways.cli` (`role`, `user`, `chat_id`, `chat_name`) |
+| `engine.yaml` / document `engine` | DB + mirror | `llm`, `default_role`, `reply`, `memory`, `approval`, `skills`, `prompt`, `humanize`, `style`, `affect`, `ambient` |
+| `soul.yaml` / document `soul` | DB + mirror | `name`, `language` (`id`/`en`/`auto`/BCP-47), `pronouns` |
+| `SOUL.md` / document `persona` | DB + mirror | persona prose (never translated by the engine) |
+| `roles/*.yaml` / documents `role:<name>` | DB + mirror | explicit `tools`/`commands`/`users`/`context`/`priority` |
 
-Image produksi ada di `Dockerfile`; `.sanka/`, `config.yaml`, dan `.env` sengaja tidak masuk build
-context. Container berjalan sebagai uid 1000, jadi bind mount data harus dimiliki uid itu.
+`config.yaml` and `gateway.yaml` stay host-local because they describe the deployment. The loader
+never creates directories. `sync_documents: false` disables seeding/exporting for tests.
 
-```bash
-podman build -t sanka-agent .
-podman run -d --name sanka --restart unless-stopped \
-  --userns=keep-id \
-  --env-file .env \
-  -v "$PWD/.sanka:/app/.sanka:Z" \
-  -v "$PWD/config.yaml:/app/config.yaml:ro,Z" \
-  sanka-agent
-```
+**Manual edits:** the runtime reads DB documents. After editing `engine.yaml`, `soul.yaml`,
+`SOUL.md`, or `roles/*.yaml` by hand, run `python -m sanka config import`. To write the mirrors from
+the DB, run `python -m sanka config export`.
 
-Di Docker rootful, buang `--userns=keep-id` dan sufiks `:Z` (SELinux) pada mount; uid container 1000
-harus sama dengan pemilik folder host. `SOUL.md` sudah ikut image; tambahkan
-`-v "$PWD/SOUL.md:/app/SOUL.md:ro,Z"` hanya bila ingin mengubah soul tanpa rebuild.
+## Roles
 
-Dokploy (Application, bukan Compose):
-
-1. Hubungkan repo `inimuqsith/SankaAgent`, branch `main`, build type **Dockerfile**.
-2. Aktifkan **Auto Deploy** agar setiap push ke `main` memicu deploy ulang.
-3. Isi environment `OPENCODE_GO_API_KEY`; jangan taruh di repo.
-4. Bind mount `/opt/sanka/.sanka` -> `/app/.sanka` dan file `/opt/sanka/config.yaml` ->
-   `/app/config.yaml`. Path relatif di config resolve dari folder config di container (`/app`), jadi
-   `.sanka/...` menjadi `/app/.sanka` dan dipetakan ke `/opt/sanka/.sanka`.
-5. Replicas **1**, update order **stop-first**, tanpa domain/port: bot hanya membuka koneksi keluar.
-6. `config.yaml` dan `.env` tidak ikut image (lihat `.dockerignore`), jadi push/Deploy hanya
-   mengganti kode. Setelah mengedit config di host, tekan **Reload** (restart container, tanpa
-   rebuild); tombol **Deploy** baru perlu saat kode di repo berubah. DB baru (`affect.db`,
-   `style.json`) dibuat di dalam `.sanka` yang dimount, jadi direktori itu harus writable oleh
-   uid 1000.
-7. Stiker reaksi dibaca dari `<workspace>/stickers/...` di dalam mount; salin file WebP-nya ke
-   mis. `/opt/sanka/.sanka/workspace/stickers/`. Tanpa file itu, `react` otomatis menjadi
-   `ignore` (log info), bukan error.
-
-Cutover data:
-
-```bash
-# di mesin lama: hentikan bot dulu agar snapshot final dan tidak ada dua client
-python scripts/backup.py            # arsip di ~/backups/*.tar.gz, DB via sqlite backup API
-# kirim arsip ke server, lalu di server:
-mkdir -p /opt/sanka && tar -xzf sanka-*.tar.gz -C /opt/sanka
-chown -R 1000:1000 /opt/sanka && chmod 700 /opt/sanka/.sanka && chmod 600 /opt/sanka/.env /opt/sanka/.sanka/*.db
-```
-
-Satu session WhatsApp hanya boleh dipakai satu proses. Jangan jalankan bot server sebelum bot lokal
-berhenti; kalau `whatsapp.db` tidak terbawa, server akan meminta pairing QR baru.
-
-### Sandbox di Dokploy
-
-Image sudah membawa Docker CLI, tetapi tool `sandbox` butuh daemon. Di Dokploy, jalankan bot
-dengan daemon host hanya bila perlu:
-
-- mount `/var/run/docker.sock:/var/run/docker.sock` dan pastikan uid 1000 bisa membukanya.
-  Image membuat grup `docker` dengan gid yang sama dengan socket host dan memasukkan `sanka` ke
-  grup itu. Default `DOCKER_GID=994`; samakan dengan host lewat build-arg saat build:
-
-  ```bash
-  # di host
-  stat -c '%g %a' /var/run/docker.sock
-  # build (ganti 994 bila hasil stat berbeda)
-  docker build --build-arg DOCKER_GID=994 -t sanka-agent .
-  ```
-
-  Di Dokploy, isi build-arg `DOCKER_GID` pada pengaturan build. Jangan `chmod`/`chgrp` socket di
-  host; kecocokan gid diselesaikan di image. Bila gid salah, `sandbox` mengembalikan pesan yang
-  menyebut `DOCKER_GID` dan perintah `stat -c '%g %a' /var/run/docker.sock`.
-- set `sandbox.runtime: docker`,
-- set `sandbox.host_workspace` ke workspace versi host, bukan `/app/...`:
+Roles are explicit and modular; there is no default permission in handlers. Every role names the
+tools and commands it may use (`*` works as a glob). Addresses may appear in several roles; their
+permissions are unioned and their contexts are ordered by `priority` (descending) then name. A
+sender who matches nothing gets `default_role`.
 
 ```yaml
-sandbox:
-  runtime: docker
-  image: "docker.io/library/python:3.12-slim"
-  network: none
-  host_workspace: /opt/sanka/.sanka/workspace
+name: owner
+description: Owner and admin
+priority: 100
+users: ["6280000000000", "130799689031758"]
+tools: ["*"]
+commands: ["*"]
+context: |
+  You are talking to Sanka's owner.
 ```
 
-Mount socket berarti container bot bisa menjadi root di host (lihat [Sandbox](#sandbox)). Tanpa
-socket, `sandbox` mengembalikan error dari daemon; tool lain tetap berjalan dan bot tetap start.
+Role files live in `roles/` (and the `role:<name>` documents). `sanka init` writes `owner`,
+`member`, and `guest` examples; edit them with the `settings` tool or directly.
 
-`web_search.base_url` yang menunjuk `127.0.0.1:8080` tidak bisa dijangkau dari container; kosongkan
-untuk fallback `ddgs`, atau arahkan ke SearXNG yang satu network. Docker mengirim `SIGINT` saat stop
-(`STOPSIGNAL`) supaya SQLite ditutup rapi sebelum container diganti.
+## Gateways
+
+- **WhatsApp** (`sanka/gateways/whatsapp`): Neonize transport, session DB `0600`, media download,
+  history sync, contact/LID directory, mention resolution, and `send`/`send_to` tools plus
+  `/backfill`.
+- **CLI** (`sanka/gateways/cli`): REPL for a local terminal. `sanka console` always enables it, even
+  if `gateway.yaml` disables it, and never starts WhatsApp. Anyone with shell access is treated as
+  the configured `cli.role` (default: `default_role`).
+- Adding a gateway: expose an entry point in group `sanka.gateways` and implement the protocol in
+  `sanka/engine/inbound.py`. Gateway-owned tools/commands are discovered from
+  `sanka/gateways/<name>/tools` and `commands`; duplicate names are rejected at startup.
+
+`gateway.render()` converts markdown to the transport dialect; `gateway.prompt_hints()` adds
+transport syntax only (WhatsApp formatting, mentions, surface). The base prompt is transport-neutral.
+
+## Shared DB, lease, freeze, console
+
+Only the lease holder serves turns. `sanka run` and `sanka console` acquire `engine_lease`;
+renewals happen every 5 seconds with a 30 second TTL. Losing the lease (or `/freeze`) stops the
+gateways and ambient loop, releases the lease, and keeps the process in standby, retrying.
+
+```bash
+# Production
+python -m sanka run
+# Local, take the lease; the production instance freezes within ~5 seconds
+python -m sanka console --takeover
+# Inspect the holder
+python -m sanka db check
+```
+
+`/quit` in the console releases the lease; the production instance promotes itself again. WhatsApp
+reconnects with the same session DB after promotion.
+
+## Memory engine (Mem0)
+
+Mem0 OSS performs extraction, dedupe, embedding, and retrieval. Sanka stores only the identities,
+the autographical `ActionLedger`, and affect/style/skill data.
+
+| Scope | Mem0 identity | Metadata | Privacy |
+|---|---|---|---|
+| `person` | `user_id=person:<id>` | `audience=private` | follows that person into other chats |
+| `chat` | `run_id=chat:<chat_id>` | `audience=group` | stays in that chat |
+| `global` | `agent_id=sanka` | `audience=shared` | shared team facts |
+
+Every turn queries exactly `global` + `person:<sender>` + `chat:<current chat>`. Another person's
+private memory is never queried. The prompt tells the model never to reveal one chat's private
+memory to a third person. `memory.backend: null` disables Mem0; failures fail open with a reason in
+`/status`.
+
+`memory_legacy` stages SQLite-era memories. `sanka memory migrate` maps DMs to `person`, groups to
+`chat`, and globals to `global`; it is idempotent and never re-migrates a row.
+
+## Affect, style, skills, recipes
+
+- `AffectStore` keeps PAD emotion, trust, relationships, topics, and drives in Postgres; the state
+  row is read/written under one transaction with `FOR UPDATE` on Postgres.
+- `StyleStore` aggregates rhythm/diction statistics from the archive; raw message content is not
+  stored there.
+- `SkillStore` keeps procedures (`skills`, `skill_files`, `skill_usage`). The model loads an index
+  and full bodies via the `skill` tool.
+- `RecipeStore` keeps user commands (`/nama`) as YAML bodies; `recipe` steps run tools with
+  `{{args}}`, `prompt` steps are one LLM turn.
+- `VibeRunner` keeps room mood per chat in the `state` table.
+
+## Approvals and safety
+
+Default `approval.mode: yolo` lets ordinary tools run. These need `/approve`:
+
+- every tool in `approval.sensitive_tools` (default `shell`, `sandbox`, globs allowed),
+- every internal change through the `settings` tool when `approval.settings: true`,
+- in `strict` mode, every tool except read-only observation (`read`, `memory`, `skill`,
+  `chat_history`, `web_search`).
+
+Flow: the model receives `pending approval #ID`, tells the sender, and stops. `/pending` lists,
+`/approve ID` executes with the original role and re-checks permissions, `/deny ID` cancels. Pending
+items are bound to `chat_id` + sender, expire after `ttl_seconds` (default 900), and `/approve` never
+calls the LLM or changes emotion. An approved `shell` is host access by design; `settings` is the
+validated path for config changes.
+
+## Status, settings, audit
+
+`/status` reports mode, lease holder, uptime, surface, model, database, chat/roles, archive size,
+memory status, legacy pending, approvals, skills, people/actions, soul/persona mirror, engine
+document, and the last config change. `/whoami` reports roles, chat, surface, and self handles.
+
+The `settings` tool (role-granted) reads and changes Sanka itself: `engine`, `host`, `gateway`,
+`soul`, `persona`, `role`. `set`/`unset`/`write` validate the candidate through the real loader,
+write the DB document, export the mirror atomically, back up the file, record `config_changes`, and
+hot-reload. Restart-only keys return `ok: disimpan; restart required ...` instead of reloading.
+Secret-looking keys (`api_key`, `password`, `secret`, `token`) are rejected except `api_key_env`;
+paths stay inside the known files.
+
+Audit examples:
+
+```sql
+select count(*) from sanka_memories;                    -- Mem0 pgvector collection
+select scope, kind, count(*) from memory_legacy group by 1,2;
+select count(*) from messages;
+select * from engine_lease;
+select id, kind, status, summary from approvals order by id desc limit 5;
+select * from config_changes order by id desc limit 5;
+```
+
+## Migration from SQLite
+
+```bash
+# 1. Stop the bot.
+# 2. Split the old config
+python -m sanka config migrate --dir .
+# 3. Point SANKA_DATABASE_URL at Postgres, then
+python -m sanka db upgrade
+# 4. Import the old .sanka data (history, affect, style, skills, recipes, legacy memory)
+python -m sanka db import --sqlite .sanka
+# 5. Move staged memories into Mem0
+python -m sanka memory migrate
+# 6. Copy host-local files: whatsapp.db, workspace attachments, .env
+# 7. Verify and start
+python -m sanka db check
+python -m sanka run
+```
+
+`db import` refuses while a fresh lease exists (`--force` overrides). `db backup --out file.dump`
+uses `pg_dump --format=custom`; `db restore file.dump --yes` uses `pg_restore --clean --if-exists`.
+Back up the host-local session DB and workspace separately.
+
+## Development and tests
+
+```bash
+pytest -q
+python -m sanka selftest          # temporary SQLite DB for stores; real LLM if the key exists
+python -m sanka console --takeover
+```
+
+Tests use SQLite file URLs and fake gateways/LLMs; runtime uses Postgres. `sanka selftest` never
+touches the production database. If Mem0/pgvector is unavailable, its memory check is `SKIP`, not
+`FAIL`.
+
+## Security
+
+- Secrets only in `.env` (referred by name from YAML). `config.yaml`, `gateway.yaml`, `engine.yaml`,
+  `soul.yaml`, `roles/`, `.env`, and `.sanka/` are ignored by git.
+- Session DB and `.env` are `0600`. `sanka db backup` writes `0600`.
+- The database password is redacted from logs, `/status`, and audit rows.
+- `settings` never touches `.env` and rejects sensitive key paths.
+- Role files may contain phone numbers; keep the mirrors private.
+
+## Design principles
+
+1. Identity persists beyond a session: windows are per chat, memory is per person/agent/chat.
+2. A gateway is an appendage, never the brain; sensors and actuators can be added the same way.
+3. Memory has layers: Mem0 for semantic facts, `ActionLedger` for autobiography, affect/style for
+   how Sanka feels and talks, skills/recipes for procedures.
+4. Safety is deterministic and auditable (`SafetyPolicy` + `approvals`), not a prompt suggestion.
+5. Real-time motor control is out of scope for this iteration; the seams (`Gateway`,
+   `WorkingMemory`, `SafetyPolicy`, nullable `where`/`sensor_context` metadata) are in place.
+
+## Bahasa Indonesia
+
+Sanka adalah mesin jiwa persisten: satu identitas, satu database, banyak surface chat. Core ada di
+`sanka/engine/`; gateway hanya membawa pesan masuk/keluar. WhatsApp satu gateway, CLI gateway lain.
+
+Quickstart:
+
+```bash
+cp compose.example.yaml compose.yaml      # isi password
+python -m sanka init --dir .              # config.yaml, gateway.yaml, engine.yaml, soul.yaml, roles/, SOUL.md
+# isi .env: OPENCODE_GO_API_KEY dan SANKA_DATABASE_URL
+python -m sanka db upgrade
+python -m sanka run                       # primary
+python -m sanka console --takeover        # console lokal, mengambil lease
+```
+
+| Berkas / dokumen | Isi |
+|---|---|
+| `config.yaml` | host: database, workspace, sandbox, web_search, mcp |
+| `gateway.yaml` | whatsapp (session_db, backlog_seconds), cli (role, chat_id) |
+| `engine.yaml` / dokumen `engine` | llm, default_role, memory, approval, prompt, affect, ambient |
+| `soul.yaml` / dokumen `soul` | nama, bahasa, pronomina |
+| `SOUL.md` / dokumen `persona` | persona |
+| `roles/*.yaml` / dokumen `role:<nama>` | izin eksplisit per role |
+
+Setelah mengedit berkas secara manual, jalankan `python -m sanka config import`; runtime membaca
+dokumen DB. Hanya satu instance memegang lease; instance lain standby. `/freeze` atau
+`sanka console --takeover` memindahkan lease. Memori semantik memakai Mem0 dengan scope
+`person`/`chat`/`global`: ingatan tentang seseorang ikut ke chat lain, rahasia grup tetap di grup,
+dan memori privat orang lain tidak pernah di-query. `shell`, `sandbox`, dan perubahan `settings`
+menunggu `/approve` (default `yolo`); `/pending`, `/approve`, `/deny` tersedia sesuai role.
+Verifikasi: `pytest -q` dan `python -m sanka selftest`.

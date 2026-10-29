@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from sanka import decision as decision_module
-from sanka.decision import (
+from sanka.engine import decision as decision_module
+from sanka.engine.decision import (
     Decision,
     build_context,
     decide,
@@ -103,7 +103,7 @@ def test_context_includes_emotion_relationship_and_transcript() -> None:
     assert "Fahri (member): baru, kesal 0.3" in text
     assert "Fahri: halo" in text and "kamu (sanka): hai" in text
     assert "Fahri: kamu culun" in text
-    assert "mention asli ke kamu" in text
+    assert "real mention of you" in text
 
 
 def test_context_marks_who_and_other_chat_in_emotion_log() -> None:
@@ -131,7 +131,7 @@ def test_context_marks_who_and_other_chat_in_emotion_log() -> None:
     )
 
     assert "hostility [Fahri]: dihina (sakit)" in text
-    assert "warmth [Anda, chat lain]: halo" in text
+    assert "warmth [Anda, other chat]: halo" in text
 
 
 def test_decision_uses_one_llm_call_with_full_context() -> None:

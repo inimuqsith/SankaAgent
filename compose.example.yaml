@@ -1,0 +1,39 @@
+# Contoh deployment: Postgres+pgvector sebagai satu database jiwa, bot sebagai primary.
+# Salin menjadi compose.yaml lalu isi password; jangan commit kredensial.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sanka
+      POSTGRES_USER: sanka
+      POSTGRES_PASSWORD: CHANGE_ME
+    volumes:
+      - sanka-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sanka -d sanka"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  sanka:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      SANKA_DATABASE_URL: postgresql+psycopg://sanka:CHANGE_ME@postgres:5432/sanka
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./gateway.yaml:/app/gateway.yaml
+      - ./engine.yaml:/app/engine.yaml
+      - ./soul.yaml:/app/soul.yaml
+      - ./roles:/app/roles
+      - ./SOUL.md:/app/SOUL.md
+      - ./.sanka:/app/.sanka
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  sanka-pg:

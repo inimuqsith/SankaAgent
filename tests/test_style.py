@@ -4,13 +4,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sanka.config import StyleConfig
-from sanka.format import human_chunks, humanize_reply
-from sanka.style import StyleStore
+from sqlalchemy import select
+
+from sanka.engine.config import StyleConfig
+from sanka.engine.reply import FENCE, clean_prose, human_chunks
+
+
+def humanize_reply(text: str, *, max_parts: int) -> list[str]:
+    pieces = [
+        piece if piece.startswith("```") else clean_prose(piece)
+        for piece in FENCE.split(str(text or ""))
+    ]
+    return human_chunks("".join(pieces), max_parts=max_parts)
+from sanka.engine.schema import state
+from sanka.engine.stores.style import StyleStore
+from support import database
 
 
 def make_store(tmp_path: Path) -> StyleStore:
-    return StyleStore(tmp_path / "style.json", StyleConfig(enabled=True))
+    return StyleStore(database(tmp_path), StyleConfig(enabled=True))
 
 
 def test_seed_profile_mentions_short_style(tmp_path) -> None:
@@ -39,13 +51,17 @@ def test_learn_ignores_commands_and_media(tmp_path) -> None:
 
 
 def test_learn_persists_aggregates_only(tmp_path) -> None:
-    store = make_store(tmp_path)
+    db = database(tmp_path)
+    store = StyleStore(db, StyleConfig(enabled=True))
     store.learn("wkwk aja sih", chat_id="c@g.us")
     store.close()
 
-    reloaded = make_store(tmp_path)
+    stored = db.scalar(select(state.c.value).where(state.c.key == "style"))
+    assert stored is not None
+    assert "wkwk aja sih" not in stored
+    reloaded = StyleStore(database(tmp_path), StyleConfig(enabled=True))
     assert reloaded.stats()["global"] == 1
-    assert "wkwk aja sih" not in reloaded.path.read_text(encoding="utf-8")
+    assert reloaded.stats()["chats"] == {"c@g.us": 1}
     reloaded.close()
 
 

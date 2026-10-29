@@ -6,30 +6,18 @@ import asyncio
 import time
 from pathlib import Path
 
-from sanka.config import (
-    Config,
-    LLMConfig,
-    RoleConfig,
-    SandboxConfig,
-    VibeConfig,
-    WhatsAppConfig,
-)
-from sanka.decision import build_context
-from sanka.vibe import VibeRunner, VibeState, advance
-from sanka.wa import system_prompt
+import pytest
+
+from sanka.engine.config import Config, VibeConfig
+from sanka.engine.decision import build_context
+from sanka.engine.stores.vibe import VibeRunner, VibeState, advance
+from sanka.engine.prompts import system_prompt
+from sanka.engine.roles import Role
+from support import build_config, database, role
 
 
 def make_config() -> Config:
-    return Config(
-        persona="p",
-        llm=LLMConfig(base_url="http://x", model="m", api_key_env="K"),
-        workspace=Path("/tmp"),
-        whatsapp=WhatsAppConfig(session_db=Path("/tmp/sanka-vibe.db")),
-        roles={"member": RoleConfig("member")},
-        default_role="member",
-        sandbox=SandboxConfig(),
-        mcp={},
-    )
+    return build_config(Path("/tmp"), roles={"member": role("member")})
 
 
 def test_vad_mapping_is_negative_for_anger() -> None:
@@ -45,11 +33,11 @@ def test_vad_neutral_floor_returns_none() -> None:
 
 def test_attack_and_baseline_move_gradually(tmp_path) -> None:
     runner = VibeRunner(
+        database(tmp_path),
         VibeConfig(
             attack=0.5,
             baseline_influence=0.1,
             hold_seconds=0,
-            state_path=tmp_path / "vibe.json",
         ),
         classifier=lambda _text: {"joy": 0.9, "trust": 0.1},
     )
@@ -63,7 +51,7 @@ def test_attack_and_baseline_move_gradually(tmp_path) -> None:
 
 
 def test_describe_uses_words(tmp_path) -> None:
-    runner = VibeRunner(VibeConfig(state_path=tmp_path / "vibe.json"))
+    runner = VibeRunner(database(tmp_path), VibeConfig())
     state = VibeState(current=[0.2, 0.8, 0.7], baseline=[0.2, 0.8, 0.7])
 
     text = runner._describe(state)
@@ -73,7 +61,7 @@ def test_describe_uses_words(tmp_path) -> None:
 
 
 def test_describe_follows_current_not_slow_baseline(tmp_path) -> None:
-    runner = VibeRunner(VibeConfig(state_path=tmp_path / "vibe.json"))
+    runner = VibeRunner(database(tmp_path), VibeConfig())
     state = VibeState(current=[0.1, 0.9, 0.2], baseline=[0.5, 0.4, 0.5])
 
     # baseline masih netral, tapi pesan barusan harus terbaca di blok prompt.
@@ -98,19 +86,46 @@ def test_advance_pulls_current_to_baseline() -> None:
 def test_vibe_block_in_prompts() -> None:
     block = "Vibe ruangan: netral, tenang, seimbang."
 
-    assert block in system_prompt(make_config(), "member", {"628"}, vibe=block)
+    assert block in system_prompt(make_config(), (Role("member"),), vibe=block)
     assert "Vibe ruangan" in build_context(vibe=block)
 
 
 def test_observe_is_silent_when_not_running(tmp_path) -> None:
-    runner = VibeRunner(VibeConfig(state_path=tmp_path / "vibe.json"), classifier=lambda _t: {})
+    runner = VibeRunner(database(tmp_path), VibeConfig(), classifier=lambda _t: {})
 
     assert asyncio.run(runner.observe("chat", "halo")) == ""
 
 
 def test_start_reports_availability(tmp_path) -> None:
     ready = VibeRunner(
-        VibeConfig(state_path=tmp_path / "vibe.json"), classifier=lambda _t: {"joy": 1.0}
+        database(tmp_path), VibeConfig(), classifier=lambda _t: {"joy": 1.0}
     )
     assert asyncio.run(ready.start()) is True  # classifier disuntik: tanpa torch
     asyncio.run(ready.close())
+
+
+def test_start_keeps_loaded_model(tmp_path) -> None:
+    runner = VibeRunner(database(tmp_path), VibeConfig())
+    sentinel = object()
+    runner._model = sentinel
+
+    assert asyncio.run(runner.start()) is True
+    assert runner._model is sentinel  # model yang sudah ada tidak dimuat ulang
+    asyncio.run(runner.close())
+
+
+def test_state_persists_to_database(tmp_path) -> None:
+    db = database(tmp_path)
+    runner = VibeRunner(
+        db,
+        VibeConfig(attack=0.5, baseline_influence=0.1, hold_seconds=0),
+        classifier=lambda _text: {"joy": 0.9, "trust": 0.1},
+    )
+    runner._running = True
+    asyncio.run(runner.observe("chat", "senang"))
+    expected = list(runner._state("chat").current)
+    asyncio.run(runner.close())
+
+    reloaded = VibeRunner(db, VibeConfig())
+
+    assert reloaded._state("chat").current == pytest.approx(expected)
