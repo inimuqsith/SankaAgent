@@ -1,11 +1,14 @@
-"""`sanka init`: scaffold config/gateway/engine/soul/roles/SOUL.md tanpa menimpa diam-diam."""
+"""`sanka init`: scaffold config.yaml, roles.yaml, SOUL.md, and .env without overwriting."""
 
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 
 from . import templates
+
+PRIVATE_FILES = (".env", "roles.yaml")
 
 
 def _write(path: Path, content: str, *, force: bool, mode: int | None = None) -> bool:
@@ -14,13 +17,13 @@ def _write(path: Path, content: str, *, force: bool, mode: int | None = None) ->
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     if mode is not None:
-        with __import__("contextlib").suppress(OSError):
+        with contextlib.suppress(OSError):
             path.chmod(mode)
     return True
 
 
 def init(folder: str | Path, *, force: bool = False) -> tuple[list[Path], list[Path]]:
-    """Tulis scaffold; kembalikan (ditulis, dilewati)."""
+    """Write the scaffold; return (written, skipped)."""
     base = Path(folder).expanduser().resolve()
     base.mkdir(parents=True, exist_ok=True)
     (base / ".sanka" / "workspace").mkdir(parents=True, exist_ok=True)
@@ -28,7 +31,7 @@ def init(folder: str | Path, *, force: bool = False) -> tuple[list[Path], list[P
     skipped: list[Path] = []
     for name, content in templates.files().items():
         path = base / name
-        mode = 0o600 if name == ".env" else None
+        mode = 0o600 if name in PRIVATE_FILES else None
         if _write(path, content, force=force, mode=mode):
             written.append(path)
         else:
@@ -39,13 +42,13 @@ def init(folder: str | Path, *, force: bool = False) -> tuple[list[Path], list[P
 def report(base: str | Path, written: list[Path], skipped: list[Path]) -> str:
     lines = [f"Sanka scaffold: {Path(base).expanduser().resolve()}"]
     for path in written:
-        lines.append(f"  tulis  {path}")
+        lines.append(f"  wrote  {path}")
     for path in skipped:
-        lines.append(f"  lewati {path} (sudah ada; --force untuk menimpa)")
+        lines.append(f"  kept   {path} (already exists; --force to overwrite)")
     lines.extend(
         [
-            "Langkah berikut:",
-            "  1. isi .env (OPENCODE_GO_API_KEY, SANKA_DATABASE_URL)",
+            "Next steps:",
+            "  1. fill .env (OPENCODE_GO_API_KEY, SANKA_DATABASE_URL)",
             "  2. sanka db upgrade",
             "  3. sanka run",
         ]

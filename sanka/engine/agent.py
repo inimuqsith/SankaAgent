@@ -34,8 +34,9 @@ from .decision import (
 )
 from .inbound import Gateway, GatewayError, Inbound
 from .llm import LLM
-from .memory import MemoryBackend, memory_status
+from .memory import MemoryBackend, MemoryContext, memory_status
 from .permissions import command_allowed, command_patterns, commands_for, tool_patterns, tools_for
+from .privacy import PrivacyService
 from .prompts import CRISIS_SAFETY, away_block, system_prompt
 from .registry import Handler, Registry
 from .reply import human_chunks, split_text, typing_delay
@@ -144,6 +145,7 @@ class Agent:
         self.runtime.db_label = getattr(db, "label", "")
         self.runtime.gateways = tuple(gateway.name for gateway in self.gateways)
         self.runtime.memory_status = memory_status(memory)
+        self.privacy = PrivacyService(self)
 
     # ------------------------------------------------------------- util
 
@@ -171,6 +173,8 @@ class Agent:
         approved: bool = False,
         approval_id: str = "",
         request: str = "",
+        person_id: str = "",
+        is_dm: bool = False,
     ) -> ToolContext:
         return ToolContext(
             self.config,
@@ -189,6 +193,8 @@ class Agent:
             gateway=gateway,
             approved=approved,
             approval_id=approval_id,
+            person_id=person_id,
+            is_dm=is_dm,
         )
 
     def command_context(
@@ -352,6 +358,10 @@ class Agent:
         handle_set = gateway.self_handles()
         body = command_body(text, self.soul.name, handle_set)
         is_command = body.startswith("/")
+        if not is_command and await self.privacy.handle_pending(
+            inbound, gateway, self._sender(inbound)
+        ):
+            return
         if not is_command and not crisis and self.quiet.get(chat_id, 0.0) > time.time():
             log.info("quiet chat=%s: pesan dicatat tanpa dibalas", chat_id)
             return
@@ -515,6 +525,7 @@ class Agent:
                 reply: str | None = None
                 can_memory = False
                 memory_block = style_block = topic_block = person_style = ""
+                memory_ctx = MemoryContext()
                 if is_command:
                     reply = await self._command(
                         name,
@@ -533,7 +544,7 @@ class Agent:
                     if turn is not None:
                         mood = ((float(turn["pleasure"]) + 1.0) / 2.0, float(turn["arousal"]))
                     try:
-                        memory_block = await self.memory.context(
+                        memory_ctx = await self.memory.context(
                             person_id=inbound.person_id,
                             chat_id=chat_id,
                             query=message.text,
@@ -541,6 +552,7 @@ class Agent:
                             max_items=self.config.memory.max_items,
                             max_chars=self.config.memory.max_chars,
                         )
+                        memory_block = memory_ctx.text
                     except Exception:
                         log.exception("gagal membaca memori chat=%s", chat_id)
                     actions_block = ""
@@ -591,6 +603,8 @@ class Agent:
                         roles,
                         gateway,
                         request=message.text,
+                        person_id=inbound.person_id,
+                        is_dm=inbound.is_dm,
                     )
                     bonuses: dict[str, float] = {}
                     if self.affect is not None:
@@ -657,6 +671,15 @@ class Agent:
                         session=f"sanka-{chat_id}",
                     )
                     reply = answer if answer.strip() or not tool_ctx.sent else "Sudah kukirim."
+                    review = await self.privacy.review(
+                        inbound,
+                        reply,
+                        [*memory_ctx.hits, *tool_ctx.memory_hits],
+                        gateway,
+                    )
+                    if review.handled:
+                        return
+                    reply = review.reply
 
                 professional = bool(decision is not None and decision.mode == "professional")
                 humanize = self.config.humanize
@@ -707,18 +730,7 @@ class Agent:
                     and not guard.is_injection(message.text)
                 )
                 if capture:
-                    self.spawn(
-                        self.memory.capture(
-                            [
-                                {"role": "user", "content": message.text},
-                                {"role": "assistant", "content": reply or ""},
-                            ],
-                            person_id=inbound.person_id,
-                            chat_id=chat_id,
-                            audience="private" if inbound.is_dm else "group",
-                            source="turn",
-                        )
-                    )
+                    self.spawn(self.privacy.capture_turn(inbound, reply or "", gateway))
             finally:
                 typing.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -837,6 +849,7 @@ class Agent:
             configure(loaded.memory)
         self.approvals.configure(loaded.approval)
         self.safety = build_safety(loaded.approval)
+        self.privacy.configure(loaded.memory.privacy)
         if self.ambient is not None:
             self.ambient.config = loaded
             self.ambient.settings = loaded.ambient

@@ -40,8 +40,8 @@ def test_set_soul_language_updates_runtime_and_mirror(tmp_path, monkeypatch) -> 
 
     assert result.startswith("ok:")
     assert env.agent.soul.language == "en"
-    mirror = yaml.safe_load(env.paths.soul.read_text(encoding="utf-8"))
-    assert mirror["language"] == "en"
+    mirror = yaml.safe_load(env.paths.config.read_text(encoding="utf-8"))
+    assert mirror["soul"]["language"] == "en"
     assert env.agent.soul.language == "en"
 
 
@@ -75,13 +75,14 @@ def test_write_role_changes_permissions(tmp_path, monkeypatch) -> None:
 
     assert result.startswith("ok:")
     assert env.agent.config.roles.default_role().tools == ("read",)
-    assert (env.paths.roles / "member.yaml").read_text(encoding="utf-8") == content
+    mirror = yaml.safe_load(env.paths.roles.read_text(encoding="utf-8"))
+    assert mirror["roles"]["member"] == yaml.safe_load(content)
 
 
 def test_sensitive_key_rejected(tmp_path, monkeypatch) -> None:
     env = make_runtime(tmp_path, monkeypatch, settings_approval=False)
     result = run(env, "set", file="engine", path="llm.api_key", value="secret")
-    assert "sensitif" in result
+    assert "sensitive" in result
 
 
 def test_settings_change_waits_for_approval(tmp_path, monkeypatch) -> None:
@@ -112,6 +113,26 @@ def test_restart_only_key_reports_restart(tmp_path, monkeypatch) -> None:
     assert "restart required" in result
     assert env.agent.config.workspace == before
     assert "workspace" in result
+
+
+def test_gateway_edit_updates_gateways_mapping(tmp_path, monkeypatch) -> None:
+    env = make_runtime(tmp_path, monkeypatch, settings_approval=False)
+
+    result = run(env, "set", file="gateway", path="cli.chat_name", value="Terminal 2")
+
+    assert result.startswith("ok:")
+    raw = yaml.safe_load(env.paths.config.read_text(encoding="utf-8"))
+    assert raw["gateways"]["cli"]["chat_name"] == "Terminal 2"
+    assert "engine" in raw and "soul" in raw
+
+
+def test_host_rejects_reserved_sections(tmp_path, monkeypatch) -> None:
+    env = make_runtime(tmp_path, monkeypatch, settings_approval=False)
+
+    result = run(env, "set", file="host", path="engine.llm.model", value="x")
+
+    assert "use file=engine" in result
+    assert not env.paths.config.read_text(encoding="utf-8").count("model: x")
 
 
 def test_registry_has_settings_tool(tmp_path, monkeypatch) -> None:

@@ -67,11 +67,12 @@ def test_context_renders_scopes_and_dates(tmp_path) -> None:
         memory.context(person_id="628111", chat_id=GROUP_B, query="kopi", max_items=10, max_chars=2000)
     )
 
-    assert block.startswith("Long-term memory (cross-chat):")
-    assert "owner suka kopi tanpa gula" in block
-    assert "[person/" in block and "[global/" in block
-    assert "orang lain suka teh" not in block
-    assert "tiket konser" not in block
+    assert block.text.startswith("Long-term memory (cross-chat):")
+    assert "owner suka kopi tanpa gula" in block.text
+    assert "[person/" in block.text and "[global/" in block.text
+    assert "L2" in block.text
+    assert "orang lain suka teh" not in block.text
+    assert "tiket konser" not in block.text
 
 
 def test_context_respects_char_budget(tmp_path) -> None:
@@ -81,7 +82,7 @@ def test_context_respects_char_budget(tmp_path) -> None:
     block = asyncio.run(
         memory.context(person_id="628111", chat_id=GROUP_B, query="x", max_items=10, max_chars=60)
     )
-    assert block == ""
+    assert block.text == ""
 
 
 def test_group_captured_person_memory_stays_in_that_group(tmp_path) -> None:

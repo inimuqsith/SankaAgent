@@ -105,6 +105,10 @@ async def migrate_async(
                         audience=audience,
                         source=str(row["source"] or "legacy"),
                         infer=False,
+                        level=2,
+                        owner_id=person,
+                        subject_id=person,
+                        confirmed=True,
                     )
                 except Exception as exc:  # satu baris gagal tidak menghentikan batch
                     failed.append(f"#{row['id']}: {type(exc).__name__}: {exc}")

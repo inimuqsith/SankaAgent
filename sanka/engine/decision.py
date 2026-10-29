@@ -319,7 +319,7 @@ async def decide(
     away: str = "",
     vibe: str = "",
     soul: str = "",
-    language: str = "auto",
+    language: str = "id",
 ) -> Decision | None:
     """Satu keputusan LLM; kosong setelah satu retry = None (tanpa fallback regex)."""
     from .soul import Soul, language_line

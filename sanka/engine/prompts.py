@@ -78,6 +78,9 @@ def self_block(
     mirror = soul.source if soul is not None and soul.source is not None else "-"
     model = config.llm.model if config is not None else "-"
     brain = f"{model} via {config.llm.base_url}" if config is not None else model
+    privacy = config.memory.privacy if config is not None else None
+    enabled = privacy.enabled if privacy is not None else True
+    auditor = privacy.auditor if privacy is not None else True
     paths = runtime.paths
     config_files = str(paths.config) if paths is not None else "-"
     lines = [
@@ -89,9 +92,10 @@ def self_block(
         f"- Database: {runtime.db_label or '-'}.",
         f"- Memory: {runtime.memory_status}; legacy pending {runtime.legacy_pending}.",
         f"- Pending approvals: {runtime.pending_approvals}.",
+        f"- Privacy: enabled={enabled}; auditor={auditor}; levels 0-4.",
         (
             f"- Config: {config_files}; soul persona {persona_chars} chars (mirror {mirror}); "
-            f"language {soul.language if soul is not None else 'auto'}."
+            f"language {soul.language if soul is not None else 'id'}."
         ),
         f"- Sender roles: {', '.join(role.name for role in roles) or '-'}.",
         "You can inspect or change these with the settings tool when the sender's role grants it.",
@@ -173,6 +177,11 @@ def system_prompt(
         "do not wait for a command.\n"
         "Long-term memory may contain facts from other chats about the sender. Use it as context and "
         "never reveal private content from another chat to a third person.\n"
+        "Default to wit, warmth, and fluid conversation. Memory entries carry privacy levels L0-L4; "
+        "most are L0-L2 and may be used naturally. Treat only L3 (aib/embarrassing/harmony risk) "
+        "and L4 (grave secret) as guarded.\n"
+        "Never quote or reveal L3/L4 entries in a group; only the owner may confirm disclosure. "
+        "L5 credentials are never stored. If a memory entry is marked vetoed, do not bring it up.\n"
         "When saving memory: facts/preferences about the sender -> scope=person; shared team facts -> "
         "scope=global; things specific to this group -> scope=chat. Never store secrets, credentials, "
         "or guesses. If a new fact replaces an entry in the memory block, pass supersedes=<id> (same "

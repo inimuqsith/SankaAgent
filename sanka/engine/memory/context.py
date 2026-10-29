@@ -1,10 +1,12 @@
-"""Query memori lintas chat: global + person pengirim + chat aktif, lalu render blok prompt."""
+"""Cross-chat memory query: global + sender person + active chat, then render the prompt block."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
+
+from . import MemoryContext
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ async def gather(
     limit: int,
     scopes: tuple[str, ...] = SCOPES,
 ) -> list:
-    """Ambil tiga scope paralel; memori orang lain tidak pernah diminta."""
+    """Fetch three scopes in parallel; another person's memory is never requested."""
     calls = []
     for scope in scopes:
         if scope == "person" and not person_id:
@@ -66,7 +68,7 @@ async def gather(
     hits: list = []
     for result in results:
         if isinstance(result, BaseException):
-            log.debug("scope memori gagal: %s", result)
+            log.debug("memory scope failed: %s", result)
             continue
         hits.extend(result)
     hits = _dedupe(hits)
@@ -92,10 +94,12 @@ def render(hits: list, *, max_items: int, max_chars: int) -> str:
         scope = str(getattr(hit, "scope", "") or "person")
         stamp = _date(getattr(hit, "created_at", None))
         label = f"{scope}/{stamp}" if stamp else scope
+        level = int(getattr(hit, "level", 2) or 0)
+        mark = "" if getattr(hit, "confirmed", True) else "?"
         text = " ".join(str(getattr(hit, "text", "") or "").split())
         if not text:
             continue
-        line = f"- [{label}] {text}"
+        line = f"- [{label} L{level}{mark}] {text}"
         if used + len(line) + 1 > max_chars:
             break
         lines.append(line)
@@ -112,13 +116,18 @@ async def build(
     max_items: int = 12,
     max_chars: int = 3000,
     scopes: tuple[str, ...] = SCOPES,
-) -> str:
-    hits = await gather(
-        backend,
-        query=query,
-        person_id=person_id,
-        chat_id=chat_id,
-        limit=max(1, int(max_items)),
-        scopes=scopes,
-    )
-    return render(hits, max_items=max_items, max_chars=max_chars)
+) -> MemoryContext:
+    hits = [
+        hit
+        for hit in await gather(
+            backend,
+            query=query,
+            person_id=person_id,
+            chat_id=chat_id,
+            limit=max(1, int(max_items)),
+            scopes=scopes,
+        )
+        if not getattr(hit, "vetoed", False)
+    ]
+    text = render(hits, max_items=max_items, max_chars=max_chars)
+    return MemoryContext(text=text, hits=tuple(hit for hit in hits if getattr(hit, "text", "")))

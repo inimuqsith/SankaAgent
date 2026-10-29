@@ -1,22 +1,25 @@
 # AGENTS
 
-Aturan keras untuk perubahan di repo ini:
+Hard rules for changes in this repo:
 
-- Python saja. Tanpa gateway HTTP, tanpa Node/Baileys, tanpa bridge, tanpa server tambahan.
-- Lima file docs itu saja: `TASK.md`, `README.md`, `LOG.md`, `AGENTS.md`, `SOUL.md`. Jangan bikin file `.md` baru.
-- Core ada di `sanka/engine/` dan tidak boleh mengimpor `sanka.gateways` atau `neonize`. Root `sanka/` hanya berisi `__main__.py`, `admin/`, `gateways/`, `vendor/`.
-- Gateway adalah appendage: transport hanya lewat kontrak di `sanka/engine/inbound.py` (`Inbound`, `Gateway`, `GatewayError`). Tool/command milik gateway tinggal di `sanka/gateways/<name>/tools|commands`, bukan di core.
-- Tool tetap enam keluarga (`shell`, `read`, `write`, `web_search`, `sandbox`, `mcp`). Tool baru = modul di `sanka/engine/tools/` dengan `TOOL = Handler(...)` dan keluarga dari `FAMILIES`; nama file harus sama dengan `name`; jangan edit registry.
-- Command baru = modul di `sanka/engine/commands/` dengan `COMMAND = Handler(...)`; jangan edit dispatcher.
-- Permission hanya dari `roles` (dokumen `role:<name>` / mirror `roles/<name>.yaml`). Tidak ada default izin di handler. `tools`/`commands` yang tidak ditulis = tolak semua. Cek izin tool hanya di `sanka/engine/tools/__init__.py:execute`.
-- Dokumen `engine`, `soul`, `persona`, `role:<name>` adalah sumber kebenaran di database; file `engine.yaml`/`soul.yaml`/`SOUL.md`/`roles/` hanya seed + mirror. Edit manual → `sanka config import`. Loader tidak boleh membuat direktori.
-- `config.yaml` hanya host-local (database/workspace/sandbox/web_search/mcp/gateway_file/engine_file/roles_dir). `gateway.yaml` host-local. Rahasia hanya di `.env` (nama env dirujuk dari YAML); `config.yaml`, `gateway.yaml`, `engine.yaml`, `soul.yaml`, `roles/`, `.env`, `.sanka/` tidak di-commit.
-- Storage: SQLAlchemy Core + `psycopg` ke Postgres; satu `Database` (`sanka/engine/db.py`) dan satu `MetaData` (`sanka/engine/schema.py`). Jangan pakai `sqlite3`, `PRAGMA`, FTS5, atau file state di store. SQLite hanya URL test.
-- Memori semantik hanya lewat Mem0 (`sanka/engine/memory/mem0.py`, `mem0ai`). Jangan hidupkan kembali `MemoryStore`/refleksi custom. Ledger aksi tetap `ActionLedger`; transcript tetap per chat.
-- Identitas lintas chat: query hanya `global` + `person:<pengirim>` + `chat:<chat ini>`; memori privat orang lain tidak pernah di-query dan tidak boleh bocor ke chat lain.
-- Aksi sensitif (`shell`, `sandbox`) dan perubahan internal (`settings`) wajib lewat `SafetyPolicy`/`approvals` dan `/approve`. Mode default `yolo`; `off` mematikan approval (dokumentasikan risikonya). `/approve` tidak memanggil LLM dan mengecek ulang izin role.
-- Satu primary: `engine_lease`. Instance tanpa lease standby dan beku; `/freeze` dan takeover hanya lewat lease/DB, bukan dua jantung.
-- Prompt scaffolding internal berbahasa Inggris; persona `SOUL.md` tidak diterjemahkan. Bahasa balasan mengikuti `soul.language`.
-- Code wajib seminimal mungkin tapi tetap solid. Jangan tambah abstraksi tanpa kebutuhan.
-- Suite test kecil dan fokus pada kontrak repo: routing/format/permission, gateway contract, lease, approval, memori lintas chat, dan jalur balasan Neonize. Jangan uji ulang perilaku library.
-- Verifikasi sebelum selesai: `pytest -q` dan `python -m sanka selftest`. Untuk perubahan gateway/lease, jalankan juga smoke `sanka console --takeover`.
+- Python only. No HTTP gateway, no Node/Baileys, no bridge, no extra server.
+- Five docs only: `TASK.md`, `README.md`, `LOG.md`, `AGENTS.md`, `SOUL.md`. Do not create new `.md` files.
+- Core lives in `sanka/engine/` and must not import `sanka.gateways` or `neonize`. Root `sanka/` only holds `__main__.py`, `admin/`, `gateways/`, `vendor/`.
+- A gateway is an appendage: transport only through the contract in `sanka/engine/inbound.py` (`Inbound`, `Gateway`, `GatewayError`). Gateway-owned tools/commands live in `sanka/gateways/<name>/tools|commands`, never in core.
+- Six tool families only (`shell`, `read`, `write`, `web_search`, `sandbox`, `mcp`). A new tool is a module in `sanka/engine/tools/` with `TOOL = Handler(...)` and a family from `FAMILIES`; the filename must match `name`; never edit the registry.
+- A new command is a module in `sanka/engine/commands/` with `COMMAND = Handler(...)`; never edit the dispatcher.
+- Permissions come only from roles (`role:<name>` documents / the `roles.yaml` mirror). No handler has default permissions. A missing `tools`/`commands` entry denies everything. Tool permission is checked only at `sanka/engine/tools/__init__.py:execute`.
+- Documents `engine`, `soul`, `persona`, and `role:<name>` are the source of truth in the database; `config.yaml` (engine/soul sections), `SOUL.md`, and `roles.yaml` are seeds plus mirrors. Manual edit → `sanka config import`. The loader must never create directories.
+- Config layout: one host-local `config.yaml` holds host keys (`database`, `workspace`, `roles_file`, `sandbox`, `web_search`, `mcp`, `sync_documents`) plus `engine`, `gateways`, and `soul`. One `roles.yaml` holds every role. `SOUL.md` holds the persona; there are no separate `engine.yaml`/`gateway.yaml`/`soul.yaml` or `roles/` files. Secrets only in `.env` (env names referenced from YAML); `config.yaml`, `roles.yaml`, `.env`, and `.sanka/` are never committed.
+- Storage: SQLAlchemy Core + `psycopg` to Postgres; one `Database` (`sanka/engine/db.py`) and one `MetaData` (`sanka/engine/schema.py`). No `sqlite3`, `PRAGMA`, FTS5, or state files in stores. SQLite is only a test URL.
+- Semantic memory only through Mem0 (`sanka/engine/memory/mem0.py`, `mem0ai`). Never revive `MemoryStore`/custom reflection. The action ledger stays `ActionLedger`; transcripts stay per chat.
+- Cross-chat identity: query only `global` + `person:<sender>` + `chat:<this chat>`; another person's private memory is never queried and must not leak into another chat.
+- Memory carries a numeric privacy level 0-4 (public, team, personal, sensitive/aib, secret). Level 5/credentials are never stored. `owner_id` is the speaker who stated the fact; `subject_id` is who it is about and only that subject may veto it. Level maths, veto precedence, and disclosure verdicts live in `sanka/engine/memory/privacy.py` (deterministic, no LLM). The LLM only labels a provisional level, phrases the confirmation question, and identifies which entries a draft mentions; `sanka/engine/privacy.py` is the only agent-facing hook.
+- Disclosure policy: L0-L2 stay fluid everywhere; L3 in a group and L4 ask for confirmation through `approvals`; vetoed entries are never shown and never disclosed. The auditor pass runs only when a risky entry exists.
+- User-facing replies follow `soul.language`, which is YAML config (`soul.language` in `config.yaml` / the `soul` document), never a Python string catalog. Only `en` and `id` are supported; `/language en|id` (owner-only) writes the setting. `SOUL.md` stays Indonesian and is not translated.
+- Sensitive actions (`shell`, `sandbox`) and internal changes (`settings`) must pass `SafetyPolicy`/`approvals` and `/approve`. Default mode `yolo`; `off` disables approval (document the risk). `/approve` never calls the LLM and re-checks role permissions.
+- One primary: `engine_lease`. An instance without the lease stays standby and frozen; `/freeze` and takeover happen only through the lease/DB, never two hearts.
+- Prompt scaffolding and model-facing payloads are English; the `SOUL.md` persona and role `description`/`context` stay Indonesian.
+- Code must stay minimal but solid. Do not add abstractions without need.
+- The test suite is small and focused on repo contracts: routing/format/permission, gateway contract, lease, approval, cross-chat memory, privacy/disclosure, language selection, and the Neonize reply path. Do not re-test library behavior.
+- Verify before finishing: `pytest -q` and `python -m sanka selftest`. For gateway/lease changes also smoke `sanka console --takeover`.

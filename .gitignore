@@ -1,5 +1,7 @@
 .env
 config.yaml
+roles.yaml
+roles/
 .sanka/
 .venv/
 __pycache__/
@@ -11,13 +13,11 @@ __pycache__/
 logs/
 workspace/
 
-# ekspor chat pribadi untuk analisis lokal (jangan di-commit)
+# local chat exports for analysis (never committed)
 references/
 
-# config host/engine/soul/role (berisi nomor pengguna)
-gateway.yaml
-engine.yaml
-soul.yaml
-roles/
+# host config, roles, and secrets (roles.yaml holds phone numbers)
+roles.yaml
 config.yaml.bak-*
+config.bak-*/
 compose.yaml

@@ -1,4 +1,4 @@
-"""Kontrak role modular: file/dokumen, union multi-role, dan default tertutup."""
+"""Role contract: one roles.yaml mapping, multi-role union, closed defaults, memory_admin."""
 
 from __future__ import annotations
 
@@ -10,26 +10,16 @@ from sanka.engine.roles import Role, RoleError, load_roles
 from sanka.engine.tools import REGISTRY as TOOLS
 
 
-def write(folder, name: str, body: str) -> None:
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / f"{name}.yaml").write_text(body, encoding="utf-8")
-
-
-def test_load_role_files_and_union(tmp_path) -> None:
-    write(
-        tmp_path,
-        "owner",
-        'name: owner\npriority: 100\nusers: ["628111"]\ntools: ["*"]\ncommands: ["*"]\n',
-    )
-    write(
-        tmp_path,
-        "panitia",
-        'name: panitia\npriority: 10\nusers: ["628111"]\ntools: ["read"]\n'
+def test_load_role_mapping_and_union() -> None:
+    source = {
+        "owner": 'name: owner\npriority: 100\nusers: ["628111"]\ntools: ["*"]\n'
+        'commands: ["*"]\n',
+        "panitia": 'name: panitia\npriority: 10\nusers: ["628111"]\ntools: ["read"]\n'
         'commands: ["help"]\ncontext: "Panitia."\n',
-    )
-    write(tmp_path, "guest", "name: guest\n")
+        "guest": "name: guest\n",
+    }
 
-    registry = load_roles(tmp_path, "guest")
+    registry = load_roles(source, "guest")
 
     assert registry.names() == ["guest", "owner", "panitia"]
     roles = registry.for_address("628111@s.whatsapp.net")
@@ -39,25 +29,22 @@ def test_load_role_files_and_union(tmp_path) -> None:
     assert registry.for_address("628999")[0].name == "guest"
 
 
-def test_name_must_match_document(tmp_path) -> None:
-    write(tmp_path, "member", "name: other\ntools: []\n")
-    with pytest.raises(RoleError, match="tidak sama"):
-        load_roles(tmp_path, "member")
+def test_name_must_match_key() -> None:
+    with pytest.raises(RoleError, match="does not match"):
+        load_roles({"member": "name: other\ntools: []\n"}, "member")
 
 
-def test_bad_list_field_rejected(tmp_path) -> None:
-    write(tmp_path, "member", 'name: member\ntools: "read"\n')
+def test_bad_list_field_rejected() -> None:
     with pytest.raises(RoleError, match="tools"):
-        load_roles(tmp_path, "member")
+        load_roles({"member": 'name: member\ntools: "read"\n'}, "member")
 
 
-def test_unknown_default_role_rejected(tmp_path) -> None:
-    write(tmp_path, "member", "name: member\n")
+def test_unknown_default_role_rejected() -> None:
     with pytest.raises(RoleError, match="default_role"):
-        load_roles(tmp_path, "owner")
+        load_roles({"member": "name: member\n"}, "owner")
 
 
-def test_role_documents_mapping(tmp_path) -> None:
+def test_role_documents_mapping() -> None:
     docs = {
         "member": 'name: member\ntools: ["read"]\ncommands: ["help"]\n',
         "guest": "name: guest\n",
@@ -67,6 +54,18 @@ def test_role_documents_mapping(tmp_path) -> None:
     assert registry.override(("member",))[0].name == "member"
     with pytest.raises(RoleError):
         registry.override(("hilang",))
+
+
+def test_memory_admin_parses_true_and_defaults_false() -> None:
+    registry = load_roles(
+        {
+            "owner": "name: owner\nmemory_admin: true\n",
+            "guest": "name: guest\n",
+        },
+        "guest",
+    )
+    assert registry.get("owner").memory_admin is True
+    assert registry.get("guest").memory_admin is False
 
 
 def test_role_without_defaults_denies_tools() -> None:

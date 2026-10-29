@@ -1,12 +1,13 @@
+# Example host config. Copy to config.yaml and fill the secrets through .env.
+# config.yaml holds the host, engine, gateways, and soul metadata; roles live in roles.yaml
+# and the persona in SOUL.md. `sanka init` writes all four files for you.
 database:
   url_env: SANKA_DATABASE_URL
   url: ''
   pool_size: 5
   pool_timeout: 30
 workspace: .sanka/workspace
-gateway_file: gateway.yaml
-engine_file: engine.yaml
-roles_dir: roles
+roles_file: roles.yaml
 sync_documents: true
 sandbox:
   runtime: ''
@@ -20,3 +21,95 @@ web_search:
   timeout_seconds: 10
 mcp:
   servers: {}
+engine:
+  llm:
+    base_url: https://opencode.ai/inference/go/openai/v1
+    model: deepseek-v4.1-flash
+    api_key_env: OPENCODE_GO_API_KEY
+    timeout_seconds: 120
+    temperature: 0.9
+    run_budget_seconds: 240
+  default_role: guest
+  reply:
+    quiet_seconds: 600
+  memory:
+    backend: mem0
+    auto_capture: true
+    capture_min_chars: 8
+    max_items: 12
+    max_chars: 3000
+    collection: sanka_memories
+    extraction_model: ''
+    privacy:
+      enabled: true
+      default_level: 2
+      ask_level: 4
+      group_max_level: 2
+      dm_max_level: 4
+      auditor: true
+    embedder:
+      provider: huggingface
+      model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      dimensions: 384
+    telemetry: false
+  approval:
+    mode: yolo
+    sensitive_tools:
+    - shell
+    - sandbox
+    settings: true
+    ttl_seconds: 900
+  skills:
+    max_index_chars: 3000
+  prompt:
+    salience: true
+    max_chars: 9000
+  humanize:
+    enabled: true
+    cpms: 25.0
+    min_delay: 0.5
+    max_delay: 5.0
+    between_delay: 0.7
+    max_bubbles: 3
+    reaction_stickers: []
+  style:
+    enabled: true
+    max_chars: 800
+  affect:
+    enabled: true
+    volatility: expressive
+    grudge_half_life_hours: 1.5
+    vibe:
+      enabled: true
+      model: Aardiiiiy/EmoSense-ID-Indonesian-Emotion-Classifier
+      max_length: 128
+      attack: 0.35
+      baseline_influence: 0.05
+      hold_seconds: 1.2
+      neutral_floor: 0.35
+      tick_seconds: 1.0
+  ambient:
+    enabled: true
+    tick_seconds: 10
+    digest_every: 12
+    digest_cooldown: 900
+    history_window: 30
+    idle_minutes: 20
+    research_cooldown: 21600
+    research_per_day: 6
+    research_results: 5
+gateways:
+  whatsapp:
+    enabled: false
+    session_db: .sanka/whatsapp.db
+    backlog_seconds: 600
+  cli:
+    enabled: true
+    role: owner
+    user: local
+    chat_id: cli:local
+    chat_name: Terminal
+soul:
+  name: sanka
+  language: id
+  pronouns: aku

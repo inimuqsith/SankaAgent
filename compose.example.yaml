@@ -27,10 +27,7 @@ services:
       SANKA_DATABASE_URL: postgresql+psycopg://sanka:CHANGE_ME@postgres:5432/sanka
     volumes:
       - ./config.yaml:/app/config.yaml
-      - ./gateway.yaml:/app/gateway.yaml
-      - ./engine.yaml:/app/engine.yaml
-      - ./soul.yaml:/app/soul.yaml
-      - ./roles:/app/roles
+      - ./roles.yaml:/app/roles.yaml
       - ./SOUL.md:/app/SOUL.md
       - ./.sanka:/app/.sanka
       - /var/run/docker.sock:/var/run/docker.sock

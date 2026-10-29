@@ -1,4 +1,4 @@
-"""Adapter Mem0 OSS: ekstraksi fakta, embedding, retrieval; Sanka hanya menyimpan metadata."""
+"""Mem0 OSS adapter: fact extraction, embedding, retrieval; Sanka only stores metadata."""
 
 from __future__ import annotations
 
@@ -14,12 +14,14 @@ from sqlalchemy.engine import make_url
 
 from ..config import Config
 from ..guard import SENSITIVE
-from . import MemoryHit
+from . import MemoryContext, MemoryHit
 from . import context as memory_context
+from .privacy import MAX_LEVEL, clamp_level
 
 log = logging.getLogger(__name__)
 
 SCOPES = ("global", "person", "chat")
+VETO_FIELDS = ("vetoed", "vetoed_by", "vetoed_at")
 
 CUSTOM_INSTRUCTIONS = """\
 Extract only explicit, durable facts about the people in the conversation.
@@ -91,21 +93,35 @@ def _items(result) -> list[dict]:
     return []
 
 
+def _flag(value, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "yes", "1", "on"}
+
+
 def _hit(item: dict, fallback_scope: str = "person") -> MemoryHit | None:
     metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
     text = _text(item.get("memory") or item.get("text") or item.get("data"))
     memory_id = _text(item.get("id") or item.get("memory_id"))
     if not text or not memory_id:
         return None
+    person = _person_from(item, metadata)
     return MemoryHit(
         id=memory_id,
         text=text,
         score=float(item.get("score") or 0.0),
         scope=_scope_from(item, metadata, fallback_scope),
-        person_id=_person_from(item, metadata),
+        person_id=person,
         chat_id=_chat_from(item, metadata),
         created_at=_created(item),
         metadata=metadata,
+        level=clamp_level(metadata.get("level"), 2),
+        owner_id=_text(metadata.get("owner_id")) or person,
+        subject_id=_text(metadata.get("subject_id")) or _text(metadata.get("owner_id")) or person,
+        confirmed=_flag(metadata.get("confirmed"), True),
+        vetoed=_flag(metadata.get("vetoed"), False),
     )
 
 
@@ -197,6 +213,10 @@ class Mem0Backend:
         chat_id: str,
         audience: str,
         source: str,
+        level: int = 2,
+        owner_id: str = "",
+        subject_id: str = "",
+        confirmed: bool = True,
         extra: dict | None = None,
     ) -> dict:
         default_audience = {"global": "shared", "person": "private", "chat": "group"}[scope]
@@ -210,6 +230,13 @@ class Mem0Backend:
             "audience": audience or default_audience,
             "where": None,
             "sensor_context": None,
+            "level": clamp_level(level, 2),
+            "owner_id": owner_id or person_id or "",
+            "subject_id": subject_id or owner_id or person_id or "",
+            "confirmed": bool(confirmed),
+            "vetoed": False,
+            "vetoed_by": "",
+            "vetoed_at": 0.0,
         }
         if extra:
             metadata.update(extra)
@@ -240,23 +267,29 @@ class Mem0Backend:
         metadata: dict | None = None,
         supersedes: str | None = None,
         infer: bool = False,
+        level: int = 2,
+        owner_id: str = "",
+        subject_id: str = "",
+        confirmed: bool = True,
     ) -> list[str]:
         body = _text(text)
         if not body:
-            raise ValueError("teks memori kosong")
+            raise ValueError("memory text is empty")
+        if int(level) > MAX_LEVEL:
+            raise ValueError("privacy level 5/credentials are never stored")
         if SENSITIVE.search(body):
-            raise ValueError("teks memuat rahasia/kredensial")
+            raise ValueError("text contains a secret/credential")
         identity = self._identity(scope, person_id, chat_id)
         if supersedes:
             old = await self.get(str(supersedes))
             if old is None:
-                raise ValueError("memori yang digantikan tidak ditemukan")
+                raise ValueError("memory to supersede was not found")
             if old.scope != scope:
-                raise ValueError("scope memori pengganti tidak sama")
+                raise ValueError("superseding memory must share the scope")
             if scope == "person" and old.person_id != person_id:
-                raise ValueError("memori milik orang lain tidak bisa digantikan")
+                raise ValueError("another person's memory cannot be superseded")
             if scope == "chat" and old.chat_id != chat_id:
-                raise ValueError("memori chat lain tidak bisa digantikan")
+                raise ValueError("another chat's memory cannot be superseded")
             await self._safe("delete", self._memory.delete, old.id)
         payload = [{"role": "user", "content": body}]
         result = await self._safe(
@@ -270,6 +303,10 @@ class Mem0Backend:
                 chat_id=chat_id,
                 audience=audience,
                 source=source,
+                level=level,
+                owner_id=owner_id,
+                subject_id=subject_id,
+                confirmed=confirmed,
                 extra=metadata,
             ),
             infer=bool(infer),
@@ -285,15 +322,19 @@ class Mem0Backend:
         chat_id: str,
         audience: str,
         source: str = "turn",
-    ) -> None:
+        level: int = 2,
+        owner_id: str = "",
+        subject_id: str = "",
+        confirmed: bool = True,
+    ) -> list[str]:
         body = [item for item in messages if _text(item.get("content"))]
         if not body or person_id is None:
-            return
+            return []
         if any(SENSITIVE.search(_text(item.get("content"))) for item in body):
-            return
+            return []
         identity = self._identity("person", person_id, chat_id)
         async with self._capture_lock:
-            await self._safe(
+            result = await self._safe(
                 "capture",
                 self._memory.add,
                 body,
@@ -304,10 +345,15 @@ class Mem0Backend:
                     chat_id=chat_id,
                     audience=audience,
                     source=source,
+                    level=level,
+                    owner_id=owner_id or person_id,
+                    subject_id=subject_id,
+                    confirmed=confirmed,
                 ),
                 infer=True,
                 **identity,
             )
+        return [hit.id for hit in (_hit(item, "person") for item in _items(result)) if hit]
 
     # ---------------------------------------------------------------- baca
 
@@ -385,16 +431,64 @@ class Mem0Backend:
         items = _items(result)
         return _hit(items[0]) if items else None
 
-    async def forget(self, memory_id: str, *, person_id: str = "", chat_id: str = "") -> bool:
+    async def forget(
+        self,
+        memory_id: str,
+        *,
+        requester_id: str = "",
+        chat_id: str = "",
+        allow_global: bool = False,
+    ) -> bool:
         hit = await self.get(memory_id)
         if hit is None:
             return False
-        if hit.scope == "person" and hit.person_id != person_id:
+        if hit.scope == "person" and hit.person_id != requester_id:
             return False
         if hit.scope == "chat" and hit.chat_id != chat_id:
             return False
+        if hit.scope == "global" and not allow_global:
+            return False
         result = await self._safe("forget", self._memory.delete, hit.id)
         return result is not None
+
+    async def set_privacy(
+        self,
+        memory_id: str,
+        *,
+        level: int | None = None,
+        confirmed: bool | None = None,
+        subject_id: str | None = None,
+        vetoed: bool | None = None,
+        actor: str = "",
+    ) -> bool:
+        hit = await self.get(memory_id)
+        if hit is None:
+            return False
+        metadata = dict(hit.metadata)
+        if level is not None:
+            if int(level) > MAX_LEVEL:
+                raise ValueError("privacy level 5/credentials are never stored")
+            metadata["level"] = clamp_level(level, hit.level)
+        if confirmed is not None:
+            metadata["confirmed"] = bool(confirmed)
+        if subject_id is not None:
+            metadata["subject_id"] = str(subject_id)
+        if vetoed is not None:
+            metadata["vetoed"] = bool(vetoed)
+            metadata["vetoed_by"] = str(actor or "") if vetoed else ""
+            metadata["vetoed_at"] = time.time() if vetoed else 0.0
+        result = await self._safe(
+            "privacy", self._memory.update, hit.id, metadata=metadata
+        )
+        return result is not None
+
+    async def veto(self, memory_id: str, *, subject_id: str, active: bool = True) -> bool:
+        hit = await self.get(memory_id)
+        if hit is None or not subject_id or hit.subject_id != subject_id:
+            return False
+        return await self.set_privacy(
+            memory_id, vetoed=active, actor=subject_id
+        )
 
     async def context(
         self,
@@ -405,7 +499,7 @@ class Mem0Backend:
         mood=None,
         max_items: int | None = None,
         max_chars: int | None = None,
-    ) -> str:
+    ) -> MemoryContext:
         try:
             return await asyncio.wait_for(
                 memory_context.build(
@@ -418,9 +512,9 @@ class Mem0Backend:
                 ),
                 timeout=memory_context.TIMEOUT,
             )
-        except Exception as exc:  # retrieval lambat/gagal tidak menahan balasan
-            log.debug("konteks memori dilewati: %s", exc)
-            return ""
+        except Exception as exc:  # slow/broken retrieval must not hold the reply
+            log.debug("memory context skipped: %s", exc)
+            return MemoryContext()
 
     async def close(self) -> None:
         self._memory = None

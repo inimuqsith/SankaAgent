@@ -38,6 +38,7 @@ def test_builtin_handlers_discovered() -> None:
         "freeze",
         "help",
         "kirim",
+        "language",
         "memori",
         "mood",
         "pending",

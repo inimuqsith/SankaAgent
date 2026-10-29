@@ -1,4 +1,4 @@
-"""Teks default untuk `sanka init`; satu sumber kebenaran, tanpa berkas contoh terpisah."""
+"""Default text for `sanka init`; one source of truth, no separate example files."""
 
 from __future__ import annotations
 
@@ -14,9 +14,7 @@ HOST: dict = {
         "pool_timeout": 30,
     },
     "workspace": ".sanka/workspace",
-    "gateway_file": "gateway.yaml",
-    "engine_file": "engine.yaml",
-    "roles_dir": "roles",
+    "roles_file": "roles.yaml",
     "sync_documents": True,
     "sandbox": {
         "runtime": "",
@@ -49,6 +47,14 @@ ENGINE: dict = {
         "max_chars": 3000,
         "collection": "sanka_memories",
         "extraction_model": "",
+        "privacy": {
+            "enabled": True,
+            "default_level": 2,
+            "ask_level": 4,
+            "group_max_level": 2,
+            "dm_max_level": 4,
+            "auditor": True,
+        },
         "embedder": {
             "provider": "huggingface",
             "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
@@ -121,6 +127,13 @@ GATEWAY: dict = {
 
 SOUL: dict = {"name": "sanka", "language": "id", "pronouns": "aku"}
 
+CONFIG: dict = {
+    **HOST,
+    "engine": ENGINE,
+    "gateways": GATEWAY["gateways"],
+    "soul": SOUL,
+}
+
 ROLES: dict[str, dict] = {
     "owner": {
         "name": "owner",
@@ -129,6 +142,7 @@ ROLES: dict[str, dict] = {
         "users": [],
         "tools": ["*"],
         "commands": ["*"],
+        "memory_admin": True,
         "context": (
             "Kamu sedang bicara dengan pemilik Sanka. Dia yang mengatur arah, izin, dan jiwa.\n"
             "Boleh mengoreksi, mengubah config/soul, dan meminta laporan utuh.\n"
@@ -162,6 +176,7 @@ ROLES: dict[str, dict] = {
             "kirim",
             "mood",
         ],
+        "memory_admin": False,
         "context": (
             "Kamu sedang bicara dengan anggota panitia. Bantu pekerjaan mereka tanpa membuka izin baru.\n"
         ),
@@ -173,6 +188,7 @@ ROLES: dict[str, dict] = {
         "users": [],
         "tools": ["read", "web_search", "chat_history", "memory"],
         "commands": ["help", "ping", "reset", "whoami", "status", "tools", "cari"],
+        "memory_admin": False,
         "context": (
             "Kamu belum mengenal orang ini. Tetap sopan, jangan buka data chat lain.\n"
         ),
@@ -189,15 +205,10 @@ def dump(body: object) -> str:
 
 
 def files() -> dict[str, str]:
-    """Semua berkas scaffold: path relatif -> isi."""
-    result = {
-        "config.yaml": dump(HOST),
-        "engine.yaml": dump(ENGINE),
-        "gateway.yaml": dump(GATEWAY),
-        "soul.yaml": dump(SOUL),
+    """Every scaffold file: relative path -> content."""
+    return {
+        "config.yaml": dump(CONFIG),
+        "roles.yaml": dump({"roles": ROLES}),
         "SOUL.md": DEFAULT_SOUL,
         ".env": ENV,
     }
-    for name, body in ROLES.items():
-        result[f"roles/{name}.yaml"] = dump(body)
-    return result

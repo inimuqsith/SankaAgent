@@ -1,4 +1,8 @@
-"""Muat .env dan config host/engine/gateway/soul; validasi ketat, tanpa efek samping file."""
+"""Load .env plus the combined config.yaml (host, engine, gateways, soul) and roles.yaml.
+
+Validation is strict and never touches the filesystem beyond reading; one file is the
+source of truth for the host, and DB documents override its engine/soul/role seeds.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 class ConfigError(RuntimeError):
-    """Konfigurasi tidak valid; pesan siap ditampilkan ke operator."""
+    """Invalid configuration; the message is safe to show to the operator."""
 
 
 class Documents(Protocol):
@@ -69,6 +73,18 @@ class EmbedderConfig:
 
 
 @dataclass(frozen=True)
+class PrivacyConfig:
+    """Disclosure policy limits: level 0-4, group vs DM ceilings, optional auditor."""
+
+    enabled: bool = True
+    default_level: int = 2
+    ask_level: int = 4
+    group_max_level: int = 2
+    dm_max_level: int = 4
+    auditor: bool = True
+
+
+@dataclass(frozen=True)
 class MemoryConfig:
     backend: str = "mem0"  # mem0 | null
     auto_capture: bool = True
@@ -76,9 +92,10 @@ class MemoryConfig:
     max_items: int = 12
     max_chars: int = 3000
     collection: str = "sanka_memories"
-    extraction_model: str = ""  # kosong = llm.model
+    extraction_model: str = ""  # empty = llm.model
     embedder: EmbedderConfig = field(default_factory=EmbedderConfig)
     telemetry: bool = False
+    privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
 
 
 @dataclass(frozen=True)
@@ -174,11 +191,8 @@ class GatewaySettings:
 @dataclass(frozen=True)
 class Paths:
     config: Path
-    engine: Path
-    gateway: Path
-    soul: Path
-    soul_md: Path
     roles: Path
+    soul_md: Path
     workspace: Path
 
 
@@ -189,9 +203,7 @@ class HostConfig:
     sandbox: SandboxConfig
     web_search: WebSearchConfig
     mcp: dict[str, MCPServerConfig]
-    gateway_file: Path
-    engine_file: Path
-    roles_dir: Path
+    roles_file: Path
     sync_documents: bool
 
 
@@ -227,7 +239,7 @@ class Config:
 
 
 def resolve_database_url(database: DatabaseConfig) -> str:
-    """URL efektif: env `url_env` bila diisi, selain itu `url`."""
+    """Effective URL: env `url_env` when set, otherwise `url`."""
     env_name = str(database.url_env or "").strip()
     if env_name and os.environ.get(env_name):
         return str(os.environ[env_name]).strip()
@@ -235,7 +247,7 @@ def resolve_database_url(database: DatabaseConfig) -> str:
 
 
 def load_env(path: str | Path = ".env") -> None:
-    """Baca KEY=VALUE sederhana; baris kosong/komentar dilewati. File hilang bukan error."""
+    """Read simple KEY=VALUE lines; blank lines and comments are skipped. Missing is fine."""
     file = Path(path)
     if not file.is_file():
         return
@@ -248,11 +260,12 @@ def load_env(path: str | Path = ".env") -> None:
 
 
 LEGACY_DATA = Path("~/.sanka").expanduser()
-LEGACY_KEYS = ("whatsapp", "roles", "persona")
+# Split config layouts that must be migrated into config.yaml + roles.yaml first.
+LEGACY_KEYS = ("whatsapp", "roles", "persona", "engine_file", "gateway_file", "roles_dir", "soul_file")
 
 
 def secure_db(path: Path) -> None:
-    """DB sesi berisi kredensial; jangan biarkan world-readable."""
+    """The session DB holds credentials; never leave it world-readable."""
     try:
         path.parent.chmod(0o700)
     except OSError:
@@ -265,25 +278,26 @@ def secure_db(path: Path) -> None:
 
 
 def drop_session(path: Path) -> None:
-    """Hapus DB sesi sementara beserta WAL/SHM-nya."""
+    """Delete a temporary session DB together with its WAL/SHM files."""
     for suffix in ("", "-wal", "-shm"):
         try:
             Path(f"{path}{suffix}").unlink(missing_ok=True)
         except OSError:
-            log.warning("gagal menghapus sesi %s", path, exc_info=True)
+            log.warning("failed to delete session %s", path, exc_info=True)
 
 
 def _expand(value: str, base: Path | None = None) -> Path:
-    """Path relatif di-resolve dari folder config, bukan CWD; `~` tetap absolut."""
+    """Relative paths resolve from the config folder, not the CWD; `~` stays absolute."""
     path = Path(value).expanduser()
     return path if path.is_absolute() or base is None else base / path
 
 
 def _reject_legacy(path: Path, key: str) -> Path:
-    """Tolak path data lama agar proses tidak diam-diam membaca/membuat ~/.sanka lagi."""
+    """Reject the old data path so the process never silently reads/creates ~/.sanka."""
     if path == LEGACY_DATA or path.is_relative_to(LEGACY_DATA):
         raise ConfigError(
-            f"{key} masih menunjuk {path}; data runtime sekarang di .sanka/ relatif folder config"
+            f"{key} still points at {path}; runtime data now lives in .sanka/ relative "
+            "to the config folder"
         )
     return path
 
@@ -295,7 +309,7 @@ def _str_tuple(value: object) -> tuple[str, ...]:
 
 
 def _bool(value: object, default: bool) -> bool:
-    """String `"false"` di YAML harus mati, bukan truthy seperti `bool("false")`."""
+    """A YAML string `"false"` must be false, not truthy like `bool("false")`."""
     if value is None:
         return default
     if isinstance(value, bool):
@@ -322,15 +336,15 @@ def _section(raw: Mapping, key: str) -> dict:
 
 def _yaml_file(path: Path, label: str) -> dict:
     if not path.is_file():
-        raise ConfigError(f"{label} tidak ditemukan: {path}")
+        raise ConfigError(f"{label} not found: {path}")
     try:
         body = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
-        raise ConfigError(f"{label} tidak valid: {exc}") from exc
+        raise ConfigError(f"{label} is invalid: {exc}") from exc
     if body is None:
         return {}
     if not isinstance(body, dict):
-        raise ConfigError(f"{label} harus mapping: {path}")
+        raise ConfigError(f"{label} must be a mapping: {path}")
     return body
 
 
@@ -344,14 +358,14 @@ def _mcp_servers(raw: object) -> dict[str, MCPServerConfig]:
         command = body.get("command")
         url = body.get("url")
         if command is None and url is None:
-            raise ConfigError(f"mcp server '{name}' butuh 'command' atau 'url'")
+            raise ConfigError(f"mcp server '{name}' needs 'command' or 'url'")
         if command is not None and url is not None:
-            raise ConfigError(f"mcp server '{name}' pilih 'command' atau 'url', jangan keduanya")
+            raise ConfigError(f"mcp server '{name}' takes 'command' or 'url', not both")
         if url is not None:
             if not isinstance(url, str) or not url.startswith(("http://", "https://")):
-                raise ConfigError(f"mcp server '{name}' url harus diawali http:// atau https://")
+                raise ConfigError(f"mcp server '{name}' url must start with http:// or https://")
         elif not isinstance(command, str) or not command:
-            raise ConfigError(f"mcp server '{name}' butuh 'command'")
+            raise ConfigError(f"mcp server '{name}' needs 'command'")
         stdio = url is None
         env = body.get("env") if stdio and isinstance(body.get("env"), dict) else {}
         result[str(name)] = MCPServerConfig(
@@ -378,10 +392,10 @@ def _sandbox(raw: Mapping, base: Path) -> SandboxConfig:
     body = _section(raw, "sandbox")
     host_ws_raw = body.get("host_workspace")
     host_workspace = _expand(str(host_ws_raw), base) if host_ws_raw else None
-    # Path host tidak selalu terlihat dari container (daemon di host), jadi baru divalidasi
-    # sebagai direktori saat tool dipanggil. Di sini cukup tolak path yang jelas salah.
+    # The host path is not always visible from the container (daemon on the host), so it
+    # is validated as a directory when the tool runs. Here we only reject obvious misses.
     if host_workspace is not None and host_workspace.exists() and not host_workspace.is_dir():
-        raise ConfigError(f"sandbox.host_workspace '{host_workspace}' bukan direktori")
+        raise ConfigError(f"sandbox.host_workspace '{host_workspace}' is not a directory")
     return SandboxConfig(
         runtime=str(body.get("runtime") or "").strip(),
         image=str(body.get("image") or "docker.io/library/python:3.12-slim"),
@@ -393,28 +407,26 @@ def _sandbox(raw: Mapping, base: Path) -> SandboxConfig:
 
 
 def load_host(path: str | Path | None = None) -> tuple[HostConfig, Paths]:
-    """Baca config.yaml host tanpa membuat direktori atau menghubungi DB."""
+    """Read config.yaml without creating directories or touching the DB."""
     target = Path(path or os.environ.get("SANKA_CONFIG") or "config.yaml")
     if not target.is_file():
-        raise ConfigError(f"config tidak ditemukan: {target} (jalankan `sanka init`)")
+        raise ConfigError(f"config not found: {target} (run `sanka init`)")
     try:
         raw = yaml.safe_load(target.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
-        raise ConfigError(f"config YAML tidak valid: {exc}") from exc
+        raise ConfigError(f"config YAML is invalid: {exc}") from exc
     if not isinstance(raw, dict):
-        raise ConfigError(f"config kosong atau bukan mapping: {target}")
+        raise ConfigError(f"config is empty or not a mapping: {target}")
     legacy = [key for key in LEGACY_KEYS if key in raw]
     if legacy:
         raise ConfigError(
-            f"config.yaml masih format lama ({', '.join(legacy)}); jalankan `sanka config migrate`"
+            "config.yaml uses the old split layout; run `sanka config migrate`"
         )
     base = target.resolve().parent
     workspace = _reject_legacy(
         _expand(str(raw.get("workspace") or ".sanka/workspace"), base), "workspace"
     )
-    gateway_file = _expand(str(raw.get("gateway_file") or "gateway.yaml"), base)
-    engine_file = _expand(str(raw.get("engine_file") or "engine.yaml"), base)
-    roles_dir = _expand(str(raw.get("roles_dir") or "roles"), base)
+    roles_file = _expand(str(raw.get("roles_file") or "roles.yaml"), base)
     search_raw = _section(raw, "web_search")
     host = HostConfig(
         database=_database(raw),
@@ -425,46 +437,44 @@ def load_host(path: str | Path | None = None) -> tuple[HostConfig, Paths]:
             timeout_seconds=_num(search_raw.get("timeout_seconds"), 10.0),
         ),
         mcp=_mcp_servers(raw.get("mcp")),
-        gateway_file=gateway_file,
-        engine_file=engine_file,
-        roles_dir=roles_dir,
+        roles_file=roles_file,
         sync_documents=_bool(raw.get("sync_documents"), True),
     )
     paths = Paths(
         config=target.resolve(),
-        engine=engine_file,
-        gateway=gateway_file,
-        soul=base / "soul.yaml",
+        roles=roles_file,
         soul_md=base / "SOUL.md",
-        roles=roles_dir,
         workspace=workspace,
     )
     return host, paths
 
 
-def _engine(host: HostConfig, documents: Documents | None) -> dict:
+def _engine(raw: Mapping, documents: Documents | None) -> dict:
+    """Engine document wins; otherwise the `engine` section of config.yaml."""
     text = documents.get("engine") if documents is not None else None
-    if not text:
-        return _yaml_file(host.engine_file, "engine.yaml")
-    try:
-        body = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"dokumen engine tidak valid: {exc}") from exc
-    if body is None:
-        return {}
-    if not isinstance(body, dict):
-        raise ConfigError("dokumen engine harus mapping")
-    return body
+    if text:
+        try:
+            body = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise ConfigError(f"engine document is invalid: {exc}") from exc
+        if body is None:
+            return {}
+        if not isinstance(body, dict):
+            raise ConfigError("engine document must be a mapping")
+        return body
+    return _section(raw, "engine")
 
 
-def _soul(paths: Paths, documents: Documents | None) -> Soul:
-    if documents is not None:
-        source: Mapping[str, str | None] = {
-            "soul": documents.get("soul"),
-            "persona": documents.get("persona"),
-        }
-    else:
-        source = {}
+def _soul(raw: Mapping, paths: Paths, documents: Documents | None) -> Soul:
+    """Soul document and persona document win over config.yaml `soul` and SOUL.md."""
+    meta: str | None = documents.get("soul") if documents is not None else None
+    if not meta:
+        body = raw.get("soul")
+        meta = yaml.safe_dump(body, sort_keys=False, allow_unicode=True) if isinstance(
+            body, dict
+        ) else None
+    persona = documents.get("persona") if documents is not None else None
+    source: Mapping[str, str | None] = {"soul": meta, "persona": persona}
     try:
         return load_soul(source, base=paths.config.parent)
     except ValueError as exc:
@@ -472,37 +482,50 @@ def _soul(paths: Paths, documents: Documents | None) -> Soul:
 
 
 def _roles(
-    paths: Paths, documents: Documents | None, default_role: str
+    raw: Mapping, paths: Paths, documents: Documents | None, default_role: str
 ) -> RoleRegistry:
-    source: Path | Mapping[str, str] = paths.roles
-    if documents is not None:
-        names = documents.names("role:")
-        if names:
-            docs = {
-                name.split(":", 1)[1]: documents.get(name) or ""
-                for name in names
-                if ":" in name
-            }
-            source = docs
-    if not isinstance(source, Mapping) and not source.is_dir():
-        raise ConfigError(f"role tidak ditemukan: {paths.roles} (jalankan `sanka init`)")
+    """Role documents win; otherwise read every role from `roles.yaml`."""
+    source: Mapping[str, str | dict] = {}
+    names = documents.names("role:") if documents is not None else []
+    if names:
+        source = {
+            name.split(":", 1)[1]: documents.get(name) or ""
+            for name in names
+            if ":" in name
+        }
+    else:
+        body = _roles_file(paths)
+        if body:
+            source = body
+    if not source:
+        raise ConfigError(f"no roles found: {paths.roles} (run `sanka init`)")
     try:
         return load_roles(source, default_role)
     except RoleError as exc:
         raise ConfigError(str(exc)) from exc
 
 
-def _gateway_file(paths: Paths, *, required: bool) -> dict[str, GatewaySettings]:
-    if not paths.gateway.is_file():
-        if required:
-            raise ConfigError(f"gateway.yaml tidak ditemukan: {paths.gateway} (jalankan `sanka init`)")
+def _roles_file(paths: Paths) -> dict:
+    """Read the `roles` mapping from roles.yaml; empty when the file is absent."""
+    if not paths.roles.is_file():
         return {}
-    raw = _yaml_file(paths.gateway, "gateway.yaml")
+    raw = _yaml_file(paths.roles, "roles.yaml")
+    body = raw.get("roles")
+    if not isinstance(body, dict):
+        raise ConfigError(f"roles.yaml must contain a 'roles' mapping: {paths.roles}")
+    return body
+
+
+def _gateways(raw: Mapping, *, required: bool = False) -> dict[str, GatewaySettings]:
     body = raw.get("gateways")
     if body is None:
-        body = {}
+        if required:
+            raise ConfigError(
+                "config.yaml is missing the 'gateways' section (run `sanka config migrate`)"
+            )
+        return {}
     if not isinstance(body, dict):
-        raise ConfigError("gateway.yaml: 'gateways' harus mapping")
+        raise ConfigError("config.yaml: 'gateways' must be a mapping")
     result: dict[str, GatewaySettings] = {}
     for name, value in body.items():
         value = value if isinstance(value, dict) else {}
@@ -523,27 +546,32 @@ def load_config(
     require_gateway: bool = False,
 ) -> Config:
     host, paths = load_host(path)
-    engine = _engine(host, documents)
+    try:
+        raw = yaml.safe_load(paths.config.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise ConfigError(f"config YAML is invalid: {exc}") from exc
+    raw = raw if isinstance(raw, dict) else {}
+    engine = _engine(raw, documents)
     llm_raw = _section(engine, "llm")
     api_key_env = str(llm_raw.get("api_key_env") or "OPENCODE_GO_API_KEY")
     if require_key and not os.environ.get(api_key_env):
-        raise ConfigError(f"env {api_key_env} belum diisi (taruh di .env)")
+        raise ConfigError(f"env {api_key_env} is not set (put it in .env)")
     default_role = str(engine.get("default_role") or "").strip()
     if not default_role:
-        raise ConfigError("engine.default_role wajib diisi")
-    roles = _roles(paths, documents, default_role)
-    gateways = _gateway_file(paths, required=require_gateway)
+        raise ConfigError("engine.default_role is required")
+    roles = _roles(raw, paths, documents, default_role)
+    gateways = _gateways(raw, required=require_gateway)
     for name, settings in gateways.items():
         if not settings.enabled:
             continue
         role = settings.options.get("role")
         if role is not None and roles.get(str(role)) is None:
-            raise ConfigError(f"gateway '{name}': role '{role}' tidak ada di role yang dimuat")
+            raise ConfigError(f"gateway '{name}': role '{role}' is not among the loaded roles")
     database = host.database
     url = resolve_database_url(database)
     if not url:
         raise ConfigError(
-            f"database URL kosong; isi database.url di config.yaml atau env {database.url_env}"
+            f"database URL is empty; set database.url in config.yaml or env {database.url_env}"
         )
     database = DatabaseConfig(
         url=database.url,
@@ -565,11 +593,28 @@ def load_config(
 
     memory_backend = str(memory_raw.get("backend") or "mem0").strip().lower()
     if memory_backend not in {"mem0", "null"}:
-        raise ConfigError("memory.backend harus 'mem0' atau 'null'")
+        raise ConfigError("memory.backend must be 'mem0' or 'null'")
     approval_mode = str(approval_raw.get("mode") or "yolo").strip().lower()
     if approval_mode not in {"yolo", "off", "strict"}:
-        raise ConfigError("approval.mode harus 'yolo', 'off', atau 'strict'")
+        raise ConfigError("approval.mode must be 'yolo', 'off', or 'strict'")
     embedder_raw = _section(memory_raw, "embedder")
+    privacy_raw = _section(memory_raw, "privacy")
+
+    def _level(key: str, default: int) -> int:
+        try:
+            value = int(_num(privacy_raw.get(key), float(default)))
+        except (TypeError, ValueError):
+            return default
+        return value if 0 <= value <= 4 else default
+
+    privacy = PrivacyConfig(
+        enabled=_bool(privacy_raw.get("enabled"), True),
+        default_level=_level("default_level", 2),
+        ask_level=_level("ask_level", 4),
+        group_max_level=_level("group_max_level", 2),
+        dm_max_level=_level("dm_max_level", 4),
+        auditor=_bool(privacy_raw.get("auditor"), True),
+    )
 
     return Config(
         paths=paths,
@@ -595,7 +640,7 @@ def load_config(
         roles=roles,
         default_role=default_role,
         gateways=gateways,
-        soul=_soul(paths, documents),
+        soul=_soul(raw, paths, documents),
         sandbox=host.sandbox,
         mcp=host.mcp,
         web_search=host.web_search,
@@ -617,6 +662,7 @@ def load_config(
                 dimensions=int(_num(embedder_raw.get("dimensions"), 384)),
             ),
             telemetry=_bool(memory_raw.get("telemetry"), False),
+            privacy=privacy,
         ),
         skills=SkillsConfig(
             max_index_chars=int(_num(skills_raw.get("max_index_chars"), 3000))

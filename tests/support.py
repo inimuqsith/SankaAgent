@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from sanka.engine.config import (
@@ -17,7 +18,7 @@ from sanka.engine.config import (
     StyleConfig,
 )
 from sanka.engine.db import Database
-from sanka.engine.memory import MemoryHit
+from sanka.engine.memory import MemoryContext, MemoryHit
 from sanka.engine.roles import Role, RoleRegistry
 from sanka.engine.soul import Soul
 
@@ -47,11 +48,8 @@ def build_config(
     return Config(
         paths=Paths(
             config=base / "config.yaml",
-            engine=base / "engine.yaml",
-            gateway=base / "gateway.yaml",
-            soul=base / "soul.yaml",
+            roles=base / "roles.yaml",
             soul_md=base / "SOUL.md",
-            roles=base / "roles",
             workspace=workspace_path,
         ),
         database=database_config or DatabaseConfig(url="sqlite+pysqlite://", url_env=""),
@@ -131,6 +129,15 @@ class FakeMem0:
         self.items.pop(memory_id, None)
         return {"message": "deleted"}
 
+    async def update(self, memory_id, *, metadata=None, **_kwargs):
+        self.calls.append(("update", {"id": memory_id, "metadata": metadata}))
+        item = self.items.get(memory_id)
+        if item is None:
+            return {"message": "not found"}
+        if isinstance(metadata, dict):
+            item["metadata"] = dict(metadata)
+        return item
+
     async def close(self):
         return None
 
@@ -206,7 +213,7 @@ class FakeGateway:
 
 
 class FakeMemory:
-    """MemoryBackend palsu untuk test agent (tanpa Mem0)."""
+    """Fake MemoryBackend for agent tests (no Mem0)."""
 
     available = True
     reason = ""
@@ -221,11 +228,35 @@ class FakeMemory:
     async def add(self, text: str, **kwargs):
         self.added.append({"text": text, **kwargs})
         key = f"m{len(self.added)}"
-        self.hits[key] = MemoryHit(id=key, text=text, scope=kwargs.get("scope", "person"))
+        self.hits[key] = MemoryHit(
+            id=key,
+            text=text,
+            scope=kwargs.get("scope", "person"),
+            person_id=kwargs.get("person_id", ""),
+            chat_id=kwargs.get("chat_id", ""),
+            level=kwargs.get("level", 2),
+            owner_id=kwargs.get("owner_id", ""),
+            subject_id=kwargs.get("subject_id", ""),
+            confirmed=kwargs.get("confirmed", True),
+        )
         return [key]
 
     async def capture(self, messages, **kwargs):
         self.captures.append({"messages": messages, **kwargs})
+        text = " ".join(str(item.get("content") or "") for item in messages).strip()
+        key = f"c{len(self.captures)}"
+        self.hits[key] = MemoryHit(
+            id=key,
+            text=text,
+            scope="person",
+            person_id=kwargs.get("person_id", ""),
+            chat_id=kwargs.get("chat_id", ""),
+            level=kwargs.get("level", 2),
+            owner_id=kwargs.get("owner_id", ""),
+            subject_id=kwargs.get("subject_id", ""),
+            confirmed=kwargs.get("confirmed", True),
+        )
+        return [key]
 
     async def search(self, query: str, **kwargs):
         return list(self.hits.values())
@@ -239,9 +270,32 @@ class FakeMemory:
     async def forget(self, memory_id: str, **kwargs):
         return self.hits.pop(memory_id, None) is not None
 
+    async def set_privacy(self, memory_id: str, **kwargs):
+        hit = self.hits.get(memory_id)
+        if hit is None:
+            return False
+        self.hits[memory_id] = replace(
+            hit,
+            level=hit.level if kwargs.get("level") is None else kwargs["level"],
+            confirmed=(
+                hit.confirmed if kwargs.get("confirmed") is None else bool(kwargs["confirmed"])
+            ),
+            subject_id=(
+                hit.subject_id if kwargs.get("subject_id") is None else kwargs["subject_id"]
+            ),
+            vetoed=hit.vetoed if kwargs.get("vetoed") is None else bool(kwargs["vetoed"]),
+        )
+        return True
+
+    async def veto(self, memory_id: str, *, subject_id: str, active: bool = True):
+        hit = self.hits.get(memory_id)
+        if hit is None or hit.subject_id != subject_id:
+            return False
+        return await self.set_privacy(memory_id, vetoed=active)
+
     async def context(self, **kwargs):
         self.context_calls.append(kwargs)
-        return self.block
+        return MemoryContext(text=self.block, hits=tuple(self.hits.values()))
 
     async def close(self):
         return None
@@ -299,6 +353,7 @@ def make_agent(
     affect: bool = False,
     humanize=None,
     approvals=None,
+    soul=None,
 ):
     """Bangun Agent lengkap dengan DB SQLite temp dan FakeGateway."""
     from types import SimpleNamespace
@@ -318,6 +373,7 @@ def make_agent(
         tmp_path,
         roles=roles or {"member": Role("member", tools=("read", "memory", "chat_history", "skill", "recipe", "send"), commands=("*",))},
         default_role=default_role,
+        soul=soul,
         affect=AffectConfig(enabled=affect),
         style=StyleConfig(enabled=False),
         humanize=humanize or HumanizeConfig(enabled=False),
@@ -422,26 +478,26 @@ def make_runtime(
     from sanka.engine.stores.skills import SkillStore
 
     base = Path(tmp_path)
-    (base / "roles").mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("K", "x")
     monkeypatch.setenv("SANKA_DATABASE_URL", f"sqlite+pysqlite:///{base / 'sanka.db'}")
     (base / "config.yaml").write_text(
         "database:\n  url_env: SANKA_DATABASE_URL\nworkspace: .sanka/workspace\n"
-        "gateway_file: gateway.yaml\nengine_file: engine.yaml\nroles_dir: roles\n",
+        "roles_file: roles.yaml\n"
+        "engine:\n"
+        "  llm:\n    api_key_env: K\n    model: m\n    base_url: http://x\n"
+        "  default_role: member\n"
+        "  approval:\n"
+        f"    mode: yolo\n    settings: {str(settings_approval).lower()}\n"
+        f"{engine_extra}"
+        "gateways: {}\n"
+        "soul:\n  name: sanka\n  language: id\n  pronouns: aku\n",
         encoding="utf-8",
     )
-    (base / "engine.yaml").write_text(
-        "llm:\n  api_key_env: K\n  model: m\n  base_url: http://x\n"
-        "default_role: member\n"
-        f"approval:\n  mode: yolo\n  settings: {str(settings_approval).lower()}\n"
-        f"{engine_extra}",
+    (base / "roles.yaml").write_text(
+        "roles:\n"
+        f"  member:\n    name: member\n    tools: {role_tools}\n    commands: [\"*\"]\n",
         encoding="utf-8",
     )
-    (base / "gateway.yaml").write_text("gateways: {}\n", encoding="utf-8")
-    (base / "roles" / "member.yaml").write_text(
-        f'name: member\ntools: {role_tools}\ncommands: ["*"]\n', encoding="utf-8"
-    )
-    (base / "soul.yaml").write_text("name: sanka\nlanguage: id\npronouns: aku\n", encoding="utf-8")
     (base / "SOUL.md").write_text("Kamu Sanka yang hidup di chat.", encoding="utf-8")
 
     host, paths = load_host(base / "config.yaml")

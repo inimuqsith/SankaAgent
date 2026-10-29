@@ -1,21 +1,33 @@
-"""Kontrak prompt/status: scaffolding Inggris, language line, dan kartu status."""
+"""Prompt/status contract: English scaffolding, language line, and the status card."""
 
 from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from sanka.engine.prompts import self_block, system_prompt
 from sanka.engine.roles import Role
 from sanka.engine.runtime import RuntimeFacts
-from sanka.engine.soul import Soul, language_line
+from sanka.engine.soul import Soul, language_line, normalize_language
 from support import inbound_message, make_agent, make_runtime
 
 
 def test_language_line_variants() -> None:
     assert "Indonesian" in language_line(Soul(language="id"))
     assert language_line(Soul(language="en")) == "Reply in English."
-    assert "same language" in language_line(Soul(language="auto"))
-    assert language_line(Soul(language="jv")) == "Reply in jv."
+    with pytest.raises(ValueError):
+        language_line(Soul(language="jv"))
+
+
+def test_normalize_language_aliases() -> None:
+    assert normalize_language("EN") == "en"
+    assert normalize_language("english") == "en"
+    assert normalize_language("in") == "id"
+    assert normalize_language("auto") == "id"
+    assert normalize_language("") == "id"
+    with pytest.raises(ValueError):
+        normalize_language("jv")
 
 
 def test_system_prompt_is_english_with_self_and_roles(tmp_path) -> None:
@@ -67,6 +79,8 @@ def test_status_and_whoami(tmp_path, monkeypatch) -> None:
     assert "Memory:" in status
     assert "Approvals: 0 pending" in status
     assert "Soul:" in status and "language id" in status
+    assert "• Language: id" in status
+    assert "Privacy: enabled=True" in status
 
     who = asyncio.run(
         agent._command("whoami", "", "cli:local", "local", roles, env.gateway, inbound_message("/whoami"))

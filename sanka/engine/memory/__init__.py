@@ -1,4 +1,4 @@
-"""MemoryBackend: semantic memory lewat Mem0, ledger autografis, dan kontrak bersama."""
+"""MemoryBackend: semantic memory through Mem0, the action ledger, and the shared contract."""
 
 from __future__ import annotations
 
@@ -19,6 +19,19 @@ class MemoryHit:
     chat_id: str = ""
     created_at: float | None = None
     metadata: dict = field(default_factory=dict)
+    level: int = 2
+    owner_id: str = ""
+    subject_id: str = ""
+    confirmed: bool = True
+    vetoed: bool = False
+
+
+@dataclass(frozen=True)
+class MemoryContext:
+    """Rendered memory block plus the exact hits the model was allowed to see."""
+
+    text: str = ""
+    hits: tuple[MemoryHit, ...] = ()
 
 
 class MemoryBackend(Protocol):
@@ -38,6 +51,10 @@ class MemoryBackend(Protocol):
         metadata: dict | None = None,
         supersedes: str | None = None,
         infer: bool = False,
+        level: int = 2,
+        owner_id: str = "",
+        subject_id: str = "",
+        confirmed: bool = True,
     ) -> list[str]: ...
 
     async def capture(
@@ -48,7 +65,11 @@ class MemoryBackend(Protocol):
         chat_id: str,
         audience: str,
         source: str = "turn",
-    ) -> None: ...
+        level: int = 2,
+        owner_id: str = "",
+        subject_id: str = "",
+        confirmed: bool = True,
+    ) -> list[str]: ...
 
     async def search(
         self,
@@ -71,7 +92,27 @@ class MemoryBackend(Protocol):
 
     async def get(self, memory_id: str) -> MemoryHit | None: ...
 
-    async def forget(self, memory_id: str, *, person_id: str = "", chat_id: str = "") -> bool: ...
+    async def forget(
+        self,
+        memory_id: str,
+        *,
+        requester_id: str = "",
+        chat_id: str = "",
+        allow_global: bool = False,
+    ) -> bool: ...
+
+    async def set_privacy(
+        self,
+        memory_id: str,
+        *,
+        level: int | None = None,
+        confirmed: bool | None = None,
+        subject_id: str | None = None,
+        vetoed: bool | None = None,
+        actor: str = "",
+    ) -> bool: ...
+
+    async def veto(self, memory_id: str, *, subject_id: str, active: bool = True) -> bool: ...
 
     async def context(
         self,
@@ -82,13 +123,13 @@ class MemoryBackend(Protocol):
         mood=None,
         max_items: int | None = None,
         max_chars: int | None = None,
-    ) -> str: ...
+    ) -> MemoryContext: ...
 
     async def close(self) -> None: ...
 
 
 class NullMemory:
-    """Fail-open: bot tetap membalas saat Mem0 tidak tersedia."""
+    """Fail-open: the bot still replies when Mem0 is unavailable."""
 
     available = False
 
@@ -98,8 +139,8 @@ class NullMemory:
     async def add(self, text: str, **kwargs) -> list[str]:
         return []
 
-    async def capture(self, messages: list[dict], **kwargs) -> None:
-        return None
+    async def capture(self, messages: list[dict], **kwargs) -> list[str]:
+        return []
 
     async def search(self, query: str, **kwargs) -> list[MemoryHit]:
         return []
@@ -113,8 +154,14 @@ class NullMemory:
     async def forget(self, memory_id: str, **kwargs) -> bool:
         return False
 
-    async def context(self, **kwargs) -> str:
-        return ""
+    async def set_privacy(self, memory_id: str, **kwargs) -> bool:
+        return False
+
+    async def veto(self, memory_id: str, **kwargs) -> bool:
+        return False
+
+    async def context(self, **kwargs) -> MemoryContext:
+        return MemoryContext()
 
     async def close(self) -> None:
         return None
@@ -127,17 +174,17 @@ def memory_status(backend) -> str:
 
 
 async def build_memory(config, *, db=None) -> MemoryBackend:
-    """Bangun backend Mem0; gagal apa pun → NullMemory dengan alasan yang bisa ditampilkan."""
+    """Build the Mem0 backend; any failure falls back to NullMemory with a visible reason."""
     if config.memory.backend == "null":
         return NullMemory("disabled (memory.backend=null)")
     if config.database_url().startswith("sqlite"):
-        return NullMemory("mem0 butuh Postgres+pgvector, bukan SQLite")
+        return NullMemory("mem0 needs Postgres+pgvector, not SQLite")
     try:
         from .mem0 import Mem0Backend
 
         backend = Mem0Backend(db, config)
         await backend.ready()
         return backend
-    except Exception as exc:  # deps/model/pgvector hilang tidak boleh mematikan bot
-        log.warning("memori Mem0 tidak tersedia: %s: %s", type(exc).__name__, exc)
+    except Exception as exc:  # missing deps/model/pgvector must not kill the bot
+        log.warning("Mem0 memory is unavailable: %s: %s", type(exc).__name__, exc)
         return NullMemory(f"{type(exc).__name__}: {exc}")

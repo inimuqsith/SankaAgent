@@ -84,12 +84,20 @@ async def status(ctx: CommandContext) -> str:
             people = 0
     lines.append(f"• People: {people}; Actions: {agent.ledger.count()}")
     soul = config.soul
+    privacy = config.memory.privacy
     mirror = soul.source or "-"
     lines.append(
         f"• Soul: persona doc ({len(soul.persona)} chars), mirror {mirror}, language {soul.language}"
     )
-    lines.append(f"• Engine: doc `engine`; mirror {config.paths.engine}")
-    lines.append(f"• Config: {config.paths.config}; last change {_last_change(agent)}")
+    lines.append(f"• Language: {soul.language}")
+    lines.append(
+        f"• Privacy: enabled={privacy.enabled}; auditor={privacy.auditor}; levels 0-4"
+    )
+    lines.append(f"• Engine: doc `engine`; mirror {config.paths.config}")
+    lines.append(
+        f"• Config: {config.paths.config}; roles {config.paths.roles}; "
+        f"last change {_last_change(agent)}"
+    )
     return "\n".join(lines)
 
 

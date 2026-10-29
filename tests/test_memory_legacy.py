@@ -58,13 +58,15 @@ def config_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("K", "x")
     monkeypatch.setenv("SANKA_DATABASE_URL", f"sqlite+pysqlite:///{tmp_path / 'test.db'}")
     base = tmp_path
-    (base / "roles").mkdir()
-    (base / "roles" / "owner.yaml").write_text('name: owner\ntools: ["*"]\n', encoding="utf-8")
     (base / "config.yaml").write_text(
-        'database:\n  url_env: SANKA_DATABASE_URL\nworkspace: ".sanka/workspace"\n', encoding="utf-8"
+        "database:\n  url_env: SANKA_DATABASE_URL\nworkspace: \".sanka/workspace\"\n"
+        "engine:\n  llm:\n    api_key_env: K\n  default_role: owner\n"
+        "gateways: {}\n"
+        "soul:\n  language: id\n",
+        encoding="utf-8",
     )
-    (base / "engine.yaml").write_text(
-        "llm:\n  api_key_env: K\ndefault_role: owner\n", encoding="utf-8"
+    (base / "roles.yaml").write_text(
+        'roles:\n  owner:\n    name: owner\n    tools: ["*"]\n', encoding="utf-8"
     )
     return base / "config.yaml"
 

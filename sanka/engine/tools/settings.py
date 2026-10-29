@@ -1,7 +1,8 @@
-"""Tool settings: baca/ubah engine/soul/persona/role lewat dokumen DB + mirror file."""
+"""Settings tool: read/change engine/soul/persona/role documents and host config files."""
 
 from __future__ import annotations
 
+import contextlib
 import difflib
 import os
 import re
@@ -22,6 +23,7 @@ MAX_CONTENT = 64 * 1024
 SECRET = re.compile(r"(api_key|password|secret|token)", re.IGNORECASE)
 FILES = ("engine", "host", "gateway", "soul", "persona", "role")
 DOC_FILES = ("engine", "soul", "persona", "role")
+RESERVED_SECTIONS = ("engine", "gateways", "soul")
 
 
 # --------------------------------------------------------------- yaml util
@@ -29,23 +31,23 @@ DOC_FILES = ("engine", "soul", "persona", "role")
 
 def deep_get(body: object, path: str):
     node = body
-    for part in [piece for piece in str(path or "").split(".") if piece]:
-        if not isinstance(node, dict) or part not in node:
-            raise KeyError(f"path tidak ada: {path}")
-        node = node[part]
+    for piece in [part for part in str(path or "").split(".") if part]:
+        if not isinstance(node, dict) or piece not in node:
+            raise KeyError(f"path not found: {path}")
+        node = node[piece]
     return node
 
 
 def deep_set(body: dict, path: str, value) -> None:
     parts = [piece for piece in str(path or "").split(".") if piece]
     if not parts:
-        raise ValueError("path kosong")
+        raise ValueError("path is required")
     node = body
-    for part in parts[:-1]:
-        child = node.get(part)
+    for piece in parts[:-1]:
+        child = node.get(piece)
         if not isinstance(child, dict):
             child = {}
-            node[part] = child
+            node[piece] = child
         node = child
     node[parts[-1]] = value
 
@@ -53,10 +55,10 @@ def deep_set(body: dict, path: str, value) -> None:
 def deep_unset(body: dict, path: str) -> bool:
     parts = [piece for piece in str(path or "").split(".") if piece]
     if not parts:
-        raise ValueError("path kosong")
+        raise ValueError("path is required")
     node = body
-    for part in parts[:-1]:
-        child = node.get(part)
+    for piece in parts[:-1]:
+        child = node.get(piece)
         if not isinstance(child, dict):
             return False
         node = child
@@ -71,10 +73,9 @@ def _diff(old: str, new: str, label: str) -> str:
     lines = difflib.unified_diff(
         old.splitlines(),
         new.splitlines(),
-        fromfile=f"{label} (lama)",
-        tofile=f"{label} (baru)",
+        fromfile=f"{label} (current)",
+        tofile=f"{label} (new)",
         lineterm="",
-        n=2,
     )
     text = "\n".join(lines)
     return text if len(text) <= 4000 else text[:3999] + "…"
@@ -99,48 +100,94 @@ def _schema_paths(prefix: str, body, depth: int = 0) -> list[str]:
 # ------------------------------------------------------------------ state
 
 
-def _mirror(agent, name: str) -> Path | None:
+def _read_config(agent) -> dict:
+    path = agent.config.paths.config
+    if not path.is_file():
+        return {}
+    try:
+        body = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise ConfigError(f"config.yaml is invalid: {exc}") from exc
+    return body if isinstance(body, dict) else {}
+
+
+def _write_config(agent, body: dict) -> None:
+    path = agent.config.paths.config
+    _backup(path)
+    _atomic(path, dump(body))
+
+
+def _read_roles(agent) -> dict:
+    path = agent.config.paths.roles
+    if not path.is_file():
+        return {}
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise ConfigError(f"roles.yaml is invalid: {exc}") from exc
+    body = raw.get("roles") if isinstance(raw, dict) else None
+    return body if isinstance(body, dict) else {}
+
+
+def _write_roles(agent, roles: dict) -> None:
+    path = agent.config.paths.roles
+    _backup(path)
+    _atomic(path, dump({"roles": roles}))
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+
+
+def _mirror(agent, file: str) -> Path | None:
     paths = agent.config.paths
-    if name == "engine":
-        return paths.engine
-    if name == "soul":
-        return paths.soul
-    if name == "persona":
+    if file in {"engine", "soul", "gateway"}:
+        return paths.config
+    if file == "persona":
         return paths.soul_md
-    if name.startswith("role:"):
-        return paths.roles / f"{name.split(':', 1)[1]}.yaml"
+    if file == "role":
+        return paths.roles
     return None
 
 
-def _current(agent, file: str, role_name: str) -> tuple[str, str, Path | None]:
-    """(kind, name, mirror) untuk file yang diminta."""
+def _current(agent, file: str, role_name: str) -> tuple[str, str]:
+    """(kind, name) for the requested file; kind is host, gateway, or document."""
     if file == "role":
         if not ROLE_NAME.fullmatch(role_name or ""):
-            raise ValueError("nama role tidak valid")
-        name = f"role:{role_name}"
-    elif file in DOC_FILES:
-        name = file
-    elif file in {"host", "gateway"}:
-        path = agent.config.paths.config if file == "host" else agent.config.paths.gateway
-        return "file", file, path
-    else:
-        raise ValueError(f"file harus salah satu: {', '.join(FILES)}")
-    return "document", name, _mirror(agent, name)
+            raise ValueError("invalid role name")
+        return "document", f"role:{role_name}"
+    if file in DOC_FILES:
+        return "document", file
+    if file == "host":
+        return "host", "host"
+    if file == "gateway":
+        return "gateway", "gateway"
+    raise ValueError(f"file must be one of: {', '.join(FILES)}")
 
 
 def _read(agent, file: str, role_name: str) -> tuple[str, str, str]:
-    kind, name, mirror = _current(agent, file, role_name)
-    if kind == "document":
-        text = agent.documents.get(name) if agent.documents is not None else None
-        if text is None and mirror is not None and mirror.is_file():
-            text = mirror.read_text(encoding="utf-8")
-        return kind, name, text or ""
-    path = mirror
-    return kind, name, path.read_text(encoding="utf-8") if path and path.is_file() else ""
+    kind, name = _current(agent, file, role_name)
+    if kind == "host":
+        text = agent.config.paths.config.read_text(encoding="utf-8")
+        return kind, name, text
+    if kind == "gateway":
+        raw = _read_config(agent)
+        return kind, name, dump({"gateways": raw.get("gateways") or {}})
+    text = agent.documents.get(name) if agent.documents is not None else None
+    if text is not None:
+        return kind, name, text
+    if name in {"engine", "soul"}:
+        raw = _read_config(agent)
+        body = raw.get(name)
+        return kind, name, dump(body) if isinstance(body, dict) else ""
+    if name == "persona":
+        path = agent.config.paths.soul_md
+        return kind, name, path.read_text(encoding="utf-8") if path.is_file() else ""
+    roles = _read_roles(agent)
+    body = roles.get(name.split(":", 1)[1]) if ":" in name else None
+    return kind, name, dump(body) if isinstance(body, dict) else ""
 
 
 class CandidateDocuments:
-    """Dokumen DB + satu kandidat, untuk validasi loader tanpa menulis."""
+    """DB documents plus one candidate, for validating through the loader without writing."""
 
     def __init__(self, agent, name: str, content: str) -> None:
         self.agent = agent
@@ -159,37 +206,40 @@ class CandidateDocuments:
         return sorted(found)
 
 
-def _validate(agent, file: str, name: str, text: str, role_name: str) -> None:
+def _validate(agent, file: str, name: str, text: str) -> None:
     if len(text.encode("utf-8")) > MAX_CONTENT:
-        raise ValueError(f"konten melebihi {MAX_CONTENT} byte")
+        raise ValueError(f"content exceeds {MAX_CONTENT} bytes")
+    if file == "persona":
+        return
     if file in {"host", "gateway"}:
         body = yaml.safe_load(text)
         if not isinstance(body, dict):
-            raise ValueError(f"{file} harus mapping YAML")
+            raise ValueError(f"{file} must be a YAML mapping")
         if file == "gateway":
             gateways = body.get("gateways")
             if gateways is not None and not isinstance(gateways, dict):
-                raise ValueError("gateway.gateways harus mapping")
+                raise ValueError("gateway.gateways must be a mapping")
             for gateway_name, value in (gateways or {}).items():
                 if value is not None and not isinstance(value, dict):
-                    raise ValueError(f"gateway '{gateway_name}' harus mapping")
+                    raise ValueError(f"gateway '{gateway_name}' must be a mapping")
                 role = (value or {}).get("role") if isinstance(value, dict) else None
                 if role is not None and agent.config.roles.get(str(role)) is None:
-                    raise ValueError(f"gateway '{gateway_name}': role '{role}' tidak ada")
+                    raise ValueError(f"gateway '{gateway_name}': role '{role}' does not exist")
         else:
             if not isinstance(body.get("database"), dict) and not body.get("workspace"):
-                raise ValueError("host config butuh database/workspace")
-        return
-    if file == "persona":
+                raise ValueError("host config needs database/workspace")
+            for key in RESERVED_SECTIONS:
+                if key in body and not isinstance(body.get(key), dict):
+                    raise ValueError(f"host section '{key}' must stay a mapping")
         return
     documents = CandidateDocuments(agent, name, text)
     loaded = load_config(
         agent.config.paths.config, documents=documents, require_key=False, require_gateway=False
     )
     if file == "role" and loaded.default_role not in loaded.roles.by_name:
-        raise ValueError("default_role harus tetap ada")
+        raise ValueError("default_role must still exist")
     if file == "engine" and not loaded.roles.get(loaded.default_role):
-        raise ValueError("default_role harus tetap ada")
+        raise ValueError("default_role must still exist")
 
 
 def _audit(agent, actor: str, file: str, path: str, old: str, new: str) -> None:
@@ -210,7 +260,7 @@ def _backup(path: Path) -> Path | None:
         return None
     target = path.with_name(f"{path.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
     target.write_bytes(path.read_bytes())
-    with __import__("contextlib").suppress(OSError):
+    with contextlib.suppress(OSError):
         target.chmod(0o600)
     return target
 
@@ -222,14 +272,19 @@ def _atomic(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-async def _commit(agent, file: str, name: str, text: str, mirror: Path | None, actor: str) -> None:
-    if file in {"host", "gateway"}:
-        if mirror is not None:
-            _backup(mirror)
-            _atomic(mirror, text)
+async def _commit(agent, file: str, name: str, text: str, actor: str) -> None:
+    if file == "host":
+        _write_config(agent, yaml.safe_load(text) or {})
+        return
+    if file == "gateway":
+        raw = _read_config(agent)
+        body = yaml.safe_load(text) or {}
+        raw["gateways"] = body.get("gateways") or {}
+        _write_config(agent, raw)
         return
     if agent.documents is None:
-        raise ValueError("dokumen DB tidak tersedia")
+        raise ValueError("DB documents are not available")
+    mirror = _mirror(agent, file)
     if mirror is not None:
         _backup(mirror)
     agent.documents.put(name, text, actor=actor)
@@ -261,42 +316,48 @@ def _payload(
 
 def _change(
     agent, file: str, role_name: str, action: str, path: str, value, content: str
-) -> tuple[str, str, str, Path | None]:
-    """Hitung isi baru tanpa menulis; kembalikan (kind, name, new_text, mirror)."""
+) -> tuple[str, str, str]:
+    """Compute the new content without writing; return (kind, name, new_text)."""
     kind, name, current = _read(agent, file, role_name)
-    mirror = _mirror(agent, name) if kind == "document" else (
-        agent.config.paths.config if file == "host" else agent.config.paths.gateway
-    )
     if action == "write":
         if not content:
-            raise ValueError("content kosong")
+            raise ValueError("content is empty")
         new_text = content
     else:
         if file == "persona":
-            raise ValueError("persona hanya bisa diubah dengan action=write")
+            raise ValueError("persona can only change with action=write")
+        if file == "gateway" and path.startswith("gateways."):
+            raise ValueError("gateway paths are relative to the gateways mapping")
+        if file == "host":
+            head = str(path or "").split(".", 1)[0]
+            if head in RESERVED_SECTIONS:
+                raise ValueError("use file=engine, file=gateway, or file=soul")
         body = yaml.safe_load(current) if current.strip() else {}
         if body is None:
             body = {}
         if not isinstance(body, dict):
-            raise ValueError(f"{name} bukan mapping YAML")
+            raise ValueError(f"{name} is not a YAML mapping")
+        if file == "gateway":
+            gateways = body.get("gateways")
+            body = gateways if isinstance(gateways, dict) else {}
         if action == "set":
             deep_set(body, path, value)
         elif action == "unset":
             if not deep_unset(body, path):
-                raise KeyError(f"path tidak ada: {path}")
+                raise KeyError(f"path does not exist: {path}")
         else:
-            raise ValueError("action harus get, schema, set, unset, write, atau reload")
-        new_text = dump(body)
+            raise ValueError("action must be get, schema, set, unset, write, or reload")
+        new_text = dump({"gateways": body}) if file == "gateway" else dump(body)
     if path and SECRET.search(path) and path != "api_key_env":
-        raise ValueError("key sensitif tidak boleh diubah lewat settings")
-    _validate(agent, file, name, new_text, role_name)
-    return kind, name, new_text, mirror
+        raise ValueError("sensitive keys cannot be changed through settings")
+    _validate(agent, file, name, new_text)
+    return kind, name, new_text
 
 
 async def _settings(args: dict, ctx: ToolContext) -> str:
     agent = ctx.agent
     if agent is None:
-        return "error: settings hanya tersedia saat runtime agent"
+        return "error: settings is only available at agent runtime"
     action = str(args.get("action") or "schema").strip().lower()
     file = str(args.get("file") or "").strip().lower()
     role_name = str(args.get("role") or "").strip()
@@ -315,7 +376,7 @@ async def _settings(args: dict, ctx: ToolContext) -> str:
     if action == "get":
         kind, name, text = _read(agent, file, role_name)
         if file == "persona":
-            return text or "(persona kosong)"
+            return text or "(persona is empty)"
         body = yaml.safe_load(text) if text.strip() else {}
         if path:
             try:
@@ -325,12 +386,12 @@ async def _settings(args: dict, ctx: ToolContext) -> str:
             if isinstance(value, (dict, list)):
                 return dump(value).strip()
             return str(value)
-        return text or "(kosong)"
+        return text or "(empty)"
 
     if action not in {"set", "unset", "write"}:
-        return "error: action harus schema, get, set, unset, write, atau reload"
+        return "error: action must be schema, get, set, unset, write, or reload"
     try:
-        kind, name, new_text, mirror = _change(
+        kind, name, new_text = _change(
             agent, file, role_name, action, path, args.get("value"), str(args.get("content") or "")
         )
     except (ValueError, KeyError, ConfigError) as exc:
@@ -358,33 +419,33 @@ async def _settings(args: dict, ctx: ToolContext) -> str:
             f"pending approval #{approval.id}: settings {action} {name}. "
             f"Diff:\n{diff}\nTell the sender to run /approve {approval.id}."
         )
-    await _commit(agent, file, name, new_text, mirror, actor)
+    await _commit(agent, file, name, new_text, actor)
     _audit(agent, actor, file, path or name, old_text, display)
     try:
         summary = await agent.reload()
     except ConfigError as exc:
-        return f"ok: disimpan; {exc}"
-    return f"ok: {action} {name} disimpan. {summary}"
+        return f"ok: saved; {exc}"
+    return f"ok: {action} {name} saved. {summary}"
 
 
 async def apply_payload(agent, payload: dict) -> str:
-    """Dipanggil /approve: validasi ulang lalu tulis + mirror + audit + reload."""
+    """Called by /approve: validate again, then write, mirror, audit, and reload."""
     file = str(payload.get("file") or "")
     action = str(payload.get("action") or "")
     role_name = str(payload.get("role") or "")
     path = str(payload.get("path") or "")
     actor = str(payload.get("actor") or "approval")
-    kind, name, new_text, mirror = _change(
+    kind, name, new_text = _change(
         agent, file, role_name, action, path, payload.get("value"), str(payload.get("content") or "")
     )
     _, _, old_text = _read(agent, file, role_name)
-    await _commit(agent, file, name, new_text, mirror, actor)
+    await _commit(agent, file, name, new_text, actor)
     display = redact_dsn(new_text) if path == "database.url" else new_text
     _audit(agent, actor, file, path or name, old_text, display)
     try:
         summary = await agent.reload()
     except ConfigError as exc:
-        return f"disimpan; {exc}"
+        return f"saved; {exc}"
     return summary
 
 
@@ -393,9 +454,10 @@ TOOL = Handler(
     family="write",
     description=(
         "Read or change Sanka's own config/soul/persona/roles. Actions: schema, get, set, unset, "
-        "write, reload. Files: engine, host, gateway, soul, persona, role:<name>. Engine/soul/"
-        "persona/role live in the shared DB with file mirrors; host/gateway are host-local files. "
-        "Sensitive changes wait for /approve when approval.settings is true."
+        "write, reload. Files: engine, host, gateway, soul, persona, role:<name>. Engine/soul "
+        "live in the `engine`/`soul` sections of config.yaml and in DB documents; roles live in "
+        "roles.yaml and DB `role:<name>` documents; host is the whole config.yaml. Sensitive "
+        "changes wait for /approve when approval.settings is true."
     ),
     fn=_settings,
     parameters={

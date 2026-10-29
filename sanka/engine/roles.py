@@ -1,11 +1,10 @@
-"""Role modular: satu role = satu dokumen YAML; izin eksplisit, tanpa default handler."""
+"""Modular roles: one role per YAML block; explicit permissions, no handler defaults."""
 
 from __future__ import annotations
 
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import yaml
 
@@ -13,7 +12,7 @@ NAME = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
 
 class RoleError(ValueError):
-    """Dokumen role melanggar kontrak."""
+    """A role document breaks the contract."""
 
 
 @dataclass(frozen=True)
@@ -25,6 +24,7 @@ class Role:
     commands: tuple[str, ...] = ()
     context: str = ""
     priority: int = 0
+    memory_admin: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,12 +43,12 @@ class RoleRegistry:
         if role is not None:
             return role
         if not self.by_name:
-            raise RoleError("tidak ada role yang dimuat")
+            raise RoleError("no roles loaded")
         return self.by_name[self.names()[0]]
 
     def for_address(self, address: str) -> tuple[Role, ...]:
-        """Semua role yang memuat alamat ini, urut priority desc lalu nama."""
-        from .permissions import normalize  # lokal: permissions mengimpor modul ini
+        """Every role that lists this address, ordered by priority desc then name."""
+        from .permissions import normalize  # local: permissions imports this module
 
         who = normalize(str(address or ""))
         matched = [
@@ -61,12 +61,12 @@ class RoleRegistry:
         return tuple(sorted(matched, key=lambda role: (-role.priority, role.name)))
 
     def override(self, names: tuple[str, ...]) -> tuple[Role, ...]:
-        """Ganti hasil for_address dengan role bernama (dipakai gateway CLI)."""
+        """Replace the for_address result with named roles (used by the CLI gateway)."""
         found: list[Role] = []
         for name in names:
             role = self.get(name)
             if role is None:
-                raise RoleError(f"role '{name}' tidak ada")
+                raise RoleError(f"role '{name}' does not exist")
             found.append(role)
         return tuple(found) or (self.default_role(),)
 
@@ -75,29 +75,35 @@ def _str_tuple(value: object, field_name: str, source: str) -> tuple[str, ...]:
     if value is None:
         return ()
     if not isinstance(value, list):
-        raise RoleError(f"{source}: '{field_name}' harus list[str]")
+        raise RoleError(f"{source}: '{field_name}' must be a list[str]")
     items: list[str] = []
     for item in value:
         if not isinstance(item, (str, int)) or not str(item).strip():
-            raise RoleError(f"{source}: '{field_name}' harus list[str]")
+            raise RoleError(f"{source}: '{field_name}' must be a list[str]")
         items.append(str(item))
     return tuple(items)
 
 
+def _bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"true", "yes", "1", "on"}
+
+
 def parse_role(name: str, body: object, source: str) -> Role:
     if not isinstance(body, dict):
-        raise RoleError(f"{source}: role harus mapping")
+        raise RoleError(f"{source}: role must be a mapping")
     declared = str(body.get("name") or "").strip()
     if not declared:
-        raise RoleError(f"{source}: field 'name' wajib diisi")
+        raise RoleError(f"{source}: field 'name' is required")
     if declared != name:
-        raise RoleError(f"{source}: name '{declared}' tidak sama dengan nama '{name}'")
+        raise RoleError(f"{source}: name '{declared}' does not match key '{name}'")
     if not NAME.fullmatch(declared):
-        raise RoleError(f"{source}: nama role tidak valid: '{declared}'")
+        raise RoleError(f"{source}: invalid role name: '{declared}'")
     try:
         priority = int(body.get("priority") or 0)
     except (TypeError, ValueError) as exc:
-        raise RoleError(f"{source}: 'priority' harus angka") from exc
+        raise RoleError(f"{source}: 'priority' must be a number") from exc
     return Role(
         name=declared,
         description=str(body.get("description") or "").strip(),
@@ -106,35 +112,28 @@ def parse_role(name: str, body: object, source: str) -> Role:
         commands=_str_tuple(body.get("commands"), "commands", source),
         context=str(body.get("context") or "").strip(),
         priority=priority,
+        memory_admin=_bool(body.get("memory_admin")),
     )
 
 
 def load_roles(
-    source: Path | Mapping[str, str],
+    source: Mapping[str, object],
     default_role: str,
 ) -> RoleRegistry:
-    """Muat role dari folder `roles/*.yaml` atau mapping dokumen DB `role:<name>`."""
+    """Load roles from one `name -> body` mapping (a YAML string or an already-parsed dict)."""
     by_name: dict[str, Role] = {}
-    if isinstance(source, Mapping):
-        items = [(str(name), str(text), f"dokumen role:{name}") for name, text in source.items()]
-    else:
-        folder = Path(source)
-        items = []
-        if folder.is_dir():
-            for path in sorted(folder.glob("*.yaml")):
-                try:
-                    text = path.read_text(encoding="utf-8")
-                except OSError as exc:
-                    raise RoleError(f"{path}: gagal dibaca: {exc}") from exc
-                items.append((path.stem, text, str(path)))
-    for name, text, label in items:
-        try:
-            body = yaml.safe_load(text)
-        except yaml.YAMLError as exc:
-            raise RoleError(f"{label}: YAML tidak valid: {exc}") from exc
-        role = parse_role(name, body, label)
+    for name, value in source.items():
+        label = f"role:{name}"
+        if isinstance(value, str):
+            try:
+                body = yaml.safe_load(value)
+            except yaml.YAMLError as exc:
+                raise RoleError(f"{label}: invalid YAML: {exc}") from exc
+        else:
+            body = value
+        role = parse_role(str(name), body, label)
         by_name[role.name] = role
     default = str(default_role or "").strip()
     if default not in by_name:
-        raise RoleError(f"default_role '{default}' tidak ada di role yang dimuat")
+        raise RoleError(f"default_role '{default}' is not among the loaded roles")
     return RoleRegistry(by_name=by_name, default=default)

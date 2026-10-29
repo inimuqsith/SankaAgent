@@ -39,6 +39,8 @@ class ToolContext:
         gateway=None,
         approved: bool = False,
         approval_id: str = "",
+        person_id: str = "",
+        is_dm: bool = False,
     ):
         self.config = config
         self.roles = tuple(roles) if isinstance(roles, (tuple, list)) else (roles,)
@@ -56,12 +58,20 @@ class ToolContext:
         self.gateway = gateway
         self.approved = approved
         self.approval_id = approval_id
+        self.person_id = person_id or sender
+        self.is_dm = bool(is_dm)
         self.used: list[str] = []
         self.sent: list[dict] = []
+        self.memory_hits: list = []
 
     @property
     def role(self) -> Role | None:
         return self.roles[0] if self.roles else None
+
+    @property
+    def memory_admin(self) -> bool:
+        """Global memory (and its deletion) is limited to roles marked memory_admin."""
+        return any(role.memory_admin for role in self.roles)
 
     def role_names(self) -> str:
         return ", ".join(role.name for role in self.roles) or "-"

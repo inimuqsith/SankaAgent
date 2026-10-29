@@ -62,7 +62,7 @@ def build_gateways(
     only: tuple[str, ...] = (),
     force: tuple[str, ...] = (),
 ) -> list:
-    """Bangun gateway aktif dari gateway.yaml; `only`/`force` dipakai console."""
+    """Bangun gateway aktif dari bagian `gateways` di config.yaml; `only`/`force` dipakai console."""
     found: list = []
     names = list(config.gateways)
     for name in only:
@@ -78,5 +78,5 @@ def build_gateways(
         cls = load_gateway(name)
         found.append(cls(config, db, history, windows, settings=settings))
     if not found:
-        raise ConfigError("tidak ada gateway aktif; isi gateway.yaml")
+        raise ConfigError("tidak ada gateway aktif; isi bagian `gateways` di config.yaml")
     return found

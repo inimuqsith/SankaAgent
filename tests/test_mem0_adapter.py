@@ -62,6 +62,9 @@ def test_add_maps_identity_scope_and_infer_false(tmp_path, monkeypatch) -> None:
     assert call["metadata"]["audience"] == "private"
     assert call["metadata"]["kind"] == "preference"
     assert call["metadata"]["where"] is None
+    assert call["metadata"]["level"] == 2
+    assert call["metadata"]["owner_id"] == "628111"
+    assert call["metadata"]["subject_id"] == "628111"
 
 
 def test_capture_infers_and_uses_person_identity(tmp_path, monkeypatch) -> None:
@@ -84,9 +87,13 @@ def test_capture_infers_and_uses_person_identity(tmp_path, monkeypatch) -> None:
 
 def test_sensitive_text_rejected(tmp_path, monkeypatch) -> None:
     backend, _fake = make_backend(tmp_path, monkeypatch)
-    with pytest.raises(ValueError, match="rahasia"):
+    with pytest.raises(ValueError, match="secret"):
         asyncio.run(
             backend.add("api_key=abc123", scope="global", source="tool")
+        )
+    with pytest.raises(ValueError, match="level 5"):
+        asyncio.run(
+            backend.add("level lima", scope="global", source="tool", level=5)
         )
 
 
@@ -116,7 +123,7 @@ def test_supersedes_rejects_other_person(tmp_path, monkeypatch) -> None:
         backend.add("punya budi", scope="person", person_id="1", chat_id="c")
     )[0]
 
-    with pytest.raises(ValueError, match="orang lain"):
+    with pytest.raises(ValueError, match="another person"):
         asyncio.run(
             backend.add(
                 "punya ani",
@@ -133,10 +140,13 @@ def test_forget_checks_scope_owner(tmp_path, monkeypatch) -> None:
     memory_id = asyncio.run(
         backend.add("fakta pribadi", scope="person", person_id="1", chat_id="c")
     )[0]
+    global_id = asyncio.run(backend.add("fakta global", scope="global", chat_id="c"))[0]
 
-    assert asyncio.run(backend.forget(memory_id, person_id="2")) is False
-    assert asyncio.run(backend.forget("tidak-ada", person_id="1")) is False
-    assert asyncio.run(backend.forget(memory_id, person_id="1")) is True
+    assert asyncio.run(backend.forget(memory_id, requester_id="2")) is False
+    assert asyncio.run(backend.forget("tidak-ada", requester_id="1")) is False
+    assert asyncio.run(backend.forget(global_id, requester_id="1")) is False
+    assert asyncio.run(backend.forget(global_id, requester_id="1", allow_global=True)) is True
+    assert asyncio.run(backend.forget(memory_id, requester_id="1")) is True
 
 
 def test_search_queries_only_requested_scopes(tmp_path, monkeypatch) -> None:
@@ -168,4 +178,4 @@ def test_context_timeout_returns_empty(tmp_path, monkeypatch) -> None:
     backend._memory = Slow()
     assert asyncio.run(
         backend.context(person_id="1", chat_id="c", query="apa")
-    ) == ""
+    ).text == ""

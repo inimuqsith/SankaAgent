@@ -440,12 +440,15 @@ def test_replace_clears_data_but_keeps_documents(tmp_path: Path, legacy: Path) -
 
 def test_upgrade_check_and_lease(tmp_path: Path) -> None:
     config = _config(tmp_path)
-    (tmp_path / "engine.yaml").write_text("default_role: guest\n", encoding="utf-8")
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["engine"] = {"default_role": "guest"}
+    raw["soul"] = {"name": "sanka", "language": "id"}
+    raw["gateways"] = {}
+    config.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
     (tmp_path / "SOUL.md").write_text("aku sanka", encoding="utf-8")
-    (tmp_path / "soul.yaml").write_text("name: sanka\nlanguage: id\n", encoding="utf-8")
-    roles = tmp_path / "roles"
-    roles.mkdir()
-    (roles / "guest.yaml").write_text("name: guest\n", encoding="utf-8")
+    (tmp_path / "roles.yaml").write_text(
+        "roles:\n  guest:\n    name: guest\n", encoding="utf-8"
+    )
 
     info = admin_db.upgrade(config)
     assert info["schema_version"] == "1"

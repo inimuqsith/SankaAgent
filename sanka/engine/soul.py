@@ -1,4 +1,4 @@
-"""Jiwa Sanka: nama, bahasa, pronomina, dan persona dari dokumen/berkas."""
+"""Sanka's soul: name, language, pronouns, and persona from documents/files."""
 
 from __future__ import annotations
 
@@ -69,44 +69,45 @@ Grounding:
 @dataclass(frozen=True)
 class Soul:
     name: str = "sanka"
-    language: str = "id"  # "id" | "en" | "auto" | BCP-47 lain
+    language: str = "id"  # "id" | "en" only
     pronouns: str = "aku"
     persona: str = ""
     source: Path | None = None
 
 
+def normalize_language(value: object, default: str = "id") -> str:
+    """Map aliases to `en`/`id`; raise ValueError for anything unsupported."""
+    text = str(value or "").strip().lower()
+    if not text:
+        return default
+    if text in {"en", "english"}:
+        return "en"
+    if text in {"id", "in", "indonesian", "auto"}:
+        return "id"
+    raise ValueError("language must be 'id' or 'en'")
+
+
 def infer_language(text: str) -> str:
-    """`id` bila persona memuat minimal 3 penanda Indonesia; selain itu `auto`."""
+    """Legacy migration helper: `id` with at least 3 Indonesian markers, else `en`."""
     lowered = str(text or "").lower()
     hits = {word for word in MARKERS if word in lowered}
-    return "id" if len(hits) >= 3 else "auto"
+    return "id" if len(hits) >= 3 else "en"
 
 
 def language_line(soul: Soul) -> str:
-    language = str(soul.language or "auto").strip()
-    if language == "id":
-        return "Reply in Indonesian (Bahasa Indonesia), matching the sender's casual register."
+    language = normalize_language(soul.language, "id")
     if language == "en":
         return "Reply in English."
-    if language == "auto":
-        return "Reply in the same language as the sender."
-    return f"Reply in {language}."
+    return "Reply in Indonesian (Bahasa Indonesia), matching the sender's casual register."
 
 
-def _meta(text: str | None, base: Path | None) -> dict:
-    if not text and base is not None:
-        path = base / "soul.yaml"
-        if path.is_file():
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError:
-                log.warning("gagal membaca %s", path, exc_info=True)
+def _meta(text: str | None) -> dict:
     if not text:
         return {}
     try:
         body = yaml.safe_load(text)
     except yaml.YAMLError as exc:
-        raise ValueError(f"soul.yaml tidak valid: {exc}") from exc
+        raise ValueError(f"soul metadata is invalid: {exc}") from exc
     return body if isinstance(body, dict) else {}
 
 
@@ -115,14 +116,14 @@ def load_soul(
     *,
     base: Path | None = None,
 ) -> Soul:
-    """Muat jiwa dari folder (soul.yaml + SOUL.md) atau mapping dokumen `soul`/`persona`."""
+    """Load the soul from a `soul`/`persona` document mapping or from a folder."""
     if isinstance(source, Mapping):
-        meta = _meta(source.get("soul"), base)
+        meta = _meta(source.get("soul"))
         persona = str(source.get("persona") or "").strip()
         persona_path = (base / "SOUL.md") if base is not None else None
     else:
         base = Path(source)
-        meta = _meta(None, base)
+        meta = {}
         persona_path = base / "SOUL.md"
         persona = ""
     source_path: Path | None = None
@@ -132,17 +133,15 @@ def load_soul(
         try:
             persona = persona_path.read_text(encoding="utf-8").strip()
         except OSError:
-            log.warning("gagal membaca %s", persona_path, exc_info=True)
+            log.warning("failed to read %s", persona_path, exc_info=True)
     name = str(meta.get("name") or "sanka").strip() or "sanka"
     pronouns = str(meta.get("pronouns") or "aku").strip() or "aku"
-    language = str(meta.get("language") or "").strip().lower()
-    if language not in {"id", "en", "auto"}:
-        language = infer_language(persona) if language in {"", "in"} else language
+    language = normalize_language(meta.get("language"), "id")
     if not persona.strip():
         log.warning("soul persona missing; running without persona")
     return Soul(
         name=name,
-        language=language or "auto",
+        language=language,
         pronouns=pronouns,
         persona=persona.strip(),
         source=source_path,

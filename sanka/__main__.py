@@ -193,7 +193,7 @@ async def backfill(config_path: str | None) -> int:
     config = load_config(paths.config, documents=documents, require_gateway=True)
     raw = config.gateways.get("whatsapp")
     if raw is None:
-        raise ConfigError("gateway 'whatsapp' tidak ada di gateway.yaml")
+        raise ConfigError("gateway 'whatsapp' tidak ada di config.yaml")
     settings = WhatsAppSettings.from_mapping(raw.enabled, raw.options, paths.config.parent)
     history = HistoryStore(db, config.workspace)
     session = settings.session_db.parent / "backfill.db"
@@ -266,7 +266,7 @@ async def selftest(config: Config) -> int:
     from .engine.permissions import commands_for, tool_patterns, tools_for
     from .engine.tools import REGISTRY, ToolContext, execute
     from .engine.tools.sandbox import resolve_runtime
-    from .engine.memory import build_memory, memory_status
+    from .engine.memory import MemoryHit, build_memory, memory_status
     from .engine.memory.ledger import ActionLedger
     from .engine.stores.affect import AffectStore
     from .engine.stores.documents import DocumentStore
@@ -335,13 +335,37 @@ async def selftest(config: Config) -> int:
                 scope="global",
                 kind="note",
                 source="selftest",
+                level=0,
+                owner_id="selftest",
+                subject_id="selftest",
+                confirmed=True,
             )
             hits = await memory.search("sanka-selftest-memory", scopes=("global",))
-            removed = bool(ids) and await memory.forget(ids[0])
+            removed = bool(ids) and await memory.forget(
+                ids[0], requester_id="selftest", allow_global=True
+            )
             passed = bool(hits) and removed
             results.append(_report("memory", "PASS" if passed else "FAIL", "" if passed else "entri tidak ditemukan"))
         else:
             _report("memory", "SKIP", memory_status(memory))
+
+        from .engine.config import PrivacyConfig
+        from .engine.memory.privacy import PrivacyPolicy
+
+        policy = PrivacyPolicy(PrivacyConfig())
+        probe = MemoryHit(id="x", text="t", level=3, owner_id="a", subject_id="a", confirmed=True)
+        vetoed = MemoryHit(id="y", text="t", level=1, vetoed=True)
+        checks = (
+            policy.show(probe, is_dm=False) is False,
+            policy.show(probe, is_dm=True) is True,
+            policy.disclose(probe, requester="a", is_dm=False) == "ask",
+            policy.disclose(probe, requester="a", is_dm=True) == "allow",
+            policy.disclose(probe, requester="b", is_dm=True) == "deny",
+            policy.disclose(vetoed, requester="a", is_dm=True) == "deny",
+        )
+        results.append(
+            _report("privacy", "PASS" if all(checks) else "FAIL", "" if all(checks) else str(checks))
+        )
 
         skills.save("selftest", "Uji selftest.", "Langkah selftest.\n", overwrite=True)
         passed = "selftest: Uji selftest." in skills.index()
@@ -552,7 +576,7 @@ def _migrate(args: argparse.Namespace) -> int:
         for name, content in files.items():
             print(f"=== {name}", flush=True)
             print(content, flush=True)
-        print("dibuang: " + ", ".join(dropped), flush=True)
+        print("dropped: " + ", ".join(dropped), flush=True)
         return 0
     print(admin_migrate.report(files, dropped, backup), flush=True)
     return 0
@@ -563,7 +587,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", default=None, help="path config.yaml (default: ./config.yaml)")
     parser.add_argument("--env", default=".env", help="path .env (default: ./.env)")
     sub = parser.add_subparsers(dest="command")
-    run = sub.add_parser("run", help="jalankan gateway sesuai gateway.yaml")
+    run = sub.add_parser("run", help="run the gateways enabled in config.yaml")
     run.add_argument("--takeover", action="store_true", help="ambil lease dari instance lain")
     console = sub.add_parser("console", help="REPL lokal dengan jiwa dan DB yang sama")
     console.add_argument(
@@ -574,12 +598,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_parser("selftest", help="uji cepat store, tool, dan LLM")
     sub.add_parser("backfill", help="tarik riwayat lama lewat perangkat sementara")
-    init = sub.add_parser("init", help="scaffold config/gateway/engine/soul/roles")
+    init = sub.add_parser("init", help="scaffold config.yaml, roles.yaml, SOUL.md, and .env")
     init.add_argument("--dir", default=".", help="folder tujuan")
     init.add_argument("--force", action="store_true", help="timpa berkas yang sudah ada")
     config = sub.add_parser("config", help="operasi config")
     config_sub = config.add_subparsers(dest="config_command")
-    migrate = config_sub.add_parser("migrate", help="pecah config.yaml lama")
+    migrate = config_sub.add_parser("migrate", help="fold the old split layout into config.yaml")
     migrate.add_argument("--dir", default=".", help="folder config")
     migrate.add_argument("--dry-run", action="store_true", help="cetak tanpa menulis")
     migrate.add_argument("--force", action="store_true", help="timpa config baru yang ada")
