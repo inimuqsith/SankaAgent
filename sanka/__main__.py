@@ -567,7 +567,7 @@ def _init(args: argparse.Namespace) -> int:
     return 0
 
 
-def _migrate(args: argparse.Namespace) -> int:
+def _migrate(args: argparse.Namespace) -> None:
     from .admin import migrate as admin_migrate
 
     files, dropped, backup = admin_migrate.migrate(
@@ -578,9 +578,8 @@ def _migrate(args: argparse.Namespace) -> int:
             print(f"=== {name}", flush=True)
             print(content, flush=True)
         print("dropped: " + ", ".join(dropped), flush=True)
-        return 0
+        return
     print(admin_migrate.report(files, dropped, backup), flush=True)
-    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -643,7 +642,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "init":
             return _init(args)
         if args.command == "config" and args.config_command == "migrate":
-            return _migrate(args)
+            _migrate(args)
+            return 0
         if args.command == "config" and args.config_command == "export":
             return _config_export(args)
         if args.command == "config" and args.config_command == "import":

@@ -8,7 +8,7 @@ import re
 BLOCK = re.compile(r"<(reasoning|thought|tool_call)>.*?</\1>", re.IGNORECASE | re.DOTALL)
 FENCE = re.compile(r"(```.*?```)", re.DOTALL)
 FENCE_START = "```"
-HEADING = re.compile(r"^#{1,6}\s+(.+)$", re.MULTILINE)
+HEADING = re.compile(r"^#{1,6}[ \t]+(.+)$", re.MULTILINE)
 BOLD = re.compile(r"\*\*(.+?)\*\*")
 BULLET = re.compile(r"^[-*]\s+", re.MULTILINE)
 LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")

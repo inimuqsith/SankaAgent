@@ -128,7 +128,10 @@ def _sync_item(db, web, fallback_chat: str, bot_name: str, fallback_ts: int = 0)
     chat_id = key.remoteJID or fallback_chat
     if not chat_id or not web.message.ListFields():
         return None
-    msg_id = key.ID or f"hist-{hashlib.sha1(web.SerializeToString()).hexdigest()[:24]}"
+    msg_id = key.ID or (
+        "hist-"
+        + hashlib.sha1(web.SerializeToString(), usedforsecurity=False).hexdigest()[:24]
+    )
     text = message_text(web.message)
     media = describe_media(web.message, msg_id)
     quote = quote_from_proto(web.message, msg_id)

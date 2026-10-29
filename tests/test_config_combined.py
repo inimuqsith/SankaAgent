@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 import yaml
 
-from sanka.engine.config import DEFAULT_SENSITIVE_COMMANDS, ConfigError, load_config, load_host
+from sanka.engine.config import (
+    DEFAULT_SENSITIVE_COMMANDS,
+    ConfigError,
+    load_config,
+    load_env,
+    load_host,
+)
 from sanka.engine.stores.documents import DocumentStore
 from support import database
 
@@ -155,3 +163,16 @@ def test_approval_sensitive_commands_override_and_disable(tmp_path, monkeypatch)
 
         assert loaded.approval.sensitive_tools == ()
         assert loaded.approval.sensitive_commands == expected
+
+
+def test_load_env_rejects_paths_outside_the_working_directory(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SANKA_ENV_TEST", raising=False)
+    (tmp_path / ".env").write_text("SANKA_ENV_TEST=ok\n", encoding="utf-8")
+
+    load_env()
+    assert os.environ["SANKA_ENV_TEST"] == "ok"
+
+    for bad in ("../.env", "/etc/passwd", "sub/.env"):
+        with pytest.raises(ConfigError):
+            load_env(bad)

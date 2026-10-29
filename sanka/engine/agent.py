@@ -64,15 +64,15 @@ def command_body(text: str, bot_name: str, handles: set[str]) -> str:
 
     body = str(text or "").lstrip()
     pattern = re.compile(MENTION_HEAD_RE)
-    while True:
-        match = pattern.match(body)
-        if match is None:
-            return body
+    match = pattern.match(body)
+    while match is not None:
         handle = match.group(1).lstrip("+")
         digits = "".join(ch for ch in handle if ch.isdigit()) or handle.lower()
         if handle.casefold() != str(bot_name or "").casefold() and digits not in handles:
-            return body
+            break
         body = body[match.end() :]
+        match = pattern.match(body)
+    return body
 
 
 def _stale(answered: dict[str, frozenset[str]], chat_id: str, message: ChatMessage) -> bool:

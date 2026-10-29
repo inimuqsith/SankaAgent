@@ -24,6 +24,7 @@ SECRET = re.compile(r"(api_key|password|secret|token)", re.IGNORECASE)
 FILES = ("engine", "host", "gateway", "soul", "persona", "role")
 DOC_FILES = ("engine", "soul", "persona", "role")
 RESERVED_SECTIONS = ("engine", "gateways", "soul")
+MIRRORS = ("config.yaml", "roles.yaml", "SOUL.md")  # satu-satunya berkas yang di-mirror
 
 
 # --------------------------------------------------------------- yaml util
@@ -256,10 +257,11 @@ def _audit(agent, actor: str, file: str, path: str, old: str, new: str) -> None:
 
 
 def _backup(path: Path) -> Path | None:
-    if not path.is_file():
+    resolved = path.resolve()
+    if resolved.name not in MIRRORS or not resolved.is_file():
         return None
-    target = path.with_name(f"{path.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
-    target.write_bytes(path.read_bytes())
+    target = resolved.with_name(f"{resolved.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
+    target.write_bytes(resolved.read_bytes())
     with contextlib.suppress(OSError):
         target.chmod(0o600)
     return target

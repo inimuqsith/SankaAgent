@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import random
 import re
+import secrets
 import time
 from pathlib import Path
 
@@ -274,7 +274,7 @@ class WhatsAppGateway:
         if not paths:
             log.info("reaksi dilewati: tidak ada stiker reaksi chat=%s", chat_id)
             return None
-        path = random.choice(paths)
+        path = secrets.choice(paths)
         try:
             await self.client.send_sticker(self._jid(chat_id), str(path))
         except Exception:

@@ -77,7 +77,8 @@ def test_podman_argv_has_keep_id_and_selinux_suffix(tmp_path: Path, monkeypatch)
     assert "--user" not in argv
     assert mount == f"{ctx.config.workspace}:/work:Z"
     assert argv[argv.index("--network") + 1] == "none"
-    assert "--read-only" in argv and argv[argv.index("--tmpfs") + 1] == "/tmp"
+    assert "--read-only" in argv
+    assert argv[argv.index("--tmpfs") + 1] == "/tmp:rw,noexec,nosuid,nodev"
     assert ["--env", "TZ=Asia/Jakarta"] == list(argv[argv.index("--env") : argv.index("--env") + 2])
     assert result.startswith("exit=0")
 

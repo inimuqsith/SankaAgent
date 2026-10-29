@@ -310,10 +310,14 @@ class PrivacyService:
             return False
         answer = await self._resolve_answer(inbound.message.text, pending.kind)
         if pending.kind == "privacy":
-            return await self._resolve_privacy(inbound, gateway, pending, answer, sender)
-        return await self._resolve_disclosure(inbound, gateway, pending, answer, sender)
+            await self._resolve_privacy(inbound, gateway, pending, answer, sender)
+        else:
+            await self._resolve_disclosure(inbound, gateway, pending, answer, sender)
+        return True
 
-    async def _resolve_privacy(self, inbound, gateway, pending, answer: dict, sender: str) -> bool:
+    async def _resolve_privacy(
+        self, inbound, gateway, pending, answer: dict, sender: str
+    ) -> None:
         ids = [str(item) for item in pending.args.get("memory_ids") or []]
         kind = answer.get("kind")
         if kind == "no":
@@ -325,13 +329,13 @@ class PrivacyService:
                 )
             self.agent.approvals.mark(pending.id, "denied", sender, "privacy declined")
             await self.agent.send_text(inbound.chat_id, self._text("keep"), gateway=gateway)
-            return True
+            return
         level = answer.get("level")
         if level is None and kind == "yes":
             level = pending.payload.get("level")
         if level is None:
             await self.agent.send_text(inbound.chat_id, self._text("unclear"), gateway=gateway)
-            return True
+            return
         level = clamp_level(level, self.config.default_level)
         for memory_id in ids:
             await self.agent.memory.set_privacy(memory_id, level=level, confirmed=True)
@@ -339,26 +343,24 @@ class PrivacyService:
         await self.agent.send_text(
             inbound.chat_id, self._text("saved", level=level), gateway=gateway
         )
-        return True
 
     async def _resolve_disclosure(
         self, inbound, gateway, pending, answer: dict, sender: str
-    ) -> bool:
+    ) -> None:
         kind = answer.get("kind")
         if kind == "no":
             self.agent.approvals.mark(pending.id, "denied", sender, "disclosure declined")
             await self.agent.send_text(inbound.chat_id, self._text("keep"), gateway=gateway)
-            return True
+            return
         if kind != "yes":
             await self.agent.send_text(inbound.chat_id, self._text("unclear"), gateway=gateway)
-            return True
+            return
         self.agent.approvals.mark(pending.id, "approved", sender, "disclosure allowed")
         reply = str(pending.payload.get("reply") or "")
         if not reply.strip():
             await self.agent.send_text(inbound.chat_id, self._text("empty"), gateway=gateway)
-            return True
+            return
         await self.agent.send_text(inbound.chat_id, reply, gateway=gateway)
-        return True
 
     async def _resolve_answer(self, text: str, kind: str) -> dict:
         if self.agent.llm is not None:

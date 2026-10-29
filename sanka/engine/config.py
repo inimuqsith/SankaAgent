@@ -281,8 +281,11 @@ def resolve_database_url(database: DatabaseConfig) -> str:
 
 
 def load_env(path: str | Path = ".env") -> None:
-    """Read simple KEY=VALUE lines; blank lines and comments are skipped. Missing is fine."""
-    file = Path(path)
+    """Read simple KEY=VALUE lines from a file in the working directory. Missing is fine."""
+    file = Path(str(path)).expanduser()
+    if file.is_absolute() or file.name != str(path):
+        raise ConfigError(f"env file must be a bare file name in the working directory: {path}")
+    file = (Path.cwd() / file.name).resolve()
     if not file.is_file():
         return
     for raw in file.read_text(encoding="utf-8").splitlines():

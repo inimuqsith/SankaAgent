@@ -35,3 +35,16 @@ sanka = ["lang/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+# Mem0 mem-pin protobuf<7 sedangkan Neonize butuh >=6.32.1; build lama tetap memakai
+# protobuf 7 lewat `--no-deps`, jadi resolusi dipaksa dengan override, bukan no-deps.
+override-dependencies = ["protobuf>=7"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }

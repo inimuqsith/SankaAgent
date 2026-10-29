@@ -41,7 +41,13 @@ def build_argv(
     elif Path(runtime).name == "docker":
         # File di /work harus milik uid bot, bukan root daemon.
         args += ["--user", f"{os.getuid()}:{os.getgid()}"]
-    args += ["--network", cfg.network or "none", "--read-only", "--tmpfs", "/tmp"]
+    args += [
+        "--network",
+        cfg.network or "none",
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,noexec,nosuid,nodev",
+    ]
     for name in dict.fromkeys((*CONTAINER_ENV, *cfg.env)):
         if name in os.environ:
             args += ["--env", f"{name}={os.environ[name]}"]
