@@ -1,5 +1,38 @@
 # LOG
 
+## 2026-10-30 (fix: memory tool handed 8-char ids back to pgvector → invalid uuid)
+
+- Problem: `memory` printed shortened ids (`#7577bf34`) in `list`/`search`, in the `add`
+  ack, and in the `veto` ack. The model copied that form back into `get`/`forget`/`veto`
+  (and `supersedes`), and it reached Mem0 unchanged. Mem0's pgvector store declares `id`
+  as `uuid`, so the query died with `invalid input syntax for type uuid: "7577bf34"`
+  (`ERROR Error in cursor context (psycopg3)`) and `WARNING mem0 get gagal`, i.e. every
+  id-taking action on a memory the model had just listed failed.
+- Fix: the tool no longer truncates — list lines, the `add` ack, and the `veto` ack carry
+  the full UUID. `Mem0Backend._resolve_id` is the safety net for short ids already in a
+  transcript: a full UUID short-circuits without a query; a bare 32-hex string is dashed;
+  a pure-hex prefix is looked up with `CAST(id AS VARCHAR) LIKE 'prefix%' LIMIT 2` on the
+  collection table (SQLAlchemy Core, so the identifier is quoted and the pattern bound),
+  and an ambiguous or absent prefix resolves to "" so Mem0/pgvector is never called with
+  it (the tool then reports "not found" instead of crashing). Non-hex ids pass through
+  unchanged, preserving previous behaviour for any id that is not UUID-shaped. Every
+  id-taking method funnels through `get` (`forget`, `set_privacy`, `veto`, `add`'s
+  `supersedes`), so one resolver covers them all; `veto` now forwards the resolved
+  `hit.id` to `set_privacy` to avoid a second lookup.
+- Note: the running container had already patched its own `/app` copy (not a bind mount,
+  so that edit vanishes on rebuild). This is the source-of-truth version; the image needs
+  a rebuild and the process a restart to pick it up.
+- Verification: `pytest -q` 310 passed, with six new adapter contracts in
+  `tests/test_mem0_adapter.py` — a stub that raises exactly like pgvector for any
+  non-UUID id proves a full UUID never hits the DB, a prefix resolves to the full id, an
+  ambiguous/absent prefix never calls Mem0, a bare 32-hex id is dashed, `forget`/`veto`
+  by prefix reach Mem0 only with full UUIDs, and a non-UUID id passes through. The
+  resolver SQL was compiled for the Postgres dialect (`CAST(sanka_memories.id AS VARCHAR)
+  ... LIKE %(param_1)s::VARCHAR LIMIT %(param_2)s::INTEGER`) and executed against a SQLite
+  mirror of the collection table. `python -m sanka selftest` SELFTEST OK (memory SKIP: no
+  Postgres+pgvector in this environment), so the live pgvector path itself is unverified
+  here and needs the deployed container.
+
 ## 2026-10-30 (feat: cross-room soul — author, visibility, recent activity, archive reads)
 
 - Problem: the payload knew only this chat's last 20 messages, and it decided "who said

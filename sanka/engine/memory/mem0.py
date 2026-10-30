@@ -6,11 +6,13 @@ import asyncio
 import inspect
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from openai import OpenAI
+from sqlalchemy import String, cast, column, select, table
 from sqlalchemy.engine import make_url
 
 from ..config import Config
@@ -24,6 +26,11 @@ log = logging.getLogger(__name__)
 SCOPES = ("global", "person", "chat")
 VETO_FIELDS = ("vetoed", "vetoed_by", "vetoed_at")
 MEM0_SESSION = "sanka-agent-mem0"
+MEMORY_ID = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
+ID_PREFIX = re.compile(r"^[0-9a-f]{1,32}$", re.IGNORECASE)
+TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 CUSTOM_INSTRUCTIONS = """\
 Extract only explicit, durable facts about the people in the conversation.
@@ -201,6 +208,31 @@ class Mem0Backend:
         self._limits = memory
 
     # ------------------------------------------------------------ bantuan
+
+    def _resolve_id(self, memory_id: str) -> str:
+        """UUID penuh dari id penuh atau prefix pendek; id non-UUID diteruskan apa adanya.
+
+        Mem0 menyimpan id sebagai uuid dan pgvector menolak cast selain UUID, jadi prefix
+        tidak boleh pernah sampai ke sana. Prefix yang ambigu/tiada menghasilkan "".
+        """
+        raw = _text(memory_id).lstrip("#").strip().lower()
+        if MEMORY_ID.match(raw):
+            return raw
+        if not ID_PREFIX.match(raw):
+            return raw  # bukan pola uuid: teruskan ke Mem0 seperti sebelumnya
+        if len(raw) == 32:
+            return f"{raw[:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:]}"
+        name = _text(self.config.memory.collection)
+        if self.db is None or not TABLE_NAME.match(name):
+            return ""
+        identifier = cast(table(name, column("id")).c.id, String)
+        statement = select(identifier.label("id")).where(identifier.like(f"{raw}%")).limit(2)
+        try:
+            rows = self.db.fetch_all(statement)
+        except Exception as exc:  # DB hiccup must not break the tool
+            log.warning("resolve id memori gagal: %s: %s", type(exc).__name__, exc)
+            return ""
+        return str(rows[0]["id"]) if len(rows) == 1 else ""
 
     def _identity(self, scope: str, person_id: str, chat_id: str) -> dict:
         if scope == "global":
@@ -434,9 +466,10 @@ class Mem0Backend:
         return await self._search_scope(scope, "", person_id, chat_id, limit)
 
     async def get(self, memory_id: str) -> MemoryHit | None:
-        if not _text(memory_id) or self._memory is None:
+        resolved = self._resolve_id(memory_id)
+        if not resolved or self._memory is None:
             return None
-        result = await self._safe("get", self._memory.get, str(memory_id))
+        result = await self._safe("get", self._memory.get, resolved)
         if isinstance(result, dict) and _text(result.get("id")):
             return _hit(result)
         items = _items(result)
@@ -497,9 +530,7 @@ class Mem0Backend:
         hit = await self.get(memory_id)
         if hit is None or not subject_id or hit.subject_id != subject_id:
             return False
-        return await self.set_privacy(
-            memory_id, vetoed=active, actor=subject_id
-        )
+        return await self.set_privacy(hit.id, vetoed=active, actor=subject_id)
 
     async def context(
         self,

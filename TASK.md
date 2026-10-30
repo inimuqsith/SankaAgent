@@ -29,6 +29,7 @@ Checklist for the soul-engine + gateway refactor. Tick `[x]` only after the real
 - [x] Mem0 OSS for semantic memory; scopes `person`/`chat`/`global` + privacy metadata (level/owner/subject/confirmed/vetoed).
 - [x] Cross-chat retrieval for the same person; another person's memory is never queried.
 - [x] `ActionLedger` autobiographical; the ledger is filtered free of secrets.
+- [x] `memory` ids are full UUIDs; prefix ids resolve first, so a non-UUID id never reaches pgvector.
 - [x] `memory_legacy` + `sanka memory migrate` idempotent (DM/LID → person, group → chat, global).
 - [x] `sanka db upgrade|import|check|backup|restore`; imports old SQLite plus skills/recipes/state.
 - [x] Selftest uses a temporary database; unavailable Mem0 = SKIP.

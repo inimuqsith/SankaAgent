@@ -13,7 +13,7 @@ SCOPES = ("person", "chat", "global")
 def _line(hit: MemoryHit) -> str:
     mark = "" if hit.confirmed else "?"
     return (
-        f"#{hit.id[:8]} [{hit.scope}/L{hit.level}{mark}] "
+        f"#{hit.id} [{hit.scope}/L{hit.level}{mark}] "
         f"{hit.metadata.get('kind') or 'fact'} — {hit.text}"
     )
 
@@ -103,7 +103,7 @@ async def _memory(args: dict, ctx: ToolContext) -> str:
         if not ids:
             return "error: memory was not stored"
         note = f"; #{supersedes} superseded" if supersedes not in (None, "") else ""
-        return f"ok: memory {ids[0][:8]} saved ({scope}/L{level}/{kind}){note}."
+        return f"ok: memory {ids[0]} saved ({scope}/L{level}/{kind}){note}."
 
     if action in {"search", "list"}:
         query = str(args.get("query") or "").strip()
@@ -164,7 +164,7 @@ async def _memory(args: dict, ctx: ToolContext) -> str:
             ok = await ctx.memory.veto(str(raw_id), subject_id=subject, active=active)
             if not ok:
                 return "error: only the subject of a memory can veto it"
-            return f"ok: memory {str(raw_id)[:8]} {'vetoed' if active else 'unvetoed'}."
+            return f"ok: memory {str(raw_id)} {'vetoed' if active else 'unvetoed'}."
         if not query:
             return "error: id or query is required for veto"
         rows = await ctx.memory.search(

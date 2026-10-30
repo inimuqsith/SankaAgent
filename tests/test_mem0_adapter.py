@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import text as sql_text
 
 from sanka.engine.config import DatabaseConfig
 from sanka.engine.memory import context as memory_context
 from sanka.engine.memory.mem0 import Mem0Backend
-from support import FakeMem0, build_config
+from support import FakeMem0, build_config, database
 
 PG = "postgresql+psycopg://sanka:secret@db:5432/sanka"
 
@@ -200,3 +202,135 @@ def test_context_timeout_returns_empty(tmp_path, monkeypatch) -> None:
     assert asyncio.run(
         backend.context(person_id="1", chat_id="c", query="apa")
     ).text == ""
+
+
+# ---------------------------------------------------------------- id resolve
+
+UUID_A = "5d94099b-2441-4479-b058-119e8f56ef89"
+UUID_B = "5d94099b-3300-4479-b058-119e8f56ef89"  # prefix 8 sama dengan UUID_A
+UUID_C = "7577bf34-1111-4479-b058-119e8f56ef89"
+UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
+
+
+class IdStrictMem0(FakeMem0):
+    """Meniru pgvector: id selain UUID penuh membuat query gagal."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen: list[str] = []
+
+    def _check(self, memory_id) -> None:
+        self.seen.append(str(memory_id))
+        if not UUID_RE.match(str(memory_id)):
+            raise RuntimeError(f'invalid input syntax for type uuid: "{memory_id}"')
+
+    async def get(self, memory_id):
+        self._check(memory_id)
+        return await super().get(memory_id)
+
+    async def delete(self, memory_id):
+        self._check(memory_id)
+        return await super().delete(memory_id)
+
+    async def update(self, memory_id, **kwargs):
+        self._check(memory_id)
+        return await super().update(memory_id, **kwargs)
+
+
+def _item(memory_id: str, text: str, **meta) -> dict:
+    metadata = {
+        "scope": "person",
+        "kind": "fact",
+        "level": 2,
+        "confirmed": True,
+        "owner_id": "1",
+        "subject_id": "1",
+        "person_id": "1",
+    }
+    metadata.update(meta)
+    return {"id": memory_id, "memory": text, "metadata": metadata, "created_at": 1.0}
+
+
+def make_resolving(tmp_path, monkeypatch, *, table_ids=(), items=()) -> tuple[Mem0Backend, IdStrictMem0]:
+    backend, _fake = make_backend(tmp_path, monkeypatch)
+    db = database(tmp_path)
+    with db.engine.begin() as conn:
+        conn.execute(sql_text("CREATE TABLE sanka_memories (id TEXT PRIMARY KEY)"))
+        for value in table_ids:
+            conn.execute(sql_text("INSERT INTO sanka_memories (id) VALUES (:id)"), {"id": value})
+    backend.db = db
+    fake = IdStrictMem0()
+    for item in items:
+        fake.items[item["id"]] = item
+    backend._memory = fake
+    return backend, fake
+
+
+def test_full_uuid_skips_the_lookup(tmp_path, monkeypatch) -> None:
+    backend, fake = make_resolving(
+        tmp_path, monkeypatch, items=[_item(UUID_A, "suka kopi")]
+    )
+    backend.db = None  # lookup must not be needed for a full uuid
+
+    assert asyncio.run(backend.get(UUID_A)).id == UUID_A
+    assert fake.seen == [UUID_A]
+
+
+def test_prefix_resolves_to_the_full_uuid(tmp_path, monkeypatch) -> None:
+    backend, fake = make_resolving(
+        tmp_path, monkeypatch, table_ids=[UUID_A], items=[_item(UUID_A, "suka kopi")]
+    )
+
+    hit = asyncio.run(backend.get("#5d94099b"))
+
+    assert hit is not None and hit.id == UUID_A
+    assert fake.seen == [UUID_A]
+
+
+def test_bare_32_hex_is_dashed_not_queried(tmp_path, monkeypatch) -> None:
+    backend, fake = make_resolving(
+        tmp_path, monkeypatch, items=[_item(UUID_A, "suka kopi")]
+    )
+
+    hit = asyncio.run(backend.get(UUID_A.replace("-", "").upper()))
+
+    assert hit is not None and hit.id == UUID_A
+    assert fake.seen == [UUID_A]
+
+
+def test_ambiguous_or_missing_prefix_never_reaches_mem0(tmp_path, monkeypatch) -> None:
+    backend, fake = make_resolving(
+        tmp_path, monkeypatch, table_ids=[UUID_A, UUID_B, UUID_C]
+    )
+
+    assert asyncio.run(backend.get("5d94099b")) is None  # ambigu
+    assert asyncio.run(backend.get("deadbeef")) is None  # tiada
+    assert asyncio.run(backend.get("")) is None
+    assert fake.seen == []  # prefix ambigu/tiada tidak pernah sampai ke Mem0
+    # id non-hex bukan prefix uuid: diteruskan seperti sebelumnya
+    assert backend._resolve_id("7577bf34zz") == "7577bf34zz"
+
+
+def test_forget_and_veto_prefix_use_the_full_uuid(tmp_path, monkeypatch) -> None:
+    backend, fake = make_resolving(
+        tmp_path,
+        monkeypatch,
+        table_ids=[UUID_A, UUID_C],
+        items=[_item(UUID_A, "fakta pribadi"), _item(UUID_C, "fakta lain")],
+    )
+
+    assert asyncio.run(backend.forget("5d94099b", requester_id="1")) is True
+    assert asyncio.run(backend.veto("7577bf34", subject_id="1")) is True
+
+    assert UUID_A not in fake.items
+    assert fake.items[UUID_C]["metadata"]["vetoed"] is True
+    assert set(fake.seen) == {UUID_A, UUID_C}
+
+
+def test_non_uuid_id_is_passed_through(tmp_path, monkeypatch) -> None:
+    backend, _fake = make_backend(tmp_path, monkeypatch)
+    backend._memory.items["m7"] = _item("m7", "fakta")
+
+    assert asyncio.run(backend.get("m7")).id == "m7"
