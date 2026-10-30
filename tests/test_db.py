@@ -6,11 +6,11 @@ import time
 from datetime import datetime
 from types import SimpleNamespace
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects import postgresql
 
 from sanka.engine.db import Database, redact_dsn
-from sanka.engine.schema import documents, messages, state
+from sanka.engine.schema import documents, messages, schema_meta, state
 from sanka.engine.stores.history import HistoryStore
 from support import database
 
@@ -65,6 +65,8 @@ def test_upsert_chunks_postgres_parameter_limit() -> None:
             "sender_address": "",
             "text": "x",
             "outgoing": False,
+            "author": "unknown",
+            "visibility": 2,
             "data": {},
             "media_ref": None,
             "quote_media_ref": None,
@@ -88,7 +90,8 @@ def test_upsert_chunks_postgres_parameter_limit() -> None:
 
     assert total == 5500
     assert len(seen) == 11
-    assert max(seen) <= 6000
+    assert max(seen) == len(messages.columns) * 500 == 7000
+    assert max(seen) <= 65535
 
 
 def test_state_roundtrip(tmp_path) -> None:
@@ -151,3 +154,30 @@ def test_label_of_sqlite_database(tmp_path) -> None:
     assert db.dialect == "sqlite"
     assert str(tmp_path / "x.db") in db.label
     db.dispose()
+
+
+def test_ensure_adds_missing_message_columns_and_bumps_version(tmp_path) -> None:
+    db = database(tmp_path)
+    with db.engine.begin() as conn:
+        conn.execute(text("ALTER TABLE messages DROP COLUMN author"))
+        conn.execute(text("ALTER TABLE messages DROP COLUMN visibility"))
+        conn.execute(text("UPDATE schema_meta SET value = '1' WHERE key = 'version'"))
+        conn.execute(
+            text(
+                "INSERT INTO messages "
+                "(chat_id, msg_id, ts, sender_id, sender_name, sender_address, text, outgoing, data) "
+                "VALUES ('chat', 'm1', 1.0, '', 'Budi', '', 'halo', 0, '{}')"
+            )
+        )
+
+    db.ensure()
+    db.ensure()  # idempotent: kolom yang sudah ada tidak ditambah lagi
+
+    row = db.fetch_one(select(messages))
+    version = db.fetch_one(select(schema_meta).where(schema_meta.c.key == "version"))
+
+    assert row is not None
+    assert row["author"] == "unknown"
+    assert row["visibility"] == 2
+    assert row["text"] == "halo"
+    assert version is not None and version["value"] == "2"

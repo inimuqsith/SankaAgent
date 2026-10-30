@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+
 from ....engine.registry import Handler
 from ....engine.tools import ToolContext, _resolve
+
+log = logging.getLogger(__name__)
 
 
 async def _send(args: dict, ctx: ToolContext) -> str:
@@ -17,23 +21,25 @@ async def _send(args: dict, ctx: ToolContext) -> str:
         return f"error: file tidak ditemukan: {raw}"
     caption = str(args.get("caption") or "").strip()[:1024]
     result = await ctx.agent.send_file(ctx.chat_id, path, caption, gateway=ctx.gateway)
-    if result.startswith("ok:"):
+    ok = result.startswith("ok:")
+    note = f"{path.name}{f' — {caption}' if caption else ''}"
+    if ok:
         ctx.sent.append(
             {"tool": "send", "target": ctx.chat_id, "kind": "file", "summary": path.name}
         )
-        if ctx.ledger is not None:
-            try:
-                ctx.ledger.log_action(
-                    ctx.chat_id,
-                    ctx.chat_id,
-                    "file",
-                    f"{path.name}{f' — {caption}' if caption else ''}",
-                    source_name="chat",
-                    target_name=ctx.gateway.chat_name(ctx.chat_id),
-                    request=ctx.request,
-                )
-            except Exception:
-                pass
+    if ctx.ledger is not None:
+        try:
+            ctx.ledger.log_action(
+                ctx.chat_id,
+                ctx.chat_id,
+                "file",
+                note if ok else f"gagal — {result}",
+                source_name="chat",
+                target_name=ctx.gateway.chat_name(ctx.chat_id),
+                request=ctx.request,
+            )
+        except Exception:
+            log.exception("gagal mencatat aksi send chat=%s", ctx.chat_id)
     return result
 
 

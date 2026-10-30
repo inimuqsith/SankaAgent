@@ -74,3 +74,13 @@ def test_memory_survives_tiebreak_when_nothing_matches() -> None:
 
 def test_keyword_set_skips_stopwords_and_short_words() -> None:
     assert keyword_set("yang aku mau itu kopi enak") == {"kopi", "enak"}
+
+
+def test_actions_block_is_mandatory_and_survives_a_tight_budget() -> None:
+    blocks = {"base": "b" * 100, "actions": "a" * 400, "topic": "t" * 400}
+
+    kept, dropped = select(blocks, max_chars=300)
+
+    assert "actions" in MANDATORY and "actions" not in COMPETING
+    assert "actions" in names(kept)
+    assert dropped == ["topic"]

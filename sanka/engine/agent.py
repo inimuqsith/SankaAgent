@@ -16,6 +16,7 @@ from .commands import REGISTRY as CORE_COMMANDS
 from .commands import CommandContext
 from .config import Config
 from .context import (
+    AUTHOR_BOT,
     ChatMessage,
     WorkingMemory,
     build_user_content,
@@ -241,6 +242,9 @@ class Agent:
 
     # ------------------------------------------------------------ keluar
 
+    def _self_sender_id(self, gateway: Gateway) -> str:
+        return next(iter(sorted(gateway.self_handles())), "")
+
     async def deliver_text(
         self,
         chat_id: str,
@@ -255,10 +259,11 @@ class Agent:
             ChatMessage(
                 id=message_id,
                 sender_name=self.soul.name,
-                sender_id="",
+                sender_id=self._self_sender_id(gateway),
                 when=datetime.now(),
                 text=text,
                 outgoing=True,
+                author=AUTHOR_BOT,
             ),
         )
         return message_id
@@ -279,10 +284,11 @@ class Agent:
             ChatMessage(
                 id=message_id,
                 sender_name=self.soul.name,
-                sender_id="",
+                sender_id=self._self_sender_id(gateway),
                 when=datetime.now(),
                 text=note,
                 outgoing=True,
+                author=AUTHOR_BOT,
             ),
         )
         return message_id
@@ -297,10 +303,11 @@ class Agent:
                 ChatMessage(
                     id=f"react-{time.time_ns()}",
                     sender_name=self.soul.name,
-                    sender_id="",
+                    sender_id=self._self_sender_id(gateway),
                     when=datetime.now(),
                     text=label,
                     outgoing=True,
+                    author=AUTHOR_BOT,
                 ),
             )
         return label
@@ -557,7 +564,7 @@ class Agent:
                     except Exception:
                         log.exception("gagal membaca memori chat=%s", chat_id)
                     actions_block = ""
-                    if cross_send:
+                    if self.ledger is not None:
                         try:
                             actions_block = self.ledger.actions_context()
                         except Exception:
@@ -703,16 +710,19 @@ class Agent:
                     pace = bool(humanize.enabled)
                     quote_all = not pace
                 delivered = True
+                delivered_ids: list[str] = []
                 for index, chunk in enumerate(chunks):
                     if pace:
                         await gateway.typing(chat_id, True)
                         await asyncio.sleep(typing_delay(chunk, humanize))
                     try:
-                        await self.deliver_text(
-                            chat_id,
-                            chunk,
-                            gateway=gateway,
-                            reply=inbound if (quote_all or index == 0) else None,
+                        delivered_ids.append(
+                            await self.deliver_text(
+                                chat_id,
+                                chunk,
+                                gateway=gateway,
+                                reply=inbound if (quote_all or index == 0) else None,
+                            )
                         )
                     except GatewayError:
                         log.exception("gagal kirim balasan ke %s", chat_id)
@@ -737,7 +747,11 @@ class Agent:
                     and not guard.is_injection(message.text)
                 )
                 if capture:
-                    self.spawn(self.privacy.capture_turn(inbound, reply or "", gateway))
+                    self.spawn(
+                        self.privacy.capture_turn(
+                            inbound, reply or "", gateway, tuple(delivered_ids)
+                        )
+                    )
             finally:
                 typing.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

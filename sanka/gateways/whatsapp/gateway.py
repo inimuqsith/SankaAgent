@@ -33,6 +33,7 @@ MAX_SEND_BYTES = 100 * 1024 * 1024
 GROUP_INFO_TIMEOUT = 10.0
 GROUP_NAME_RETRY = 300.0
 REACTION_COOLDOWN = 300.0
+SENT_TTL = 900.0
 MENTION_TOKEN = re.compile(r"@\+?\d[\d\s().-]{3,24}\d")
 
 
@@ -61,6 +62,7 @@ class WhatsAppGateway:
         self.me = None
         self.reactions: dict[str, float] = {}
         self.name_retry: dict[str, float] = {}
+        self._sent: dict[str, float] = {}
         self.backfill = None
         self._stopping = False
         base = Path(__file__).parent
@@ -110,7 +112,7 @@ class WhatsAppGateway:
                 return
             try:
                 count, chat_ids, done = history_sync.ingest_sync(
-                    self.db, self.history, ev.Data, self.config.soul.name
+                    self.db, self.history, ev.Data, ingress.self_jid(self.me)
                 )
                 for chat_id in chat_ids:
                     self.windows.invalidate(chat_id)
@@ -170,6 +172,18 @@ class WhatsAppGateway:
         user, _, server = chat_id.partition("@")
         return build_jid(user, server)
 
+    def remember_sent(self, message_id: str) -> None:
+        """Catat ID pesan yang dikirim bot; echo `fromMe` dengan ID ini adalah bot, bukan owner."""
+        if not message_id:
+            return
+        now = time.monotonic()
+        self._sent = {key: stamp for key, stamp in self._sent.items() if now - stamp < SENT_TTL}
+        self._sent[message_id] = now
+
+    def is_bot_message(self, message_id: str) -> bool:
+        stamp = self._sent.get(message_id)
+        return stamp is not None and time.monotonic() - stamp < SENT_TTL
+
     def _resolve_mentions(self, text: str, chat_id: str) -> tuple[str, list[str]]:
         if "@" not in text:
             return text, []
@@ -212,7 +226,9 @@ class WhatsAppGateway:
         except Exception as exc:
             log.exception("gagal mengirim teks ke %s", chat_id)
             raise GatewayError(f"{type(exc).__name__}: {exc}") from exc
-        return getattr(sent, "ID", "") or f"text-{time.time_ns()}"
+        message_id = getattr(sent, "ID", "") or f"text-{time.time_ns()}"
+        self.remember_sent(message_id)
+        return message_id
 
     async def send_file(
         self,
@@ -250,7 +266,9 @@ class WhatsAppGateway:
         except Exception as exc:
             log.exception("gagal mengirim file %s ke %s", target, chat_id)
             raise GatewayError(f"{type(exc).__name__}: {exc}") from exc
-        return getattr(sent, "ID", "") or f"file-{time.time_ns()}"
+        message_id = getattr(sent, "ID", "") or f"file-{time.time_ns()}"
+        self.remember_sent(message_id)
+        return message_id
 
     def _sticker_paths(self) -> list[Path]:
         found: list[Path] = []
@@ -276,10 +294,11 @@ class WhatsAppGateway:
             return None
         path = secrets.choice(paths)
         try:
-            await self.client.send_sticker(self._jid(chat_id), str(path))
+            sent = await self.client.send_sticker(self._jid(chat_id), str(path))
         except Exception:
             log.warning("gagal mengirim stiker reaksi chat=%s", chat_id, exc_info=True)
             return None
+        self.remember_sent(getattr(sent, "ID", ""))
         self.reactions[chat_id] = moment
         return f"(stiker reaksi: {path.name})"
 

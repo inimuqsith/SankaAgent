@@ -9,7 +9,7 @@ from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import Message
 from neonize.proto.waHistorySync.WAWebProtobufsHistorySync_pb2 import HistorySync
 from neonize.proto.waCompanionReg.WAWebProtobufsCompanionReg_pb2 import DeviceProps
 
-from ...engine.context import ChatMessage
+from ...engine.context import AUTHOR_UNKNOWN, DEFAULT_VISIBILITY, ChatMessage
 from ...engine.permissions import normalize
 from . import directory
 from .media import describe_media, event_time, message_text, quote_from_proto
@@ -123,7 +123,7 @@ def _ingest_sync_contacts(db, sync: HistorySync) -> None:
     directory.refresh_sender_names(db)
 
 
-def _sync_item(db, web, fallback_chat: str, bot_name: str, fallback_ts: int = 0):
+def _sync_item(db, web, fallback_chat: str, fallback_ts: int = 0, self_jid: str = ""):
     key = web.key
     chat_id = key.remoteJID or fallback_chat
     if not chat_id or not web.message.ListFields():
@@ -137,9 +137,11 @@ def _sync_item(db, web, fallback_chat: str, bot_name: str, fallback_ts: int = 0)
     quote = quote_from_proto(web.message, msg_id)
     if not text.strip() and media is None and quote is None:
         return None
+    # Sync tidak bisa melihat siapa yang mengetik baris `fromMe`: jangan menebak bot/manual.
+    author = AUTHOR_UNKNOWN
     from_me = bool(key.fromMe)
     if from_me:
-        sender_jid = ""
+        sender_jid = self_jid
     elif chat_id.endswith("@g.us"):
         sender_jid = key.participant or web.participant or ""
     else:
@@ -147,7 +149,7 @@ def _sync_item(db, web, fallback_chat: str, bot_name: str, fallback_ts: int = 0)
     sender_id = normalize(sender_jid) if sender_jid else ""
     sender = (
         directory.contact_name(db, sender_jid) if sender_jid else ""
-    ) or (web.pushName or "").strip() or (bot_name if from_me else sender_id)
+    ) or (web.pushName or "").strip() or sender_id
     return (
         chat_id,
         ChatMessage(
@@ -160,11 +162,13 @@ def _sync_item(db, web, fallback_chat: str, bot_name: str, fallback_ts: int = 0)
             quote=quote,
             outgoing=from_me,
             sender_jid=sender_jid,
+            author=author,
+            visibility=DEFAULT_VISIBILITY,
         ),
     )
 
 
-def ingest_sync(db, history, sync: HistorySync, bot_name: str) -> tuple[int, set[str], bool]:
+def ingest_sync(db, history, sync: HistorySync, self_jid: str = "") -> tuple[int, set[str], bool]:
     """Simpan satu event HistorySync; kembalikan (jumlah, chat, selesai)."""
     if sync is None:
         return 0, set(), False
@@ -179,7 +183,7 @@ def ingest_sync(db, history, sync: HistorySync, bot_name: str) -> tuple[int, set
         if name and fallback_chat:
             directory.set_chat_name(db, fallback_chat, name)
         for item in conversation.messages:
-            parsed = _sync_item(db, item.message, fallback_chat, bot_name, fallback_ts)
+            parsed = _sync_item(db, item.message, fallback_chat, fallback_ts, self_jid)
             if parsed is None:
                 continue
             chat_id, message = parsed

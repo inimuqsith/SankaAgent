@@ -178,7 +178,7 @@ async def backfill(config_path: str | None) -> int:
     from .engine.stores.documents import DocumentStore
     from .engine.stores.history import HistoryStore
     from .gateways import ensure_schemas
-    from .gateways.whatsapp import directory, history_sync
+    from .gateways.whatsapp import directory, history_sync, ingress
     from .gateways.whatsapp.config import WhatsAppSettings
 
     host, paths = load_host(config_path)
@@ -216,7 +216,7 @@ async def backfill(config_path: str | None) -> int:
         if ev.Data is None:
             return
         count, chat_ids, finished = history_sync.ingest_sync(
-            db, history, ev.Data, config.soul.name
+            db, history, ev.Data, ingress.self_jid(accepted.me)
         )
         log.info(
             "backfill: %d pesan, %d chat, sync=%s progress=%d%s",
@@ -318,10 +318,14 @@ async def selftest(config: Config) -> int:
                 sender_id="p1",
                 when=datetime.now(),
                 text="sanka-selftest-archive",
+                author="manual_owner",
+                visibility=3,
             ),
         )
         found = history.search("selftest", "sanka-selftest-archive")
-        passed = [item.id for item in found] == ["selftest-1"]
+        passed = [item.id for item in found] == ["selftest-1"] and (
+            found[0].author == "manual_owner" and found[0].visibility == 3
+        )
         results.append(_report("history", "PASS" if passed else "FAIL", "" if passed else "arsip tidak terbaca"))
 
         action_id = ledger.log_action("selftest", "selftest", "send", "sanka-selftest-action")

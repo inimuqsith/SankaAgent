@@ -6,11 +6,19 @@ import json
 import logging
 import re
 import time
+from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import Text, and_, cast, func, select
+from sqlalchemy import Text, and_, case, cast, func, select
 
-from ..context import ChatMessage, Media, Quote
+from ..context import (
+    AUTHOR_RANK,
+    AUTHOR_UNKNOWN,
+    ChatMessage,
+    Media,
+    Quote,
+    clamp_visibility,
+)
 from ..db import Database
 from ..schema import Json, chats, messages
 
@@ -96,6 +104,8 @@ class HistoryStore:
             "sender_address": message.sender_jid or "",
             "text": message.text or "",
             "outgoing": bool(message.outgoing),
+            "author": message.author,
+            "visibility": message.visibility,
             "data": _data(message),
             "media_ref": _blob(media),
             "quote_media_ref": _blob(quote.media) if quote is not None else None,
@@ -111,12 +121,29 @@ class HistoryStore:
             )
         else:
             data = func.coalesce(func.nullif(excluded.data, "{}"), table.c.data)
+        new_rank = case(AUTHOR_RANK, value=excluded.author, else_=0)
+        old_rank = case(AUTHOR_RANK, value=table.c.author, else_=0)
+        keep_new = new_rank >= old_rank
         return {
-            "sender_name": func.coalesce(
-                func.nullif(excluded.sender_name, ""), table.c.sender_name
+            "sender_name": case(
+                (keep_new, func.coalesce(func.nullif(excluded.sender_name, ""), table.c.sender_name)),
+                else_=table.c.sender_name,
             ),
-            "sender_address": func.coalesce(
-                func.nullif(excluded.sender_address, ""), table.c.sender_address
+            "sender_id": case(
+                (keep_new, func.coalesce(func.nullif(excluded.sender_id, ""), table.c.sender_id)),
+                else_=table.c.sender_id,
+            ),
+            "sender_address": case(
+                (
+                    keep_new,
+                    func.coalesce(func.nullif(excluded.sender_address, ""), table.c.sender_address),
+                ),
+                else_=table.c.sender_address,
+            ),
+            "author": case((keep_new, excluded.author), else_=table.c.author),
+            "visibility": case(
+                (excluded.visibility > table.c.visibility, excluded.visibility),
+                else_=table.c.visibility,
             ),
             "text": func.coalesce(func.nullif(excluded.text, ""), table.c.text),
             "data": data,
@@ -161,6 +188,19 @@ class HistoryStore:
                 update={"reset_ts": now},
             )
 
+    def set_visibility(self, chat_id: str, message_ids: Sequence[str], level: int) -> int:
+        """Naikkan tanda privasi baris arsip; visibilitas hanya boleh naik, tidak turun."""
+        value = clamp_visibility(level)
+        changed = 0
+        for message_id in dict.fromkeys(str(item) for item in message_ids if item):
+            entry = self.find(chat_id, message_id)
+            if entry is None or entry.visibility >= value:
+                continue
+            entry.visibility = value
+            self.add(chat_id, entry)
+            changed += 1
+        return changed
+
     def set_chat_name(self, chat_id: str, name: str) -> None:
         if not chat_id:
             return
@@ -204,6 +244,9 @@ class HistoryStore:
                 media=_media_from(quote_data.get("media"), row.get("quote_media_ref")),
                 when=datetime.fromtimestamp(float(when)) if when else None,
             )
+        author = str(row.get("author") or AUTHOR_UNKNOWN)
+        if author not in AUTHOR_RANK:
+            author = AUTHOR_UNKNOWN
         return ChatMessage(
             id=str(row["msg_id"]),
             sender_name=str(row["sender_name"]),
@@ -214,6 +257,8 @@ class HistoryStore:
             quote=quote,
             outgoing=bool(row["outgoing"]),
             sender_jid=str(row["sender_address"]),
+            author=author,
+            visibility=clamp_visibility(row.get("visibility")),
         )
 
     def _reset_ts(self, chat_id: str) -> float:

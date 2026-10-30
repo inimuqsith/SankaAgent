@@ -10,7 +10,7 @@ import dataclasses
 from dataclasses import dataclass
 
 from . import salience
-from .context import ChatMessage, prompt_entry
+from .context import AUTHOR_BOT, AUTHOR_MANUAL, ChatMessage, prompt_entry
 from .config import Config
 from .decision import decide
 from .prompts import system_prompt
@@ -38,7 +38,7 @@ def classify(messages: list[ChatMessage], *, bot_name: str) -> list[Row]:
     pending = -1  # indeks baris pesan masuk yang masih menunggu balasan
     pending_at = -1  # posisinya di arsip, untuk jendela balasan
     for position, message in enumerate(messages):
-        if message.outgoing:
+        if message.author == AUTHOR_BOT:
             if pending < 0 or position - pending_at > REPLY_WINDOW:
                 continue
             rows[pending] = dataclasses.replace(rows[pending], replied=True)
@@ -77,7 +77,9 @@ def prompt_budget(
     blocks_for,
 ) -> dict:
     """Ukuran system prompt sebelum/sesudah kompetisi blok, plus frekuensi blok dibuang."""
-    incoming = [message for message in messages if not message.outgoing]
+    incoming = [
+        message for message in messages if message.author not in {AUTHOR_BOT, AUTHOR_MANUAL}
+    ]
     if sample > 0:
         incoming = incoming[-sample:]
     stripped = dataclasses.replace(
@@ -92,6 +94,7 @@ def prompt_budget(
         "emotion": "x",
         "vibe": "x",
         "memory": "",
+        "actions": "",
     }
     before: list[int] = []
     after: list[int] = []
@@ -100,7 +103,7 @@ def prompt_budget(
         source = blocks_for(message)
         blocks = {
             name: source.get(name, "")
-            for name in (*salience.COMPETING, "memory")
+            for name in (*salience.COMPETING, "memory", "actions")
         }
         before.append(len(system_prompt(stripped, (Role(name="member"),), query=message.text, **blocks)))
         after.append(

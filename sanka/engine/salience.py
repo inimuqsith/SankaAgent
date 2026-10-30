@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from .context import keyword_set
 
-MANDATORY = ("base", "self", "roles", "safety", "away", "emotion", "vibe", "memory")
-COMPETING = ("topic", "style", "person_style", "actions", "skills")
+MANDATORY = ("base", "self", "roles", "safety", "away", "emotion", "vibe", "memory", "actions")
+COMPETING = ("topic", "style", "person_style", "skills")
 ORDER = (
     "base",
     "self",

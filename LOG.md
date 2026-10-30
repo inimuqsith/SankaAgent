@@ -1,5 +1,48 @@
 # LOG
 
+## 2026-10-30 (feat: cross-room soul — author, visibility, recent activity, archive reads)
+
+- Problem: the payload knew only this chat's last 20 messages, and it decided "who said
+  this" from `chat.outgoing`. Every event whose `MessageSource.IsFromMe` is true — i.e.
+  everything the owner typed on the phone — was stored `outgoing=True` and rendered as
+  "kamu", so the owner's own words were attributed to Sanka. `chat_history` only read
+  `ctx.chat_id`, `send_to` could send to any archived target without ever reading it, the
+  ledger logged only successful cross-chat sends and only when `send_to` was allowed, and
+  it echoed the requester's words in the prompt.
+- Fix: `ChatMessage` carries `author` (`bot`/`manual_owner`/`system`/`unknown`, normalized
+  in `__post_init__`) and numeric `visibility` (L0-L4, default 2); `outgoing` stays
+  transport/routing only. `messages` got real `author`/`visibility` columns (schema 2,
+  added by `Database._add_missing_message_columns` on an existing table), and the SQL
+  upsert now keeps the higher-ranked author, its sender name/id/address, and the higher
+  visibility, so a late echo can never downgrade attribution. WhatsApp ingress marks a
+  `fromMe` event `bot` only when its ID is in the gateway's 15-minute sent cache
+  (`remember_sent` in `send_text`/`send_file`/`send_reaction`), otherwise
+  `manual_owner`; history sync cannot see who typed a `fromMe` row, so it writes
+  `unknown` with the account's own JID. Rendering tags every line `role=... vis=L...`;
+  only `role=bot` lines become "kamu". `chat_history` gained `chat=<name|JID>` (resolved
+  through the existing `Gateway.resolve_target`) and records cross-room reads in
+  `ToolContext.reads`; `send_to` refuses a cross-room send until that room was read.
+  `ActionLedger.actions_context` became the mandatory `## Recent actions` block: 10 lines,
+  newest first, failures included, target only — never the requester, source room, or
+  `source_name`. The prompt states the cross-room rule (one soul, read before send, no
+  disclosure or hint about other rooms), and `capture_turn` raises the triggering message
+  and the delivered reply rows to the assessed level.
+- Verification: `pytest -q` 304 passed, with new contracts for ingress attribution
+  (`manual_owner` vs `bot`, sent-cache expiry, `self_jid`), author/visibility round-trip
+  and non-downgrading merge, `ensure()` re-adding dropped columns with an existing row
+  reading `unknown`/2 and `schema_meta.version == "2"`, payload tags, cross-room reads
+  and `ctx.reads`, the send gate and a logged `gagal — ...` send, the ledger block, capture
+  visibility uplift, mandatory `actions`, and the new prompt text. `python -m sanka
+  selftest` SELFTEST OK (history check now round-trips `manual_owner`/L3). Migration smoke
+  on a copy of the live `.sanka/sanka.db` (7 messages, version 1):
+  `sanka db upgrade` → `schema version: 2`, `db check` clean, both columns added, existing
+  rows `unknown`/2, second run idempotent. `printf '/status\n/quit\n' | sanka console
+  --takeover` printed the status card and released the lease. Real WhatsApp echoes are not
+  reproducible here (no production credentials/QR): the ingress rule is covered by
+  synthetic `MessageEv` tests that reuse the same protobuf path, and ID-only matching stays
+  as-is — if real transport returns a different ID than the echo's `Info.ID`, the event is
+  labelled `manual_owner`, never guessed as bot.
+
 ## 2026-10-30 (fix: privacy assessment spent its budget on reasoning, sensitive turns stored at L2)
 
 - Problem: `PrivacyService._assess` asked for a level with `max_tokens=160` and no

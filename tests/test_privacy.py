@@ -388,3 +388,33 @@ def test_vetoed_memory_is_excluded_from_context(tmp_path) -> None:
     context = asyncio.run(memory.context(person_id="1", chat_id="c", query="rahasia"))
     assert context.text == ""
     assert context.hits == ()
+
+
+def test_capture_raises_visibility_of_the_turn_and_delivered_reply(tmp_path) -> None:
+    from datetime import datetime
+
+    from sanka.engine.context import ChatMessage
+
+    env = make_agent(tmp_path)
+    env.agent.llm = ScriptLLM(assess={"level": 3, "subject": "", "ask": False})
+    inbound = inbound_message(
+        "aku lagi banyak pikiran", chat_id="628111@s.whatsapp.net", message_id="m-capture"
+    )
+    env.history.add(inbound.chat_id, inbound.message)
+    env.history.add(
+        inbound.chat_id,
+        ChatMessage(
+            id="r1",
+            sender_name="sanka",
+            sender_id="628567770837",
+            when=datetime.now(),
+            text="oke",
+            author="bot",
+        ),
+    )
+
+    asyncio.run(env.agent.privacy.capture_turn(inbound, "oke", env.gateway, ("r1",)))
+
+    assert env.history.find(inbound.chat_id, "m-capture").visibility == 3
+    assert env.history.find(inbound.chat_id, "r1").visibility == 3
+    assert env.memory.captures[0]["level"] == 3

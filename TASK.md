@@ -53,6 +53,16 @@ Checklist for the soul-engine + gateway refactor. Tick `[x]` only after the real
 - [x] `memory` tool: level/subject/confirmed/veto, `memory_admin` required for global add/delete; `memori` command filters through the policy.
 - [x] Memory context carries `MemoryHit` metadata and filters vetoed entries.
 
+## Cross-room soul
+
+- [x] `ChatMessage.author` (`bot`/`manual_owner`/`system`/`unknown`) + numeric `visibility` (L0-L4, default 2); `messages` columns, `schema version 2`, additive migration.
+- [x] Live `fromMe` echo is `bot` only when its ID is in the gateway's sent cache; the owner's manual typing is `manual_owner`; history sync never guesses (`unknown`).
+- [x] Merge precedence `bot > manual_owner > system > unknown`, visibility only rises, in the window and in the SQL upsert.
+- [x] `chat_history chat=<name|JID>` reads another archived room, tags the result internal, and records it in `ToolContext.reads`.
+- [x] `send_to` refuses a cross-room send until that room's archive was read; failed sends are logged in the ledger too.
+- [x] `## Recent actions` block (10 lines, newest first, failures included) never carries the requester or the source room.
+- [x] Prompt: one soul across rooms, no cross-room disclosure, read-before-send; privacy capture raises the turn and reply visibility.
+
 ## Language selector
 
 - [x] `soul.language` is YAML config (`config.yaml` `soul` section / `soul` document); only `en` and `id` are supported.

@@ -26,6 +26,7 @@ def message(
         text=text,
         outgoing=outgoing,
         quote=quote,
+        author="bot" if outgoing else "unknown",
     )
 
 

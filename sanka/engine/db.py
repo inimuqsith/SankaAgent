@@ -8,7 +8,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
 
-from sqlalchemy import Connection, Engine, Table, create_engine, text
+from sqlalchemy import Connection, Engine, Table, create_engine, inspect, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import make_url
@@ -17,8 +17,12 @@ from .schema import engine_control, metadata, schema_meta
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 UPSERT_BATCH_ROWS = 500
+MESSAGE_COLUMNS = (
+    ("author", "VARCHAR(20) NOT NULL DEFAULT 'unknown'"),
+    ("visibility", "INTEGER NOT NULL DEFAULT 2"),
+)
 
 
 def redact_dsn(url: str) -> str:
@@ -56,17 +60,15 @@ class Database:
 
     def create_all(self) -> None:
         metadata.create_all(self.engine)
+        self._add_missing_message_columns()
         with self.connect() as conn:
-            found = conn.execute(
-                text("SELECT value FROM schema_meta WHERE key = :key"), {"key": "version"}
-            ).first()
-            if found is None:
-                self.upsert(
-                    conn,
-                    schema_meta,
-                    [{"key": "version", "value": str(SCHEMA_VERSION)}],
-                    ["key"],
-                )
+            self.upsert(
+                conn,
+                schema_meta,
+                [{"key": "version", "value": str(SCHEMA_VERSION)}],
+                ["key"],
+                update={"value": str(SCHEMA_VERSION)},
+            )
             # Seed baris kontrol tanpa menimpa freeze yang sedang aktif.
             self.upsert(
                 conn,
@@ -75,6 +77,20 @@ class Database:
                 ["id"],
                 update={"id": engine_control.c.id},
             )
+
+    def _add_missing_message_columns(self) -> list[str]:
+        """Kolom baru pada `messages` untuk database lama; tidak membuat tabel dari nol."""
+        inspector = inspect(self.engine)
+        if "messages" not in inspector.get_table_names():
+            return []
+        existing = {column["name"] for column in inspector.get_columns("messages")}
+        missing = [(name, ddl) for name, ddl in MESSAGE_COLUMNS if name not in existing]
+        if not missing:
+            return []
+        with self.engine.begin() as conn:
+            for name, ddl in missing:
+                conn.execute(text(f"ALTER TABLE messages ADD COLUMN {name} {ddl}"))
+        return [name for name, _ in missing]
 
     def ensure_vector(self) -> bool:
         """Aktifkan pgvector best-effort; SQLite tidak butuh."""

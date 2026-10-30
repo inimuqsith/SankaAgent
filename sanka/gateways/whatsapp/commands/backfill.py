@@ -15,7 +15,7 @@ from ....engine.commands import CommandContext
 from ....engine.config import drop_session, secure_db
 from ....engine.i18n import t
 from ....engine.registry import Handler
-from .. import directory, history_sync
+from .. import directory, history_sync, ingress
 
 log = logging.getLogger(__name__)
 TIMEOUT = 900
@@ -84,7 +84,7 @@ async def _run(ctx: CommandContext, lang: str) -> None:
             return
         try:
             count, chat_ids, finished = history_sync.ingest_sync(
-                gateway.db, gateway.history, ev.Data, agent.config.soul.name
+                gateway.db, gateway.history, ev.Data, ingress.self_jid(accepted.me)
             )
         except Exception:
             log.exception("backfill gagal menyimpan history sync")

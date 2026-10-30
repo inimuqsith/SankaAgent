@@ -94,3 +94,16 @@ def test_commands_requesting_llm_do_not_decide(tmp_path) -> None:
     asyncio.run(env.agent.handle(inbound_message("/status", chat_id="628111@s.whatsapp.net"), env.gateway))
     assert env.llm.decisions == 0
     assert env.llm.calls == 0
+
+
+def test_system_prompt_states_the_cross_room_policy(tmp_path) -> None:
+    env = make_agent(tmp_path)
+    prompt = system_prompt(
+        env.config, (Role("member"),), actions='- [2026-01-01 10:00] teks -> chat: "halo"'
+    )
+
+    assert "one soul across rooms" in prompt
+    assert "role=manual_owner" in prompt
+    assert "never reveal or hint at the requester" in prompt
+    assert "## Recent actions" in prompt
+    assert "The archive covers only this chat" not in prompt

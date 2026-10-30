@@ -62,6 +62,7 @@ class ToolContext:
         self.is_dm = bool(is_dm)
         self.used: list[str] = []
         self.sent: list[dict] = []
+        self.reads: set[str] = set()
         self.memory_hits: list = []
 
     @property

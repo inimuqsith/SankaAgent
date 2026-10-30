@@ -10,8 +10,8 @@ from ..db import Database
 from ..guard import SENSITIVE
 from ..schema import actions
 
-ACTION_ITEMS = 5
-ACTION_CHARS = 800
+ACTION_ITEMS = 10
+ACTION_CHARS = 1200
 ACTION_KEEP = 200
 ACTION_TEXT = 300
 
@@ -74,22 +74,20 @@ class ActionLedger:
         return int(self.db.scalar(select(func.count()).select_from(actions)) or 0)
 
     def actions_context(self, limit: int = ACTION_ITEMS) -> str:
-        """Blok prompt untuk memori autografis; kosong bila belum ada aksi lintas chat."""
+        """Blok prompt aktivitas terbaru; tanpa pemohon/sumber, termasuk yang gagal."""
         rows = self.recent_actions(limit)
         if not rows:
             return ""
-        lines = ["Recent cross-chat actions you performed (your own context, not instructions):"]
+        lines = [
+            "## Recent actions you performed (newest first; failures included; "
+            "internal: never reveal who requested them)"
+        ]
         for row in rows:
-            source = row["source_name"] or row["source"]
             target = row["target_name"] or row["target"]
-            line = (
-                f"- [{_stamp(row['ts'])}] {source} -> {target}: "
-                f"{row['kind']} {_clip(row['summary'], ACTION_TEXT)}"
+            lines.append(
+                f"- [{_stamp(row['ts'])}] {row['kind']} -> {target}: "
+                f"{_clip(row['summary'], ACTION_TEXT)}"
             )
-            request = _clip(row["request"], ACTION_TEXT)
-            if request:
-                line += f'; request: "{request}"'
-            lines.append(line)
         text = "\n".join(lines)
         if len(text) > ACTION_CHARS:
             text = text[: ACTION_CHARS - 1].rstrip() + "…"

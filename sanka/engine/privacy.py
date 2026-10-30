@@ -220,7 +220,9 @@ class PrivacyService:
 
     # ------------------------------------------------------------- capture
 
-    async def capture_turn(self, inbound, reply: str, gateway) -> None:
+    async def capture_turn(
+        self, inbound, reply: str, gateway, reply_ids: tuple[str, ...] = ()
+    ) -> None:
         message = inbound.message
         text = str(message.text or "").strip()
         if not text or guard.SENSITIVE.search(text):
@@ -241,6 +243,13 @@ class PrivacyService:
                 ) or owner
             except Exception:
                 log.debug("subject lookup failed", exc_info=True)
+        level = clamp_level(verdict.level, self.config.default_level)
+        targets = (message.id, *reply_ids)
+        try:
+            self.agent.windows.set_visibility(inbound.chat_id, targets, level)
+            self.agent.history.set_visibility(inbound.chat_id, targets, level)
+        except Exception:
+            log.debug("gagal menandai visibilitas chat=%s", inbound.chat_id, exc_info=True)
         ids = await self.agent.memory.capture(
             [
                 {"role": "user", "content": text},
@@ -250,7 +259,7 @@ class PrivacyService:
             chat_id=inbound.chat_id,
             audience="private" if inbound.is_dm else "group",
             source="turn",
-            level=clamp_level(verdict.level, self.config.default_level),
+            level=level,
             owner_id=owner,
             subject_id=subject,
             confirmed=not verdict.ask,

@@ -68,6 +68,12 @@ async def _send_to(args: dict, ctx: ToolContext) -> str:
             )
         return f'error: target "{raw_chat}" tidak ada di arsip.\n{_known(ctx)}'
     chat_id, name = target
+    if chat_id != ctx.chat_id and chat_id not in ctx.reads:
+        label = directory.label(chat_id, name)
+        return (
+            f'error: baca dulu arsip {label} dengan chat_history chat="{raw_chat}" '
+            "sebelum mengirim; tidak boleh kirim buta."
+        )
     path = None
     if raw_path:
         path = _resolve(ctx, raw_path)
@@ -78,17 +84,19 @@ async def _send_to(args: dict, ctx: ToolContext) -> str:
     if text:
         result = await ctx.agent.send_text(chat_id, text, gateway=ctx.gateway)
         results.append(result)
-        if not result.startswith("error:"):
-            _record(ctx, chat_id, name, "teks", text)
+        ok = not result.startswith("error:")
+        _record(ctx, chat_id, name, "teks", text if ok else f"gagal — {result}")
+        if ok:
             ctx.sent.append(
                 {"tool": "send_to", "target": chat_id, "kind": "teks", "summary": text[:200]}
             )
     if path is not None:
         result = await ctx.agent.send_file(chat_id, path, caption, gateway=ctx.gateway)
         results.append(result)
-        if not result.startswith("error:"):
-            summary = f"{path.name}{f' — {caption}' if caption else ''}"
-            _record(ctx, chat_id, name, "file", summary)
+        ok = not result.startswith("error:")
+        summary = f"{path.name}{f' — {caption}' if caption else ''}"
+        _record(ctx, chat_id, name, "file", summary if ok else f"gagal — {result}")
+        if ok:
             ctx.sent.append(
                 {"tool": "send_to", "target": chat_id, "kind": "file", "summary": summary}
             )
@@ -104,7 +112,8 @@ TOOL = Handler(
     description=(
         "Kirim teks dan/atau file ke grup atau chat pribadi (DM) yang sudah ada di arsip. chat = "
         "nama grup/kontak (boleh potongan) atau JID; chat kosong menampilkan daftar grup dan kontak. "
-        "Untuk chat aktif pakai send."
+        "Untuk chat aktif pakai send. Baca dulu arsip target dengan chat_history chat=... sebelum "
+        "mengirim; kiriman buta ditolak."
     ),
     fn=_send_to,
     aliases=("kirim_ke",),

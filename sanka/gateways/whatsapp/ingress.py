@@ -5,7 +5,14 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from ...engine.context import ChatMessage, Quote, clean
+from ...engine.context import (
+    AUTHOR_BOT,
+    AUTHOR_MANUAL,
+    AUTHOR_UNKNOWN,
+    DEFAULT_VISIBILITY,
+    ChatMessage,
+    Quote,
+)
 from ...engine.inbound import Inbound
 from ...engine.permissions import normalize
 from . import directory
@@ -26,6 +33,14 @@ def self_handles(me) -> set[str]:
         normalize(getattr(getattr(me, "LID", None), "User", "") or ""),
     }
     return {value for value in values if value and any(ch.isdigit() for ch in value)}
+
+
+def self_jid(me) -> str:
+    """JID akun sendiri (bukan LID) untuk baris `fromMe` saat ingest history sync."""
+    jid = getattr(me, "JID", None)
+    user = str(getattr(jid, "User", "") or "")
+    server = str(getattr(jid, "Server", "") or "s.whatsapp.net")
+    return f"{user}@{server}" if user else ""
 
 
 def sender_name(ev, sender_digits: str, sender: str) -> str:
@@ -90,8 +105,14 @@ def event_to_inbound(ev, gateway) -> Inbound | None:
     if not text.strip() and media is None:
         return None
     outgoing = bool(getattr(source, "IsFromMe", False))
+    author = AUTHOR_UNKNOWN
+    if outgoing:
+        author = AUTHOR_BOT if gateway.is_bot_message(message_id) else AUTHOR_MANUAL
     name = sender_name(ev, sender_digits, sender)
     known = directory.contact_name(gateway.db, sender)
+    if author == AUTHOR_BOT:
+        known = gateway.config.soul.name
+        name = gateway.config.soul.name
     message = ChatMessage(
         id=message_id,
         sender_name=known or name,
@@ -102,6 +123,8 @@ def event_to_inbound(ev, gateway) -> Inbound | None:
         quote=quote(ev, gateway.windows, chat_id),
         outgoing=outgoing,
         sender_jid=sender,
+        author=author,
+        visibility=DEFAULT_VISIBILITY,
     )
     bots = gateway.self_handles()
     person_id = directory.resolve_person(gateway.db, sender) or sender_digits

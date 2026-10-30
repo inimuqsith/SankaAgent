@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sanka.engine.context import ChatMessage, Media, Quote
+from sanka.engine.schema import messages
 from sanka.engine.stores.history import HistoryStore
 from support import database
 
@@ -19,17 +20,22 @@ def message(
     media: Media | None = None,
     quote: Quote | None = None,
     outgoing: bool = False,
+    author: str = "unknown",
+    visibility: int = 2,
+    sender_id: str = "628222",
 ) -> ChatMessage:
     return ChatMessage(
         id=mid,
         sender_name=sender_name,
-        sender_id="628222",
+        sender_id=sender_id,
         when=when or datetime(2026, 1, 1, 10),
         text=text,
         media=media,
         quote=quote,
         outgoing=outgoing,
         sender_jid=sender_jid,
+        author=author,
+        visibility=visibility,
     )
 
 
@@ -93,3 +99,63 @@ def test_people_and_style_seed_skip_outgoing(tmp_path) -> None:
     assert [row["text"] for row in people] == ["halo"]
     assert people[0]["sender_jid"] == "628222@s.whatsapp.net"
     assert [row["text"] for row in store.style_sample()] == ["halo"]
+
+
+def test_author_and_visibility_roundtrip(tmp_path) -> None:
+    store = HistoryStore(database(tmp_path))
+    store.add("chat", message("a", "halo", author="manual_owner", visibility=3))
+
+    item = store.find("chat", "a")
+
+    assert item is not None
+    assert item.author == "manual_owner"
+    assert item.visibility == 3
+
+
+def test_merge_never_downgrades_author_or_visibility(tmp_path) -> None:
+    store = HistoryStore(database(tmp_path))
+    store.add("chat", message("a", "halo", sender_name="Owner", sender_id="628567770837"))
+    store.add(
+        "chat",
+        message("a", "", sender_name="Owner manual", author="manual_owner", visibility=3),
+    )
+    store.add(
+        "chat",
+        message("a", "", sender_name="sanka", sender_id="628567770837", author="bot"),
+    )
+    store.add("chat", message("a", "", sender_name="", sender_id="", author="unknown"))
+    store.add("chat", message("a", "", sender_name="x", visibility=2))
+
+    item = store.find("chat", "a")
+
+    assert item is not None
+    assert item.author == "bot"
+    assert item.sender_name == "sanka"
+    assert item.sender_id == "628567770837"
+    assert item.visibility == 3
+    assert item.text == "halo"
+
+
+def test_visibility_only_rises_with_set_visibility(tmp_path) -> None:
+    store = HistoryStore(database(tmp_path))
+    store.add("chat", message("a", "satu"))
+    store.add("chat", message("b", "dua"))
+
+    assert store.set_visibility("chat", ("a", "b", "hilang", ""), 3) == 2
+    assert store.set_visibility("chat", ("a",), 1) == 0
+
+    assert store.find("chat", "a").visibility == 3
+    assert store.find("chat", "b").visibility == 3
+
+
+def test_unknown_author_values_fall_back_to_unknown(tmp_path) -> None:
+    store = HistoryStore(database(tmp_path))
+    store.add("chat", message("a", "x"))
+    with store.db.connect() as conn:
+        conn.execute(messages.update().values(author="weird", visibility=9))
+
+    item = store.find("chat", "a")
+
+    assert item is not None
+    assert item.author == "unknown"
+    assert item.visibility == 4

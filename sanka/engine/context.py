@@ -6,7 +6,7 @@ import base64
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -57,6 +57,28 @@ FOOTER = (
 )
 
 
+DEFAULT_VISIBILITY = 2
+VISIBILITY_MAX = 4
+AUTHOR_BOT = "bot"
+AUTHOR_MANUAL = "manual_owner"
+AUTHOR_SYSTEM = "system"
+AUTHOR_UNKNOWN = "unknown"
+AUTHOR_RANK = {"unknown": 0, "system": 1, "manual_owner": 2, "bot": 3}
+AUTHORS = frozenset(AUTHOR_RANK)
+
+
+def clamp_visibility(value: object, default: int = DEFAULT_VISIBILITY) -> int:
+    try:
+        number = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return max(0, min(VISIBILITY_MAX, number))
+
+
+def entry_tag(entry: ChatMessage) -> str:
+    return f"role={entry.author} vis=L{entry.visibility}"
+
+
 @dataclass
 class Media:
     kind: str
@@ -90,6 +112,13 @@ class ChatMessage:
     quote: Quote | None = None
     outgoing: bool = False
     sender_jid: str = ""
+    author: str = AUTHOR_UNKNOWN
+    visibility: int = DEFAULT_VISIBILITY
+
+    def __post_init__(self) -> None:
+        if self.author not in AUTHORS:
+            self.author = AUTHOR_UNKNOWN
+        self.visibility = clamp_visibility(self.visibility)
 
 
 class WorkingMemory:
@@ -113,12 +142,27 @@ class WorkingMemory:
 
     @staticmethod
     def _merge(old: ChatMessage, new: ChatMessage) -> ChatMessage:
-        return (
-            new
-            if (new.media and not old.media)
+        upgrade = AUTHOR_RANK.get(new.author, 0) > AUTHOR_RANK.get(old.author, 0)
+        richer = (
+            (new.media and not old.media)
             or (new.quote and not old.quote)
             or (new.text and not old.text)
-            else old
+        )
+        chosen = new if upgrade or richer else old
+        if AUTHOR_RANK.get(old.author, 0) > AUTHOR_RANK.get(new.author, 0):
+            chosen = replace(
+                chosen,
+                sender_name=old.sender_name,
+                sender_id=old.sender_id,
+                sender_jid=old.sender_jid,
+            )
+        return replace(
+            chosen,
+            author=new.author if upgrade else old.author,
+            visibility=max(old.visibility, new.visibility),
+            media=chosen.media or old.media,
+            quote=chosen.quote or old.quote,
+            text=chosen.text or old.text,
         )
 
     def append(self, chat_id: str, message: ChatMessage) -> None:
@@ -181,6 +225,20 @@ class WorkingMemory:
         except Exception:
             return
         self.set_chat_name(chat_id, name)
+
+    def set_visibility(self, chat_id: str, message_ids: tuple[str, ...], level: int) -> int:
+        self._ensure(chat_id)
+        wanted = {str(item) for item in message_ids if item}
+        if not wanted:
+            return 0
+        value = clamp_visibility(level)
+        history = self._data.get(chat_id, [])
+        changed = 0
+        for index, entry in enumerate(history):
+            if entry.id in wanted and entry.visibility < value:
+                history[index] = replace(entry, visibility=value)
+                changed += 1
+        return changed
 
     def through(self, chat_id: str, message: ChatMessage) -> list[ChatMessage]:
         history = self.get(chat_id)
@@ -370,7 +428,7 @@ def _media_lines(
 
 def fallback_content(config: Config, message: ChatMessage) -> str:
     """Payload minimal saat perakitan penuh gagal: teks pesan terbaru + baris lampirannya."""
-    lines = [f"Pesan terbaru: {message.text}"]
+    lines = [f"[{entry_tag(message)}] Pesan terbaru: {message.text}"]
     if message.media is not None:
         lines.extend(_media_lines(config, message.media, 0, True))
     return "\n".join(lines)
@@ -395,11 +453,15 @@ def _quote_lines(config: Config, chat_id: str, quote: Quote) -> list[str]:
 
 
 def prompt_entry(entry: ChatMessage, bot_name: str, limit: int = 300) -> str:
-    """Satu baris konteks untuk gate/appraisal: nama, teks, media, dan kutipan singkat."""
+    """Satu baris konteks untuk gate/appraisal: peran, nama, teks, media, dan kutipan singkat."""
     who = (
         f"kamu ({bot_name})"
-        if entry.outgoing
-        else (entry.sender_name or entry.sender_id or "-")
+        if entry.author == AUTHOR_BOT
+        else (
+            f"{_flatten(entry.sender_name, NAME_LIMIT) or '-'} (owner manual)"
+            if entry.author == AUTHOR_MANUAL
+            else (entry.sender_name or entry.sender_id or "-")
+        )
     )
     body = _flatten(entry.text, limit)
     notes: list[str] = []
@@ -416,7 +478,7 @@ def prompt_entry(entry: ChatMessage, bot_name: str, limit: int = 300) -> str:
         else:
             notes.append(f"membalas {qwho}")
     text = " ".join([body, *notes]).strip()
-    return f"{who}: {text}" if text else ""
+    return f"[{entry_tag(entry)}] {who}: {text}" if text else ""
 
 
 def _render_order(messages: list[ChatMessage]) -> list[Media]:
@@ -480,13 +542,15 @@ def _message_lines(
     current: ChatMessage,
 ) -> list[str]:
     stamp = f"[{entry.when:%Y-%m-%d %H:%M}]"
-    if entry.outgoing:
+    tag = entry_tag(entry)
+    if entry.author == AUTHOR_BOT:
         name = _flatten(entry.sender_name or config.soul.name, NAME_LIMIT) or "-"
-        head = f"{stamp} {name} (kamu):"
     else:
         name = _flatten(entry.sender_name, NAME_LIMIT) or "-"
-        ident = entry.sender_id if entry.sender_id and entry.sender_id != entry.sender_name else ""
-        head = f"{stamp} {name} ({ident}):" if ident else f"{stamp} {name}:"
+    ident = entry.sender_id if entry.sender_id and entry.sender_id != entry.sender_name else ""
+    who = f"{name} ({ident})" if ident else name
+    suffix = f"{tag}, kamu" if entry.author == AUTHOR_BOT else tag
+    head = f"{stamp} {who} [{suffix}]:"
     lines = [head]
     if entry.text.strip():
         lines.extend(_text_lines(config, chat_id, entry))

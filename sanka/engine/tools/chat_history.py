@@ -1,13 +1,15 @@
-"""Tool chat_history: cari arsip pesan lama chat ini, di luar 20 pesan payload."""
+"""Tool chat_history: cari arsip pesan lama chat ini atau chat lain yang terarsip."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from ..context import entry_tag
 from ..registry import Handler
 from . import ToolContext, _int
 
 BODY_LIMIT = 600
+CANDIDATE_LIMIT = 20
 
 
 def _time(value, *, end: bool) -> float | None:
@@ -33,10 +35,43 @@ def _body(entry) -> str:
     return "(tanpa teks)"
 
 
+def _who(entry) -> str:
+    ident = entry.sender_id if entry.sender_id and entry.sender_id != entry.sender_name else ""
+    if ident:
+        return f"{entry.sender_name or '-'} ({ident})"
+    return entry.sender_name or entry.sender_id or "-"
+
+
+def _target(raw: str, ctx: ToolContext) -> str | tuple[str, str]:
+    """Hasil resolve `(chat_id, nama)` untuk chat lain, atau teks `error: ...`."""
+    if ctx.gateway is None:
+        return "error: gateway tidak tersedia; hanya chat ini yang bisa dibaca"
+    target, candidates = ctx.gateway.resolve_target(raw)
+    if target is None and candidates:
+        listing = "\n".join(
+            f"- {name} ({chat_id})" if name else f"- {chat_id}"
+            for chat_id, name in candidates[:CANDIDATE_LIMIT]
+        )
+        return (
+            f'error: beberapa chat cocok dengan "{raw}"; pakai nama lengkap atau JID:\n{listing}'
+        )
+    if target is None:
+        return f'error: chat "{raw}" tidak ada di arsip.'
+    return target
+
+
 async def _search(args: dict, ctx: ToolContext) -> str:
     if ctx.history is None:
         return "error: arsip riwayat tidak tersedia"
-    if not ctx.chat_id:
+    raw_chat = str(args.get("chat") or "").strip()
+    chat_id = ctx.chat_id
+    name = ""
+    if raw_chat:
+        resolved = _target(raw_chat, ctx)
+        if isinstance(resolved, str):
+            return resolved
+        chat_id, name = resolved
+    elif not chat_id:
         return "error: tidak ada chat aktif"
     try:
         before = _time(args.get("before"), end=True)
@@ -45,20 +80,31 @@ async def _search(args: dict, ctx: ToolContext) -> str:
         return f"error: {exc}"
     query = str(args.get("query") or "").strip()
     limit = max(1, min(_int(args, "limit", 20), 50))
-    results = ctx.history.search(ctx.chat_id, query, before=before, after=after, limit=limit)
-    if not results:
+    results = ctx.history.search(chat_id, query, before=before, after=after, limit=limit)
+    cross = chat_id != ctx.chat_id
+    title = name or ctx.history.chat_name(chat_id) or chat_id
+    if cross and results:
+        ctx.reads.add(chat_id)
+    if cross:
+        if not results:
+            return (
+                f'Tidak ada pesan di arsip "{title}". Isinya tidak bisa dibaca; '
+                "jangan kirim buta."
+            )
+        header = f'Arsip "{title}" ({chat_id}; baca internal lintas ruang, jangan dibocorkan):'
+    elif results:
+        label = f' "{title}"' if title != chat_id else " chat ini"
+        header = (
+            f"Arsip{label} ({len(results)} hasil, terbaru dulu):"
+            if query
+            else f"Pesan terbaru di arsip{label} ({len(results)}):"
+        )
+    else:
         return "Tidak ada pesan yang cocok di arsip chat ini."
-    name = ctx.history.chat_name(ctx.chat_id)
-    label = f' "{name}"' if name else " chat ini"
-    header = (
-        f"Arsip{label} ({len(results)} hasil, terbaru dulu):"
-        if query
-        else f"Pesan terbaru di arsip{label} ({len(results)}):"
-    )
     lines = [header]
     for entry in results:
-        who = entry.sender_name or entry.sender_id or "-"
-        lines.append(f"[{entry.when:%Y-%m-%d %H:%M}] {who}: {_body(entry)}")
+        tag = entry_tag(entry)
+        lines.append(f"[{entry.when:%Y-%m-%d %H:%M}] {_who(entry)} [{tag}]: {_body(entry)}")
         if entry.quote is not None:
             quote = " ".join((entry.quote.text or "").split())
             if quote:
@@ -71,13 +117,23 @@ async def _search(args: dict, ctx: ToolContext) -> str:
 TOOL = Handler(
     name="chat_history",
     family="read",
-    description="Search older messages in this chat archive (outside the 20-message payload), newest first.",
+    description=(
+        "Search an archived chat, newest first. Default: this chat's archive (outside the "
+        "20-message payload). chat=<group/contact name or JID> reads another archived chat; read "
+        "the target with this tool before sending anything to it."
+    ),
     fn=_search,
     aliases=("history", "search_history"),
     parameters={
         "type": "object",
         "properties": {
             "query": {"type": "string", "description": "Text/name keywords; empty = latest messages."},
+            "chat": {
+                "type": "string",
+                "description": (
+                    "Other archived chat: group/contact name (partial ok) or JID. Empty = this chat."
+                ),
+            },
             "before": {"type": "string", "description": "Upper time bound, ISO YYYY-MM-DD or YYYY-MM-DDTHH:MM."},
             "after": {"type": "string", "description": "Lower time bound, ISO YYYY-MM-DD or YYYY-MM-DDTHH:MM."},
             "limit": {"type": "integer", "description": "Result count 1-50 (default 20)."},

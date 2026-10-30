@@ -462,6 +462,8 @@ def _message_rows(legacy: Path) -> list[dict]:
                 "sender_address": _s(row.get("sender_jid") or row.get("sender_address")),
                 "text": _s(row.get("text")),
                 "outgoing": bool(row.get("outgoing")),
+                "author": "unknown",
+                "visibility": 2,
                 "data": _json_value(row.get("data"), {}),
                 "media_ref": _b(row.get("media_proto")),
                 "quote_media_ref": _b(row.get("quote_proto")),

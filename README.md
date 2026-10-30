@@ -186,7 +186,10 @@ Rules:
 
 - **WhatsApp** (`sanka/gateways/whatsapp`): Neonize transport, session DB `0600`, media download,
   history sync, contact/LID directory, mention resolution, and `send`/`send_to` tools plus
-  `/backfill`.
+  `/backfill`. Ingress stores who actually spoke: a `fromMe` echo is `bot` only when its ID is in
+  the gateway's 15-minute sent cache, otherwise `manual_owner` (the human typing from the owner's
+  number); history sync cannot know and writes `unknown`. `chat_history chat=<name|JID>` reads
+  another archived chat, and `send_to` refuses a cross-chat send until that chat was read.
 - **CLI** (`sanka/gateways/cli`): REPL for a local terminal. `sanka console` always enables it, even
   if `config.yaml` disables it, and never starts WhatsApp. Anyone with shell access is treated as
   the configured `cli.role` (default: `default_role`).
@@ -526,7 +529,11 @@ Aturan:
 ### Gateway
 
 - **WhatsApp** (`sanka/gateways/whatsapp`): transport Neonize, DB sesi `0600`, unduh media, history
-  sync, direktori kontak/LID, resolusi mention, tool `send`/`send_to`, dan `/backfill`.
+  sync, direktori kontak/LID, resolusi mention, tool `send`/`send_to`, dan `/backfill`. Ingress
+  menyimpan siapa yang benar-benar bicara: echo `fromMe` hanya `bot` bila ID-nya ada di cache
+  kiriman gateway (15 menit); selain itu `manual_owner` (manusia yang mengetik dari nomor owner).
+  History sync tidak bisa tahu, jadi menulis `unknown`. `chat_history chat=<nama|JID>` membaca
+  chat lain yang terarsip, dan `send_to` menolak kiriman lintas chat sampai chat itu dibaca.
 - **CLI** (`sanka/gateways/cli`): REPL terminal lokal. `sanka console` selalu mengaktifkannya,
   meskipun `config.yaml` mematikannya, dan tidak pernah menyalakan WhatsApp. Siapa pun dengan akses
   shell diperlakukan sebagai `cli.role` yang dikonfigurasi (default: `default_role`).

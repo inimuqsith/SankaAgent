@@ -52,6 +52,8 @@ messages = Table(
     Column("sender_address", String(160), nullable=False, default=""),
     Column("text", Text, nullable=False, default=""),
     Column("outgoing", Boolean, nullable=False, default=False),
+    Column("author", String(20), nullable=False, default="unknown", server_default="unknown"),
+    Column("visibility", Integer, nullable=False, default=2, server_default="2"),
     Column("data", Json, nullable=False, default=dict),
     Column("media_ref", LargeBinary, nullable=True),
     Column("quote_media_ref", LargeBinary, nullable=True),

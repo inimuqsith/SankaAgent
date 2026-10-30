@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from sanka.engine.inbound import GatewayError, Inbound
 from sanka.engine.stores.history import HistoryStore
 from sanka.gateways.whatsapp import directory, ingress
 from sanka.gateways.whatsapp.gateway import WhatsAppGateway
+from sanka.gateways.whatsapp.gateway import SENT_TTL
 from support import build_config, database
 
 BOT = "628567770837"
@@ -255,3 +257,39 @@ def test_resolve_target_exact_and_unique_substring(tmp_path) -> None:
     assert gateway.resolve_target("111@g.us")[0] == ("111@g.us", "Panitia Logistik")
     assert gateway.resolve_target("logistik")[0][0] == "111@g.us"
     assert gateway.resolve_target("budi")[0][0] == "628999999999@s.whatsapp.net"
+
+
+def test_self_message_is_manual_unless_the_bot_sent_it(tmp_path) -> None:
+    gateway = make_gateway(tmp_path)
+    ev = group_event("diketik owner", sender=BOT)
+    ev.Info.MessageSource.IsFromMe = True
+
+    manual = ingress.event_to_inbound(ev, gateway)
+    assert manual is not None
+    assert manual.message.author == "manual_owner"
+    assert manual.message.sender_name == "Budi"
+
+    gateway.remember_sent("wamid-1")
+    bot = ingress.event_to_inbound(ev, gateway)
+    assert bot is not None
+    assert bot.message.author == "bot"
+    assert bot.message.sender_name == gateway.config.soul.name
+
+
+def test_remember_sent_keeps_only_live_ids(tmp_path) -> None:
+    gateway = make_gateway(tmp_path)
+    gateway.remember_sent("")
+    gateway._sent["old"] = time.monotonic() - SENT_TTL - 1
+
+    gateway.remember_sent("fresh")
+
+    assert gateway.is_bot_message("fresh") is True
+    assert gateway.is_bot_message("old") is False
+    assert "old" not in gateway._sent
+
+
+def test_self_jid_ignores_lid(tmp_path) -> None:
+    gateway = make_gateway(tmp_path)
+
+    assert ingress.self_jid(gateway.me) == f"{BOT}@s.whatsapp.net"
+    assert ingress.self_jid(None) == ""
