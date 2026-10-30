@@ -1,5 +1,47 @@
 # LOG
 
+## 2026-10-30 (fix: fake mention tags, dropped revokes, and lost view-once stanzas)
+
+- Problem: in the live group `120363422939208659@g.us` Sanka answered with a literal
+  `@+7 3041086251252` because `_resolve_mentions` rewrote every `@<number-ish>` token to
+  `@<digits>` even when no sender matched it. A revoke (`ProtocolMessage.REVOKE`) was dropped by
+  `event_to_inbound` (no text, no media), so the archive kept the deleted text in the payload and
+  nobody knew who deleted it. View-once from another own device arrives as whatsmeow
+  `UndecryptableMessage` (no `<enc>`), which was never subscribed, so the message vanished silently.
+- Fix (mentions): `ingress.event_to_inbound` resolves a `@lid` sender to its PN through
+  `SenderAlt` then `directory.pn_jid` (`wa_lid_map`) and stores that as `sender_jid`/`sender_id`;
+  `_message_lines` appends `mention=@<digits>` for non-bot `@s.whatsapp.net` rows;
+  `_resolve_mentions` now resolves numbers through the window map, resolves `@Name` only on a
+  unique case-insensitive name/first-word match (`MENTION_NAME`), and leaves anything unmatched as
+  plain text with a warning instead of inventing a mention. `prompt_hints` tells the model to copy
+  the `mention=` token verbatim.
+- Fix (deleted): `ChatMessage` carries `deleted/deleted_by/deleted_admin` plus `mark_deleted`
+  (`deleted_admin` only when a non-bot row was revoked by someone else); `body_note` renders
+  `(pesan dihapus oleh pengirim)` / `(pesan dihapus admin: name)` / `(pesan dihapus oleh owner)`,
+  and `_message_lines`/`prompt_entry` hide the retained text plus quote/media. `HistoryStore` gains
+  three columns (`SCHEMA_VERSION = 3`, `MESSAGE_COLUMNS`), merges `deleted` with `or_` and keeps
+  `deleted_by`/`deleted_admin` from the revoking upsert only; content and media stay archived by
+  choice and `chat_history` returns them as `[dihapus] …`. `on_message` handles the revoke before
+  `event_to_inbound` and never calls the agent; the row is marked in the window or, if it already
+  fell out, through `HistoryStore.mark_deleted`.
+- Fix (view-once): `media.views_once` detects `viewOnce*` wrappers, ingress sets `view_once`, and
+  `entry_tag` adds `, sekali lihat`. `UndecryptableMessageEv` (proto class registered in neonize's
+  `EVENT_TO_INT`; `aioze.events` does not re-export it) appends an `unreadable` placeholder row
+  without triggering a reply; when the phone resends the real content, the upsert merges into the
+  same id, `view_once` sticks, and `unreadable` clears. The prompt now states the deletion,
+  view-once (never forward/quote elsewhere), and `tidak terbaca` rules.
+- Verification: `pytest -q` 332 passed (new: payload tags/notes for deleted, admin, bot, view-once
+  and unreadable rows; `mark_deleted` store + window + archive fallback; view-once/unreadable
+  round-trip and placeholder→content merge; migration re-adds the three columns and stays
+  idempotent; `revoke_target`, the `run()` revoke branch, `views_once`, the undecryptable handler,
+  and mention resolution incl. the `@+7 3041086251252` regression). `python -m sanka selftest`
+  `SELFTEST OK` (memory/sandbox skipped: no Postgres/docker). Live-DB copy migrated with
+  `sanka db upgrade` → `schema version: 3`, `db check` clean, 8 existing rows `deleted=0`.
+  `printf '/status\n/quit\n' | sanka console --takeover` printed the status card and released the
+  lease. The Postgres ON CONFLICT clause compiled for the pg dialect. Real ingest (actual revoke /
+  view-once / undecryptable stanza) is not reproducible here; those paths are covered by synthetic
+  protobuf events through the same ingress/gateway functions.
+
 ## 2026-10-30 (fix: memory tool handed 8-char ids back to pgvector → invalid uuid)
 
 - Problem: `memory` printed shortened ids (`#7577bf34`) in `list`/`search`, in the `add`

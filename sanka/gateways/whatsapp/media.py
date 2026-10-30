@@ -101,6 +101,17 @@ def sanitize(value: str, limit: int = 60) -> str:
     return cleaned.strip("._-")[:limit] or "x"
 
 
+VIEW_ONCE_WRAPPERS = ("viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension")
+
+
+def views_once(message) -> bool:
+    for name in VIEW_ONCE_WRAPPERS:
+        wrapper = getattr(message, name, None)
+        if wrapper is not None and wrapper.ListFields():
+            return True
+    return False
+
+
 def unwrap_message(message):
     for _ in range(5):
         inner = None
@@ -278,4 +289,5 @@ __all__ = [
     "send_kind",
     "text_path",
     "unwrap_message",
+    "views_once",
 ]

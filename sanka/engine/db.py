@@ -17,11 +17,14 @@ from .schema import engine_control, metadata, schema_meta
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 UPSERT_BATCH_ROWS = 500
 MESSAGE_COLUMNS = (
     ("author", "VARCHAR(20) NOT NULL DEFAULT 'unknown'"),
     ("visibility", "INTEGER NOT NULL DEFAULT 2"),
+    ("deleted", "BOOLEAN NOT NULL DEFAULT false"),
+    ("deleted_by", "VARCHAR(160) NOT NULL DEFAULT ''"),
+    ("deleted_admin", "BOOLEAN NOT NULL DEFAULT false"),
 )
 
 

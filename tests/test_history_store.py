@@ -23,6 +23,8 @@ def message(
     author: str = "unknown",
     visibility: int = 2,
     sender_id: str = "628222",
+    view_once: bool = False,
+    unreadable: bool = False,
 ) -> ChatMessage:
     return ChatMessage(
         id=mid,
@@ -36,6 +38,8 @@ def message(
         sender_jid=sender_jid,
         author=author,
         visibility=visibility,
+        view_once=view_once,
+        unreadable=unreadable,
     )
 
 
@@ -159,3 +163,57 @@ def test_unknown_author_values_fall_back_to_unknown(tmp_path) -> None:
     assert item is not None
     assert item.author == "unknown"
     assert item.visibility == 4
+
+
+def test_mark_deleted_keeps_the_archived_text(tmp_path) -> None:
+    store = HistoryStore(database(tmp_path))
+    store.add("chat", message("a", "isi lama"))
+
+    assert store.mark_deleted("chat", "a", "628999@s.whatsapp.net", "Ani") is True
+    item = store.find("chat", "a")
+
+    assert item is not None
+    assert item.deleted is True
+    assert item.deleted_admin is True
+    assert item.deleted_by == "Ani"
+    assert item.text == "isi lama"
+    assert store.mark_deleted("chat", "a", "628999@s.whatsapp.net", "Ani") is False
+
+
+def test_author_deletion_is_not_admin_and_later_upsert_keeps_the_flag(tmp_path) -> None:
+    store = HistoryStore(database(tmp_path))
+    store.add("chat", message("a", "isi"))
+    store.mark_deleted("chat", "a", "628222@s.whatsapp.net")
+    store.add("chat", message("a", ""))
+
+    item = store.find("chat", "a")
+
+    assert item is not None
+    assert item.deleted is True
+    assert item.deleted_admin is False
+    assert item.text == "isi"
+
+
+def test_view_once_and_unreadable_flags_roundtrip(tmp_path) -> None:
+    store = HistoryStore(database(tmp_path))
+    store.add("chat", message("a", "sekali", view_once=True))
+    store.add("chat", message("b", "", unreadable=True))
+
+    once = store.find("chat", "a")
+    blank = store.find("chat", "b")
+
+    assert once.view_once is True and once.unreadable is False
+    assert blank.unreadable is True and blank.view_once is False
+
+
+def test_real_message_merge_replaces_the_unreadable_placeholder(tmp_path) -> None:
+    store = HistoryStore(database(tmp_path))
+    store.add("chat", message("a", "", unreadable=True))
+    assert store.find("chat", "a").unreadable is True
+
+    store.add("chat", message("a", "isi asli", view_once=True))
+    item = store.find("chat", "a")
+
+    assert item.text == "isi asli"
+    assert item.view_once is True
+    assert item.unreadable is False

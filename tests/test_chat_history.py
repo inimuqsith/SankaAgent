@@ -109,3 +109,37 @@ def test_without_gateway_only_the_current_chat_is_readable(tmp_path) -> None:
 
     assert text.startswith("error:")
     assert "gateway tidak tersedia" in text
+
+
+def test_deleted_rows_show_the_archived_text_with_a_marker(tmp_path) -> None:
+    setup = env(tmp_path)
+    setup.history.add("111@g.us", message("a", "rahasia owner"))
+    assert setup.history.mark_deleted(
+        "111@g.us", "a", "628999999999@s.whatsapp.net", "Ani"
+    ) is True
+    ctx = context(setup)
+
+    text = run(setup, {}, ctx)
+
+    assert "[dihapus] rahasia owner" in text
+
+
+def test_unreadable_rows_read_as_a_note(tmp_path) -> None:
+    setup = env(tmp_path)
+    setup.history.add(
+        "111@g.us",
+        ChatMessage(
+            id="b",
+            sender_name="Budi",
+            sender_id="628999999999",
+            when=datetime(2026, 1, 1, 10),
+            text="",
+            unreadable=True,
+        ),
+    )
+    ctx = context(setup)
+
+    text = run(setup, {}, ctx)
+
+    assert "(pesan tidak terbaca di perangkat ini)" in text
+    assert "role=unknown vis=L2, tidak terbaca" in text

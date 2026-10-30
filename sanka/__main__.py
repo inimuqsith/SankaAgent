@@ -323,9 +323,11 @@ async def selftest(config: Config) -> int:
             ),
         )
         found = history.search("selftest", "sanka-selftest-archive")
+        history.mark_deleted("selftest", "selftest-1", "p2", "Admin")
+        removed = history.find("selftest", "selftest-1")
         passed = [item.id for item in found] == ["selftest-1"] and (
             found[0].author == "manual_owner" and found[0].visibility == 3
-        )
+        ) and removed is not None and removed.deleted is True and removed.deleted_admin is True
         results.append(_report("history", "PASS" if passed else "FAIL", "" if passed else "arsip tidak terbaca"))
 
         action_id = ledger.log_action("selftest", "selftest", "send", "sanka-selftest-action")

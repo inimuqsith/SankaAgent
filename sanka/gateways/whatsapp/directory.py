@@ -91,6 +91,14 @@ def contact_name(db: Database, jid: str) -> str:
     return ""
 
 
+def pn_jid(db: Database, jid: str) -> str:
+    """JID nomor (PN) untuk sebuah LID; "" bila tidak ada di wa_lid_map."""
+    if not jid.endswith("@lid"):
+        return ""
+    found = db.fetch_one(select(wa_lid_map.c.pn).where(wa_lid_map.c.lid == jid))
+    return str(found["pn"]) if found is not None and found["pn"] else ""
+
+
 def resolve_person(db: Database, jid: str) -> str:
     raw = str(jid or "")
     if not raw:

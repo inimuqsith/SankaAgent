@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import ProtocolMessage
+
 from ...engine.context import (
     AUTHOR_BOT,
     AUTHOR_MANUAL,
@@ -16,7 +18,7 @@ from ...engine.context import (
 from ...engine.inbound import Inbound
 from ...engine.permissions import normalize
 from . import directory
-from .media import contexts, describe_media, event_time, message_text
+from .media import contexts, describe_media, event_time, message_text, views_once
 
 log = logging.getLogger(__name__)
 
@@ -92,13 +94,56 @@ def quote(ev, windows, chat_id: str) -> Quote | None:
     return None
 
 
+def revoke_target(ev) -> tuple[str, str] | None:
+    """(id pesan target, JID penghapus) untuk protocolMessage REVOKE; None untuk lainnya."""
+    protocol = getattr(ev.Message, "protocolMessage", None)
+    if protocol is None or not protocol.ListFields():
+        return None
+    if protocol.type != ProtocolMessage.REVOKE or not protocol.key.ID:
+        return None
+    sender = ev.Info.MessageSource.Sender
+    return protocol.key.ID, f"{sender.User}@{sender.Server}"
+
+
+def unreadable_message(ev, gateway) -> tuple[str, ChatMessage] | None:
+    """Baris placeholder untuk stanza tanpa <enc> (mis. sekali lihat dari perangkat lain)."""
+    source = ev.Info.MessageSource
+    if not ev.Info.ID or source.Chat.Server == "broadcast":
+        return None
+    chat_id = f"{source.Chat.User}@{source.Chat.Server}"
+    sender = f"{source.Sender.User}@{source.Sender.Server}"
+    mapped = ""
+    if sender.endswith("@lid"):
+        mapped = directory.pn_jid(gateway.db, sender)
+    sender_jid = mapped or sender
+    digits = normalize(mapped or source.Sender.User or source.Sender.RawAgent)
+    name = directory.contact_name(gateway.db, sender_jid) or (ev.Info.Pushname or "").strip() or digits
+    message = ChatMessage(
+        id=ev.Info.ID,
+        sender_name=name,
+        sender_id=digits,
+        when=event_time(ev.Info.Timestamp),
+        text="",
+        author=AUTHOR_MANUAL if source.IsFromMe else AUTHOR_UNKNOWN,
+        unreadable=True,
+        sender_jid=sender_jid,
+    )
+    return chat_id, message
+
+
 def event_to_inbound(ev, gateway) -> Inbound | None:
     source = ev.Info.MessageSource
     chat_id = f"{source.Chat.User}@{source.Chat.Server}"
     if chat_id.endswith("@broadcast"):
         return None
     sender = f"{source.Sender.User}@{source.Sender.Server}"
-    sender_digits = normalize(source.Sender.User or source.Sender.RawAgent)
+    mapped = ""
+    if sender.endswith("@lid"):
+        alt = getattr(source, "SenderAlt", None)
+        mapped = f"{alt.User}@{alt.Server}" if getattr(alt, "User", "") else ""
+        mapped = mapped or directory.pn_jid(gateway.db, sender)
+    sender_jid = mapped or sender
+    sender_digits = normalize(mapped or source.Sender.User or source.Sender.RawAgent)
     message_id = ev.Info.ID or f"tmp-{datetime.now().timestamp()}"
     text = message_text(ev.Message)
     media = describe_media(ev.Message, message_id)
@@ -109,7 +154,7 @@ def event_to_inbound(ev, gateway) -> Inbound | None:
     if outgoing:
         author = AUTHOR_BOT if gateway.is_bot_message(message_id) else AUTHOR_MANUAL
     name = sender_name(ev, sender_digits, sender)
-    known = directory.contact_name(gateway.db, sender)
+    known = directory.contact_name(gateway.db, sender_jid)
     if author == AUTHOR_BOT:
         known = gateway.config.soul.name
         name = gateway.config.soul.name
@@ -122,9 +167,11 @@ def event_to_inbound(ev, gateway) -> Inbound | None:
         media=media,
         quote=quote(ev, gateway.windows, chat_id),
         outgoing=outgoing,
-        sender_jid=sender,
+        sender_jid=sender_jid,
         author=author,
         visibility=DEFAULT_VISIBILITY,
+        view_once=views_once(ev.Message),
+        unreadable=False,
     )
     bots = gateway.self_handles()
     person_id = directory.resolve_person(gateway.db, sender) or sender_digits

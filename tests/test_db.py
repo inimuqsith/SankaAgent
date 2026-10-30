@@ -90,7 +90,7 @@ def test_upsert_chunks_postgres_parameter_limit() -> None:
 
     assert total == 5500
     assert len(seen) == 11
-    assert max(seen) == len(messages.columns) * 500 == 7000
+    assert max(seen) == len(messages.columns) * 500
     assert max(seen) <= 65535
 
 
@@ -161,6 +161,9 @@ def test_ensure_adds_missing_message_columns_and_bumps_version(tmp_path) -> None
     with db.engine.begin() as conn:
         conn.execute(text("ALTER TABLE messages DROP COLUMN author"))
         conn.execute(text("ALTER TABLE messages DROP COLUMN visibility"))
+        conn.execute(text("ALTER TABLE messages DROP COLUMN deleted"))
+        conn.execute(text("ALTER TABLE messages DROP COLUMN deleted_by"))
+        conn.execute(text("ALTER TABLE messages DROP COLUMN deleted_admin"))
         conn.execute(text("UPDATE schema_meta SET value = '1' WHERE key = 'version'"))
         conn.execute(
             text(
@@ -179,5 +182,9 @@ def test_ensure_adds_missing_message_columns_and_bumps_version(tmp_path) -> None
     assert row is not None
     assert row["author"] == "unknown"
     assert row["visibility"] == 2
+    assert row["deleted"] is False
+    assert row["deleted_by"] == ""
+    assert row["deleted_admin"] is False
     assert row["text"] == "halo"
-    assert version is not None and version["value"] == "2"
+    assert version is not None and version["value"] == "3"
+    assert db._add_missing_message_columns() == []

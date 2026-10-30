@@ -188,7 +188,13 @@ Rules:
   history sync, contact/LID directory, mention resolution, and `send`/`send_to` tools plus
   `/backfill`. Ingress stores who actually spoke: a `fromMe` echo is `bot` only when its ID is in
   the gateway's 15-minute sent cache, otherwise `manual_owner` (the human typing from the owner's
-  number); history sync cannot know and writes `unknown`. `chat_history chat=<name|JID>` reads
+  number); history sync cannot know and writes `unknown`. A sender LID resolves to its phone JID
+  through `SenderAlt` or `wa_lid_map`, and each payload line carries a `mention=@<digits>` handle
+  that only becomes a real mention when it matches a known sender; an unmatched `@number` stays plain
+  text. A revoke marks the archived row (`deleted`, `deleted_by`, `deleted_admin`) and the payload
+  shows `(pesan dihapus …)` instead of the text, while `chat_history` still returns it as `[dihapus]`.
+  View-once lines are tagged `sekali lihat`; a stanza this device cannot decrypt becomes a
+  `tidak terbaca` placeholder row and never triggers a reply. `chat_history chat=<name|JID>` reads
   another archived chat, and `send_to` refuses a cross-chat send until that chat was read.
 - **CLI** (`sanka/gateways/cli`): REPL for a local terminal. `sanka console` always enables it, even
   if `config.yaml` disables it, and never starts WhatsApp. Anyone with shell access is treated as
@@ -532,8 +538,15 @@ Aturan:
   sync, direktori kontak/LID, resolusi mention, tool `send`/`send_to`, dan `/backfill`. Ingress
   menyimpan siapa yang benar-benar bicara: echo `fromMe` hanya `bot` bila ID-nya ada di cache
   kiriman gateway (15 menit); selain itu `manual_owner` (manusia yang mengetik dari nomor owner).
-  History sync tidak bisa tahu, jadi menulis `unknown`. `chat_history chat=<nama|JID>` membaca
-  chat lain yang terarsip, dan `send_to` menolak kiriman lintas chat sampai chat itu dibaca.
+  History sync tidak bisa tahu, jadi menulis `unknown`. LID pengirim dipetakan ke JID nomor lewat
+  `SenderAlt` atau `wa_lid_map`, dan tiap baris payload membawa handle `mention=@<digit>` yang hanya
+  jadi mention asli bila cocok dengan pengirim yang dikenal; `@nomor` yang tidak cocok tetap teks
+  biasa. Revoke menandai baris arsip (`deleted`, `deleted_by`, `deleted_admin`) dan payload menampilkan
+  `(pesan dihapus …)` sebagai ganti isinya, sementara `chat_history` tetap mengembalikannya sebagai
+  `[dihapus]`. Baris sekali lihat diberi tag `sekali lihat`; stanza yang tidak bisa didekripsi
+  perangkat ini menjadi baris placeholder `tidak terbaca` dan tidak pernah memicu balasan.
+  `chat_history chat=<nama|JID>` membaca chat lain yang terarsip, dan `send_to` menolak kiriman
+  lintas chat sampai chat itu dibaca.
 - **CLI** (`sanka/gateways/cli`): REPL terminal lokal. `sanka console` selalu mengaktifkannya,
   meskipun `config.yaml` mematikannya, dan tidak pernah menyalakan WhatsApp. Siapa pun dengan akses
   shell diperlakukan sebagai `cli.role` yang dikonfigurasi (default: `default_role`).

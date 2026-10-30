@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .permissions import normalize
+
 if TYPE_CHECKING:
     from .config import Config
     from .stores.history import HistoryStore
@@ -76,7 +78,25 @@ def clamp_visibility(value: object, default: int = DEFAULT_VISIBILITY) -> int:
 
 
 def entry_tag(entry: ChatMessage) -> str:
-    return f"role={entry.author} vis=L{entry.visibility}"
+    tag = f"role={entry.author} vis=L{entry.visibility}"
+    if entry.view_once:
+        tag += ", sekali lihat"
+    if entry.unreadable and not (entry.text or "").strip() and entry.media is None:
+        tag += ", tidak terbaca"
+    return tag
+
+
+def body_note(entry: ChatMessage) -> str:
+    """Pengganti isi untuk baris yang dihapus/tidak terbaca; "" bila baris normal."""
+    if entry.deleted:
+        if entry.deleted_admin:
+            return f"(pesan dihapus admin: {entry.deleted_by or '-'})"
+        if entry.author == AUTHOR_BOT:
+            return f"(pesan dihapus oleh {entry.deleted_by or 'pemilik'})"
+        return "(pesan dihapus oleh pengirim)"
+    if entry.unreadable and not (entry.text or "").strip() and entry.media is None:
+        return "(pesan tidak terbaca di perangkat ini)"
+    return ""
 
 
 @dataclass
@@ -114,11 +134,28 @@ class ChatMessage:
     sender_jid: str = ""
     author: str = AUTHOR_UNKNOWN
     visibility: int = DEFAULT_VISIBILITY
+    view_once: bool = False
+    unreadable: bool = False
+    deleted: bool = False
+    deleted_by: str = ""
+    deleted_admin: bool = False
 
     def __post_init__(self) -> None:
         if self.author not in AUTHORS:
             self.author = AUTHOR_UNKNOWN
         self.visibility = clamp_visibility(self.visibility)
+
+    def mark_deleted(self, by_jid: str, by_name: str = "") -> bool:
+        if self.deleted:
+            return False
+        self.deleted = True
+        self.deleted_by = str(by_name or "")
+        self.deleted_admin = bool(
+            self.author != AUTHOR_BOT
+            and bool(by_jid)
+            and normalize(self.sender_jid) != normalize(by_jid)
+        )
+        return True
 
 
 class WorkingMemory:
@@ -163,6 +200,8 @@ class WorkingMemory:
             media=chosen.media or old.media,
             quote=chosen.quote or old.quote,
             text=chosen.text or old.text,
+            view_once=old.view_once or new.view_once,
+            unreadable=old.unreadable and not (new.text or new.media),
         )
 
     def append(self, chat_id: str, message: ChatMessage) -> None:
@@ -225,6 +264,21 @@ class WorkingMemory:
         except Exception:
             return
         self.set_chat_name(chat_id, name)
+
+    def mark_deleted(self, chat_id: str, message_id: str, by_jid: str, by_name: str = "") -> bool:
+        self._ensure(chat_id)
+        for index, entry in enumerate(self._data.setdefault(chat_id, [])):
+            if entry.id != message_id or not entry.mark_deleted(by_jid, by_name):
+                continue
+            if self.store is not None:
+                try:
+                    self.store.add(chat_id, entry)
+                except Exception:
+                    log.exception("gagal menyimpan penghapusan chat=%s id=%s", chat_id, message_id)
+            return True
+        if self.store is None:
+            return False
+        return self.store.mark_deleted(chat_id, message_id, by_jid, by_name)
 
     def set_visibility(self, chat_id: str, message_ids: tuple[str, ...], level: int) -> int:
         self._ensure(chat_id)
@@ -463,11 +517,12 @@ def prompt_entry(entry: ChatMessage, bot_name: str, limit: int = 300) -> str:
             else (entry.sender_name or entry.sender_id or "-")
         )
     )
-    body = _flatten(entry.text, limit)
+    note = body_note(entry)
+    body = note or _flatten(entry.text, limit)
     notes: list[str] = []
     if entry.media is not None:
         notes.append(f"[{MEDIA_LABELS.get(entry.media.kind, entry.media.kind)}]")
-    if entry.quote is not None:
+    if entry.quote is not None and not entry.deleted:
         qwho = _flatten(entry.quote.sender_name, NAME_LIMIT) or "-"
         qtext = _flatten(entry.quote.text, 120)
         if qtext:
@@ -543,6 +598,8 @@ def _message_lines(
 ) -> list[str]:
     stamp = f"[{entry.when:%Y-%m-%d %H:%M}]"
     tag = entry_tag(entry)
+    if entry.author != AUTHOR_BOT and entry.sender_id and entry.sender_jid.endswith("@s.whatsapp.net"):
+        tag = f"{tag}, mention=@{entry.sender_id}"
     if entry.author == AUTHOR_BOT:
         name = _flatten(entry.sender_name or config.soul.name, NAME_LIMIT) or "-"
     else:
@@ -552,17 +609,20 @@ def _message_lines(
     suffix = f"{tag}, kamu" if entry.author == AUTHOR_BOT else tag
     head = f"{stamp} {who} [{suffix}]:"
     lines = [head]
-    if entry.text.strip():
+    note = body_note(entry)
+    if note:
+        lines.append(f"  {note}")
+    elif entry.text.strip():
         lines.extend(_text_lines(config, chat_id, entry))
     elif entry.media is not None:
         lines.append("  (tanpa teks)")
-    if entry.quote is not None:
+    if entry.quote is not None and not entry.deleted:
         lines.extend(_quote_lines(config, chat_id, entry.quote))
         if entry.quote.media is not None:
             media = entry.quote.media
             number = numbers.get(_media_key(config, media), 0)
             lines.extend(_media_lines(config, media, number, entry is current, prefix="lampiran kutipan"))
-    if entry.media is not None:
+    if entry.media is not None and not entry.deleted:
         number = numbers.get(_media_key(config, entry.media), 0)
         lines.extend(_media_lines(config, entry.media, number, entry is current))
     return lines

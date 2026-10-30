@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from ..context import entry_tag
+from ..context import body_note, entry_tag
 from ..registry import Handler
 from . import ToolContext, _int
 
@@ -28,10 +28,15 @@ def _time(value, *, end: bool) -> float | None:
 
 def _body(entry) -> str:
     text = " ".join((entry.text or "").split())
+    prefix = "[dihapus] " if entry.deleted else ("[sekali lihat] " if entry.view_once else "")
     if text:
-        return text if len(text) <= BODY_LIMIT else text[: BODY_LIMIT - 1] + "…"
+        trimmed = text if len(text) <= BODY_LIMIT else text[: BODY_LIMIT - 1] + "…"
+        return prefix + trimmed
+    note = body_note(entry)
+    if note:
+        return prefix + note
     if entry.media is not None:
-        return f"(lampiran {entry.media.kind}: {entry.media.filename})"
+        return f"{prefix}(lampiran {entry.media.kind}: {entry.media.filename})"
     return "(tanpa teks)"
 
 

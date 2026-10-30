@@ -13,6 +13,7 @@ from pathlib import Path
 from neonize.aioze.client import NewAClient
 from neonize.aioze.events import ConnectedEv, GroupInfoEv, HistorySyncEv, MessageEv
 from neonize.exc import SendMessageError
+from neonize.proto.Neonize_pb2 import UndecryptableMessage as UndecryptableMessageEv
 from neonize.proto.waE2E.WAWebProtobufsE2E_pb2 import ContextInfo, ExtendedTextMessage
 from neonize.utils.enum import ChatPresence, ChatPresenceMedia
 from neonize.utils.jid import build_jid
@@ -34,7 +35,8 @@ GROUP_INFO_TIMEOUT = 10.0
 GROUP_NAME_RETRY = 300.0
 REACTION_COOLDOWN = 300.0
 SENT_TTL = 900.0
-MENTION_TOKEN = re.compile(r"@\+?\d[\d\s().-]{3,24}\d")
+MENTION_TOKEN = re.compile(r"@\+?\d[\d\s().-]{2,24}\d")
+MENTION_NAME = re.compile(r"(?<![\w@])@([^\W\d_][\w.]{1,39})", re.UNICODE)
 
 
 class WhatsAppGateway:
@@ -99,12 +101,37 @@ class WhatsAppGateway:
             try:
                 if ev.Info.MessageSource.Chat.Server == "g.us":
                     await self.ensure_group_name(ev.Info.MessageSource.Chat.User + "@g.us")
+                revoked = ingress.revoke_target(ev)
+                if revoked is not None:
+                    target_id, by_jid = revoked
+                    source = ev.Info.MessageSource
+                    chat_id = f"{source.Chat.User}@{source.Chat.Server}"
+                    name = directory.contact_name(self.db, by_jid) or (
+                        ev.Info.Pushname or ""
+                    ).strip()
+                    if self.windows.mark_deleted(chat_id, target_id, by_jid, name):
+                        log.info("pesan dihapus chat=%s id=%s oleh=%s", chat_id, target_id, name or by_jid)
+                    return
                 inbound = ingress.event_to_inbound(ev, self)
                 if inbound is None:
                     return
                 await agent.handle(inbound, self)
             except Exception:
                 log.exception("handler pesan WhatsApp gagal")
+
+        @client.event(UndecryptableMessageEv)
+        async def on_undecryptable(accepted: NewAClient, ev) -> None:
+            if not ev.IsUnavailable:
+                return
+            try:
+                found = ingress.unreadable_message(ev, self)
+                if found is None:
+                    return
+                chat_id, message = found
+                self.windows.append(chat_id, message)
+                log.info("pesan tidak terbaca chat=%s id=%s", chat_id, message.id)
+            except Exception:
+                log.exception("handler pesan tidak terbaca gagal")
 
         @client.event(HistorySyncEv)
         async def on_history(accepted: NewAClient, ev) -> None:
@@ -188,21 +215,45 @@ class WhatsAppGateway:
         if "@" not in text:
             return text, []
         known: dict[str, str] = {}
+        names: dict[str, str] = {}
         for entry in self.windows.get(chat_id):
-            if entry.sender_id and entry.sender_jid:
-                known.setdefault(entry.sender_id, entry.sender_jid)
+            if not entry.sender_id or not entry.sender_jid:
+                continue
+            known.setdefault(entry.sender_id, entry.sender_jid)
+            label = (entry.sender_name or "").strip().casefold()
+            if not label:
+                continue
+            for key in (label, label.split()[0]):
+                current = names.get(key)
+                if current is None:
+                    names[key] = entry.sender_id
+                elif current != entry.sender_id:
+                    names[key] = ""  # ambigu: nama itu milik lebih dari satu orang
         if not known:
             return text, []
         mentions: list[str] = []
 
-        def replace(match: re.Match) -> str:
-            digits = "".join(ch for ch in match.group(0) if ch.isdigit())
+        def number(match: re.Match) -> str:
+            token = match.group(0)
+            digits = "".join(ch for ch in token if ch.isdigit())
             jid = known.get(digits)
-            if jid is not None and jid not in mentions:
+            if jid is None:
+                log.warning("mention tidak dikenali chat=%s token=%s", chat_id, token)
+                return token
+            if jid not in mentions:
                 mentions.append(jid)
             return f"@{digits}"
 
-        return MENTION_TOKEN.sub(replace, text), mentions
+        def name(match: re.Match) -> str:
+            digits = names.get(match.group(1).casefold())
+            jid = known.get(digits or "")
+            if jid is None:
+                return match.group(0)
+            if jid not in mentions:
+                mentions.append(jid)
+            return f"@{digits}"
+
+        return MENTION_NAME.sub(name, MENTION_TOKEN.sub(number, text)), mentions
 
     async def send_text(
         self, chat_id: str, text: str, *, reply: Inbound | None = None
@@ -339,9 +390,9 @@ class WhatsAppGateway:
             "- Use WhatsApp formatting: *bold*, _italic_, ~strike~, ```mono```. No markdown "
             "headings, no tables.\n"
             "- Start list items with '• '; never use '- ' or numbers with dots for bullets.\n"
-            "- To mention someone, write @<number> exactly as it appears in the payload (e.g. "
-            "@6285111242960), without '+', spaces, or punctuation; the runtime converts it into a "
-            "real mention.\n"
+            "- To mention someone, copy the `mention=@…` token from their payload line verbatim (no "
+            "'+', spaces, or punctuation); the runtime converts it into a real mention. Never invent "
+            "a number.\n"
             f"- Your handles: {handles}. A mention of any of them is meant for you, not for another "
             "person. When you refer to yourself, use those handles.\n"
             "- Do not @mention someone in a DM unless it is genuinely necessary."

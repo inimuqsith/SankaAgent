@@ -9,7 +9,7 @@ import time
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import Text, and_, case, cast, func, select
+from sqlalchemy import Text, and_, case, cast, func, or_, select
 
 from ..context import (
     AUTHOR_RANK,
@@ -62,6 +62,10 @@ def _data(message: ChatMessage) -> dict:
         if message.quote.media is not None:
             quote["media"] = _media_json(message.quote.media)
         data["quote"] = quote
+    if message.view_once:
+        data["view_once"] = True
+    if message.unreadable:
+        data["unreadable"] = True
     return data
 
 
@@ -106,6 +110,9 @@ class HistoryStore:
             "outgoing": bool(message.outgoing),
             "author": message.author,
             "visibility": message.visibility,
+            "deleted": bool(message.deleted),
+            "deleted_by": message.deleted_by or "",
+            "deleted_admin": bool(message.deleted_admin),
             "data": _data(message),
             "media_ref": _blob(media),
             "quote_media_ref": _blob(quote.media) if quote is not None else None,
@@ -124,6 +131,7 @@ class HistoryStore:
         new_rank = case(AUTHOR_RANK, value=excluded.author, else_=0)
         old_rank = case(AUTHOR_RANK, value=table.c.author, else_=0)
         keep_new = new_rank >= old_rank
+        removed = excluded.deleted.is_(True)
         return {
             "sender_name": case(
                 (keep_new, func.coalesce(func.nullif(excluded.sender_name, ""), table.c.sender_name)),
@@ -146,6 +154,9 @@ class HistoryStore:
                 else_=table.c.visibility,
             ),
             "text": func.coalesce(func.nullif(excluded.text, ""), table.c.text),
+            "deleted": or_(table.c.deleted, excluded.deleted),
+            "deleted_by": case((removed, excluded.deleted_by), else_=table.c.deleted_by),
+            "deleted_admin": case((removed, excluded.deleted_admin), else_=table.c.deleted_admin),
             "data": data,
             "media_ref": func.coalesce(excluded.media_ref, table.c.media_ref),
             "quote_media_ref": func.coalesce(
@@ -200,6 +211,13 @@ class HistoryStore:
             self.add(chat_id, entry)
             changed += 1
         return changed
+
+    def mark_deleted(self, chat_id: str, message_id: str, by_jid: str, by_name: str = "") -> bool:
+        entry = self.find(chat_id, message_id)
+        if entry is None or not entry.mark_deleted(by_jid, by_name):
+            return False
+        self.add(chat_id, entry)
+        return True
 
     def set_chat_name(self, chat_id: str, name: str) -> None:
         if not chat_id:
@@ -259,6 +277,11 @@ class HistoryStore:
             sender_jid=str(row["sender_address"]),
             author=author,
             visibility=clamp_visibility(row.get("visibility")),
+            view_once=bool(data.get("view_once")),
+            unreadable=bool(data.get("unreadable")),
+            deleted=bool(row.get("deleted")),
+            deleted_by=str(row.get("deleted_by") or ""),
+            deleted_admin=bool(row.get("deleted_admin")),
         )
 
     def _reset_ts(self, chat_id: str) -> float:
