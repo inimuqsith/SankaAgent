@@ -30,7 +30,6 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import xlsx  # noqa: E402
-from _paths import safe_path  # noqa: E402
 
 PATTERNS = ROOT / "sanka" / "data" / "patterns.json"
 VECTORS = ROOT / "sanka" / "data" / "pattern_vectors.json"
@@ -78,8 +77,8 @@ SAY_MAX, SAY_COUNT = 120, 2
 AVOID_MAX, AVOID_COUNT = 40, 3
 
 
-def load(path: Path | str = PATTERNS) -> dict:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+def load() -> dict:
+    return json.loads(PATTERNS.read_text(encoding="utf-8"))
 
 
 def rows(body: dict) -> list[dict]:
@@ -221,18 +220,15 @@ def vectors_deficits(body: dict, path: Path) -> list[str]:
     return [f"{path.name}: vektor hilang untuk {', '.join(missing)}"] if missing else []
 
 
-def _atomic_write(path: Path, payload: str) -> None:
-    path = safe_path(PATTERNS.parent, path)
-    if path not in {PATTERNS.resolve(), VECTORS.resolve()}:
-        raise SystemExit(f"refusing to write outside data: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _atomic_write(payload: str, *, vectors: bool = False) -> None:
+    path = VECTORS if vectors else PATTERNS
     temp = path.with_suffix(path.suffix + ".tmp")
     temp.write_text(payload, encoding="utf-8")
     os.replace(temp, path)
 
 
-def dump(body: dict, path: Path = PATTERNS) -> None:
-    _atomic_write(path, json.dumps(body, ensure_ascii=False, indent=2) + "\n")
+def dump(body: dict) -> None:
+    _atomic_write(json.dumps(body, ensure_ascii=False, indent=2) + "\n")
 
 
 def _encoder(model: str):
@@ -247,7 +243,7 @@ def _encoder(model: str):
     return SentenceTransformer(model, device=device)
 
 
-def embed(body: dict, path: Path = VECTORS) -> dict:
+def embed(body: dict) -> dict:
     model = str(body.get("model") or MODEL)
     texts = [f"{row['content']} {' '.join(row.get('keys') or [])}" for row in rows(body)]
     encoder = _encoder(model)
@@ -259,7 +255,7 @@ def embed(body: dict, path: Path = VECTORS) -> dict:
         for index, row in enumerate(rows(body))
     }
     built = {"model": model, "dim": int(matrix.shape[1]), "vectors": vectors}
-    _atomic_write(path, json.dumps(built, ensure_ascii=False) + "\n")
+    _atomic_write(json.dumps(built, ensure_ascii=False) + "\n", vectors=True)
     return built
 
 
