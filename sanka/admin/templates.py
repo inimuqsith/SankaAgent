@@ -94,6 +94,7 @@ ENGINE: dict = {
         "roast_jabs": 1,
         "gender_avatar": False,
         "patterns": 0,
+        "facts": 0,
         "max_questions": 1,
     },
     "affect": {

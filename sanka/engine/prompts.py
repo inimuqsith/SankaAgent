@@ -78,6 +78,7 @@ def character_block(
     gate: bool = True,
     jabs: int = 1,
     patterns: list[str] | None = None,
+    facts: list[str] | None = None,
 ) -> str:
     """Register turn ini: level kekasaran dan meme dewasa, target, dan aturan atribusi."""
     tox, memes = int(limits[0]), int(limits[1])
@@ -117,6 +118,10 @@ def character_block(
     if lines:
         block += "\n## Room patterns (apply the move, never copy the wording):"
         block += "".join(f"\n- {str(line).strip()}" for line in lines)
+    known = [line for line in (facts or []) if str(line).strip()]
+    if known:
+        block += "\n## Known facts (use only when the room asks; never invent beyond these):"
+        block += "".join(f"\n- {str(line).strip()}" for line in known)
     return block
 
 

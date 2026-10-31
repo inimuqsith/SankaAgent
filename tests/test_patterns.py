@@ -251,7 +251,7 @@ def test_vector_model_mismatch_falls_back_to_keywords(tmp_path, monkeypatch) -> 
 def test_shipped_catalogue_loads_whole_with_vectors() -> None:
     body = json.loads((ROOT / "sanka" / "data" / "patterns.json").read_text(encoding="utf-8"))
 
-    assert 30 <= len(body["patterns"]) <= 60
+    assert len(body["patterns"]) >= 30
     invariants = {row["id"] for row in body["patterns"] if row["always"]}
     assert invariants == {
         "language_lock",

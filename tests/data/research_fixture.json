@@ -1,0 +1,106 @@
+{
+  "items": [
+    {
+      "topic": "T1",
+      "kind": "line",
+      "text": "yo wes mangan durung cok",
+      "meaning": "Sapaan santai menanyakan sudah makan atau belum",
+      "register": "banter",
+      "media": "none",
+      "gate": {"target": "any", "min_toxicity": 0, "min_adult": 0},
+      "evidence": {
+        "repeats": 3,
+        "sources": ["https://forum.example/thread-1"],
+        "platform": "forum"
+      },
+      "synthetic": false,
+      "confidence": 2,
+      "why": "dipakai berulang di grup"
+    },
+    {
+      "topic": "T1",
+      "kind": "comment",
+      "text": "yo wes mangan durung cok ta",
+      "meaning": "Sapaan santai menanyakan sudah makan atau belum",
+      "register": "banter",
+      "media": "none",
+      "gate": {"target": "any", "min_toxicity": 0, "min_adult": 0},
+      "evidence": {
+        "repeats": 4,
+        "sources": ["https://social.example/post-2"],
+        "platform": "social"
+      },
+      "synthetic": false,
+      "confidence": 2,
+      "why": "muncul di kolom komentar"
+    },
+    {
+      "topic": "T1",
+      "kind": "comment",
+      "text": "yo wes mangan durung cok rek",
+      "meaning": "Sapaan santai menanyakan sudah makan atau belum",
+      "register": "banter",
+      "media": "none",
+      "gate": {"target": "any", "min_toxicity": 0, "min_adult": 0},
+      "evidence": {
+        "repeats": 2,
+        "sources": ["https://news.example/article-3"],
+        "platform": "news"
+      },
+      "synthetic": false,
+      "confidence": 2,
+      "why": "dikutip artikel"
+    },
+    {
+      "topic": "T1",
+      "kind": "line",
+      "text": "gasken ndang berangkat meng",
+      "meaning": "Ajakan cepat berangkat",
+      "register": "banter",
+      "media": "none",
+      "gate": {"target": "any", "min_toxicity": 0, "min_adult": 0},
+      "evidence": {
+        "repeats": 5,
+        "sources": ["https://forum.example/thread-4", "https://social.example/post-5"],
+        "platform": "forum"
+      },
+      "synthetic": true,
+      "confidence": 2,
+      "why": "meniru pola ajakan singkat yang lazim"
+    },
+    {
+      "topic": "T2",
+      "kind": "line",
+      "text": "lihat scripts/patterns.py dulu",
+      "meaning": "Contoh path yang harus ditolak",
+      "register": "neutral",
+      "media": "none",
+      "gate": {"target": "any", "min_toxicity": 0, "min_adult": 0},
+      "evidence": {
+        "repeats": 3,
+        "sources": ["https://forum.example/thread-6"],
+        "platform": "forum"
+      },
+      "synthetic": false,
+      "confidence": 2,
+      "why": "melanggar larangan path"
+    },
+    {
+      "topic": "T2",
+      "kind": "line",
+      "text": "percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang percakapan panjang",
+      "meaning": "Contoh teks terlalu panjang",
+      "register": "neutral",
+      "media": "none",
+      "gate": {"target": "any", "min_toxicity": 0, "min_adult": 0},
+      "evidence": {
+        "repeats": 3,
+        "sources": ["https://forum.example/thread-7"],
+        "platform": "forum"
+      },
+      "synthetic": false,
+      "confidence": 2,
+      "why": "melanggar batas panjang"
+    }
+  ]
+}

@@ -1,0 +1,5990 @@
+{
+  "version": 1,
+  "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "facts": [
+    {
+      "id": "t1-boso-suroboyoan",
+      "topic": "T1",
+      "keys": [
+        "boso",
+        "suroboyoan",
+        "lugas",
+        "intonasi"
+      ],
+      "text": "Boso Suroboyoan lugas akrab penuh semangat, intonasi keras tapi seduluran",
+      "sources": [
+        "https://id.wikipedia.org/wiki/Rumpun_Dialek_Arekan",
+        "https://surabaya.tribunnews.com/surabaya-metro/1943107/kamus-lengkap-bahasa-surabaya-istilah-gaul-arek-suroboyo-dan-artinya",
+        "https://www.goodnewsfromindonesia.id/indonesiana/humaniora/boso-suroboyoan-kosakata-khas-arek-suroboyo-yang-tegas"
+      ],
+      "domains": [
+        "id.wikipedia.org",
+        "surabaya.tribunnews.com",
+        "www.goodnewsfromindonesia.id"
+      ],
+      "confidence": 3,
+      "varian": [
+        "Boso Suroboyoan tegas dan beda dari Jawa standar"
+      ]
+    },
+    {
+      "id": "t12-aturan-negatif",
+      "topic": "T12",
+      "keys": [
+        "aturan",
+        "negatif",
+        "nganggo",
+        "sopan"
+      ],
+      "text": "Aturan grup WA dilarang posting konten negatif, wajib nganggo bahasa sopan",
+      "sources": [
+        "https://autowizard.io/id/blog/whatsapp-group-rules",
+        "https://id.scribd.com/document/368803968/Aturan-Yang-Harus-Dipatuhi-Di-Dalam-Group-WhatsApp",
+        "https://www.beardtekno.com/2024/09/kumpulan-contoh-tata-tertib-peraturan.html"
+      ],
+      "domains": [
+        "autowizard.io",
+        "id.scribd.com",
+        "www.beardtekno.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t18-larangan-suporter",
+      "topic": "T18",
+      "keys": [
+        "larangan",
+        "tinggi",
+        "rivalitas",
+        "suporter"
+      ],
+      "text": "Larangan suporter away dicabut, tapi laga rivalitas tinggi tetap tanpa tamu",
+      "sources": [
+        "https://fajar.co.id/2026/08/12/i-league-cabut-larangan-away-suporter-tapi-beri-catatan-tegas-soal-laga-dengan-rivalitas-tinggi/",
+        "https://kabarcilegon.com/detail/45683/ileague-20262027-suporter-away-boleh-hadir-kecuali-laga-persija-vs-persib-dan-arema-vs-persebaya",
+        "https://www.detik.com/sulsel/sepakbola/d-8618683/larangan-suporter-away-di-super-league-2026-2027-dicabut-tapi-ada-batasannya"
+      ],
+      "domains": [
+        "fajar.co.id",
+        "kabarcilegon.com",
+        "www.detik.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t20-atasan-konsisten",
+      "topic": "T20",
+      "keys": [
+        "atasan",
+        "pemicu",
+        "konsisten",
+        "stres"
+      ],
+      "text": "Atasan yang tidak konsisten dan target yang tidak masuk akal jadi pemicu stres kerja.",
+      "sources": [
+        "https://info-maluku.com/2026/10/04/tempat-kerja-toxic-tanda-resign",
+        "https://www.cnbcindonesia.com/lifestyle/20261004084006-33-773113/ciri-ciri-tempat-kerja-toxic-merusak-mental-kapan-harus-resign",
+        "https://www.viv.co.id/read/224671/dampak-buruk-tempat-kerja-toxic-pada-mental-dan-batas-waktu-resign"
+      ],
+      "domains": [
+        "info-maluku.com",
+        "www.cnbcindonesia.com",
+        "www.viv.co.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-weton-jodoh",
+      "topic": "T21",
+      "keys": [
+        "weton",
+        "neptu",
+        "kecocokan",
+        "primbon"
+      ],
+      "text": "Weton jodoh dihitung dari neptu hari lahir plus pasaran untuk menilai kecocokan pasangan menurut primbon",
+      "sources": [
+        "https://hitunganweton.id/weton-jodoh/",
+        "https://primbon.forum/primbon-jawa-weton-jodoh/",
+        "https://ruangprimbon.com/weton/tabel-weton-jodoh/"
+      ],
+      "domains": [
+        "hitunganweton.id",
+        "primbon.forum",
+        "ruangprimbon.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-maulid-nabi",
+      "topic": "T21",
+      "keys": [
+        "maulid",
+        "nabi",
+        "keraton",
+        "mulud"
+      ],
+      "text": "Sekaten adalah rangkaian peringatan Maulid Nabi yang digelar Keraton Solo dan Jogja setiap bulan Mulud",
+      "sources": [
+        "https://ambarrukmo.com/sekaten/",
+        "https://id.wikipedia.org/wiki/Sekaten",
+        "https://solokini.com/read/mengenal-tradisi-sekaten-solo-sejarah-prosesi-dan-makna/"
+      ],
+      "domains": [
+        "ambarrukmo.com",
+        "id.wikipedia.org",
+        "solokini.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t23-culture-shock",
+      "topic": "T23",
+      "keys": [
+        "culture",
+        "kesepian",
+        "lingkungan",
+        "rumah"
+      ],
+      "text": "Culture shock anak rantau, jauh dari rumah, kesepian dan susah adaptasi lingkungan baru",
+      "sources": [
+        "https://kumparan.com/sri-rahayu-1649724672105286219/culture-shock-di-rantau-1yHWsmwKQyz",
+        "https://www.tiktok.com/@gebbibahar/video/7638103329444236552",
+        "https://www.youtube.com/watch?v=YGWRpMCuZoQ"
+      ],
+      "domains": [
+        "kumparan.com",
+        "www.tiktok.com",
+        "www.youtube.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t6-pantun-pembuka",
+      "topic": "T6",
+      "keys": [
+        "pantun",
+        "cairin",
+        "bosan",
+        "pembuka"
+      ],
+      "text": "Pantun pembuka dan penutup presentasi dipakai buat cairin suasana biar anti bosan",
+      "sources": [
+        "https://dealls.com/pengembangan-karir/pantun-pembuka-dan-penutup-presentasi",
+        "https://katadata.co.id/lifestyle/varia/692fcb6d465c1/75-pantun-pembuka-presentasi-lucu-dijamin-menghibur-dan-anti-bosan",
+        "https://www.detik.com/sumut/berita/d-7456110/30-contoh-pantun-pembuka-dan-pantun-penutup-presentasi-bagikan-yuk"
+      ],
+      "domains": [
+        "dealls.com",
+        "katadata.co.id",
+        "www.detik.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t6-pantun-nasehat",
+      "topic": "T6",
+      "keys": [
+        "pantun",
+        "nasehat",
+        "bijak",
+        "pesan"
+      ],
+      "text": "Pantun nasehat berisi pesan bijak tentang orang tua, agama, dan rajin belajar",
+      "sources": [
+        "https://id.scribd.com/document/712904845/60-Pantun-Nasehat-Orang-Tua-Anak-Anak-Belajar-Agama-Pendidikan-Klak-Klik-Bermutu",
+        "https://www.diedit.com/pantun-nasehat-orang-tua/",
+        "https://www.ruangbelajarchannel.com/2026/04/blog-post.html"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "www.diedit.com",
+        "www.ruangbelajarchannel.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t6-pola-rekan",
+      "topic": "T6",
+      "keys": [
+        "pola",
+        "elegan",
+        "canda",
+        "kantor"
+      ],
+      "text": "Pola pantun perpisahan rekan kerja lucu elegan penuh canda untuk acara kantor",
+      "sources": [
+        "https://kumparan.com/pengetahuan-umum/50-pantun-perpisahan-rekan-kerja-lucu-yang-menghibur-25BnQBflTcu",
+        "https://www.akarsari.com/sastra/20515013961/30-pantun-perpisahan-rekan-kerja-haru-lucu-santai-dan-melankolis",
+        "https://www.bola.com/ragam/read/5334938/35-pantun-perpisahan-rekan-kerja-berkesan-dan-penuh-makna"
+      ],
+      "domains": [
+        "kumparan.com",
+        "www.akarsari.com",
+        "www.bola.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t22-botram-warga",
+      "topic": "T22",
+      "keys": [
+        "botram",
+        "gelar",
+        "daun",
+        "ngaliwet"
+      ],
+      "text": "Botram ngaliwet bareng warga se-gang, gelar daun di jalan makan rame-rame",
+      "sources": [
+        "https://jurnal86.com/jaga-silaturahmi-lewat-tradisi-botram-ngaliwet-bersama/",
+        "https://www.liputan6.com/news/read/3650757/jaga-silaturahmi-lewat-tradisi-botram-ngaliwet-bersama-di-bandung",
+        "https://www.youtube.com/watch?v=1l8z23nlCgY"
+      ],
+      "domains": [
+        "jurnal86.com",
+        "www.liputan6.com",
+        "www.youtube.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t17-bantengan-malang",
+      "topic": "T17",
+      "keys": [
+        "bantengan",
+        "malang",
+        "kesenian",
+        "banteng"
+      ],
+      "text": "Bantengan Malang iku kesenian topeng banteng sing jogete liar karo iringan musik",
+      "sources": [
+        "https://id.scribd.com/document/619481213/tugas-Kebudayaan-multikultural",
+        "https://malang.disway.id/agama-budaya/read/22039/bantengan-malang-mengenal-kesenian-tradisional-karakter-banteng-hingga-tradisi-ndadi"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "malang.disway.id"
+      ],
+      "confidence": 3,
+      "varian": [
+        "Bantengan iku gabungan tari, musik, karo syair sing kental nuansa mistis"
+      ]
+    },
+    {
+      "id": "t22-bandung-ragam",
+      "topic": "T22",
+      "keys": [
+        "bandung",
+        "ragam",
+        "lemes",
+        "loma"
+      ],
+      "text": "Di Bandung dipakai ragam lemes untuk orang tua, ragam loma untuk teman nongkrong",
+      "sources": [
+        "https://jabar.idntimes.com/news/jawa-barat/undak-usuk-basa-sunda-pengertian-dan-contohnya-00-nqtvm-wr8grk",
+        "https://www.goodnewsfromindonesia.id/indonesiana/sosial-budaya/100-kosakata-bahasa-sunda-sehari-hari-untuk-pemula-dan-artinya"
+      ],
+      "domains": [
+        "jabar.idntimes.com",
+        "www.goodnewsfromindonesia.id"
+      ],
+      "confidence": 3,
+      "varian": [
+        "Pakai basa lemes ke orang tua, basa loma ke teman sebaya di Bandung."
+      ]
+    },
+    {
+      "id": "t1-suroboyo-arek",
+      "topic": "T1",
+      "keys": [
+        "suroboyo",
+        "arek",
+        "bondo",
+        "nekat"
+      ],
+      "text": "Arek Suroboyo iku bonek, bondo nekat",
+      "sources": [
+        "https://www.facebook.com/PT-Persatuan-persebaya-arek-suroboyo-319801951407009/",
+        "https://www.youtube.com/watch?v=Ctk53paYPXA"
+      ],
+      "domains": [
+        "www.facebook.com",
+        "www.youtube.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t11-jancok-suroboyo",
+      "topic": "T11",
+      "keys": [
+        "jancok",
+        "suroboyo",
+        "penegas",
+        "emosi"
+      ],
+      "text": "Jancok sebagai sapaan akrab dan penegas emosi khas Suroboyo",
+      "sources": [
+        "https://surabaya.tribunnews.com/surabaya-metro/1943107/kamus-lengkap-bahasa-surabaya-istilah-gaul-arek-suroboyo-dan-artinya",
+        "https://www.instagram.com/reel/DbhloL6zhdg/"
+      ],
+      "domains": [
+        "surabaya.tribunnews.com",
+        "www.instagram.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t12-kata-dinormalisasi",
+      "topic": "T12",
+      "keys": [
+        "kata",
+        "dinormalisasi",
+        "remaja",
+        "simbol"
+      ],
+      "text": "Kata kasar dinormalisasi jadi bahasa tongkrongan remaja sebagai simbol keakraban",
+      "sources": [
+        "https://pikiranbangsa.co/normalisasi-kata-kasar-dalam-bahasa-tongkrongan-remaja-apakah-ini-tanda-keakraban-atau-kemunduran-etika-berbahasa/",
+        "https://repository.upi.edu/124772/"
+      ],
+      "domains": [
+        "pikiranbangsa.co",
+        "repository.upi.edu"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t12-anjir-kaget",
+      "topic": "T12",
+      "keys": [
+        "anjir",
+        "kagum",
+        "bumbu",
+        "heran"
+      ],
+      "text": "Anjir dipakai buat kaget, kagum, kesal, heran sampai bumbu candaan",
+      "sources": [
+        "https://idr.uin-antasari.ac.id/32262/1/ABSTRAK.pdf",
+        "https://idr.uin-antasari.ac.id/id/eprint/32262",
+        "https://www.youtube.com/watch?v=DrRrmlTi9YI"
+      ],
+      "domains": [
+        "idr.uin-antasari.ac.id",
+        "www.youtube.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t12-anjay-awalnya",
+      "topic": "T12",
+      "keys": [
+        "anjay",
+        "penghalusan",
+        "geser",
+        "pujian"
+      ],
+      "text": "Anjay awalnya penghalusan kata kasar lalu geser jadi pujian atau guyonan",
+      "sources": [
+        "https://ecosemica.net/index.php/KOMUNIKASI/article/download/980/967",
+        "https://www.instagram.com/reel/DeRdCrNR3EC/"
+      ],
+      "domains": [
+        "ecosemica.net",
+        "www.instagram.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t12-eufemisme-ganti",
+      "topic": "T12",
+      "keys": [
+        "eufemisme",
+        "tabu",
+        "terdengar",
+        "harmoni"
+      ],
+      "text": "Eufemisme dipakai untuk ganti kata tabu agar terdengar halus dan jaga harmoni",
+      "sources": [
+        "https://id.scribd.com/document/685235536/BAHASA-KASAR",
+        "https://id.wikipedia.org/wiki/Eufemisme"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "id.wikipedia.org"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t12-guru-menegur",
+      "topic": "T12",
+      "keys": [
+        "guru",
+        "menegur",
+        "murid",
+        "memaki"
+      ],
+      "text": "Guru menegur murid yang memaki saat razia, lalu jadi polemik viral",
+      "sources": [
+        "https://jambi.tribunnews.com/news/1187529/curhat-pilu-guru-tri-di-dpr-refleks-tegur-murid-berkata-kotor-kini-suami-ditahan-dan-terancam-bui",
+        "https://www.tribunnews.com/nasional/7780739/di-depan-jaksa-agung-dpr-minta-kasus-guru-jadi-tersangka-usai-hukum-murid-yang-mengumpat-dihentikan"
+      ],
+      "domains": [
+        "jambi.tribunnews.com",
+        "www.tribunnews.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t12-tayangan-pidato",
+      "topic": "T12",
+      "keys": [
+        "tayangan",
+        "diprotes",
+        "lolos",
+        "diminta"
+      ],
+      "text": "Tayangan pidato yang lolos kata kasar diprotes dan diminta sensor",
+      "sources": [
+        "https://dramapolitisi.blogspot.com/2026/09/netizen-layangkan-surat-terbuka-ke-kpi.html",
+        "https://www.arahpena.com/berita/77917657661/kpi-disorot-warganet-minta-sensor-pidato-prabowo-yang-disebut-bermuatan-kata-kasar"
+      ],
+      "domains": [
+        "dramapolitisi.blogspot.com",
+        "www.arahpena.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t12-tutorial-suara",
+      "topic": "T12",
+      "keys": [
+        "tutorial",
+        "beep",
+        "nutupi",
+        "suara"
+      ],
+      "text": "Tutorial sensor suara beep kanggo nutupi kata sing ora enak dirungokno nang video",
+      "sources": [
+        "https://www.tiktok.com/@clipper_tipsedit/video/7666031844000877831",
+        "https://www.youtube.com/watch?v=oY11KninqDQ",
+        "https://www.youtube.com/watch?v=xPaJxkWObPs"
+      ],
+      "domains": [
+        "www.tiktok.com",
+        "www.youtube.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t12-paket-indonesia",
+      "topic": "T12",
+      "keys": [
+        "paket",
+        "indonesia",
+        "filter",
+        "masking"
+      ],
+      "text": "Paket filter kata kasar Indonesia kanggo masking otomatis nang aplikasi",
+      "sources": [
+        "https://github.com/afrizal423/bad-word-indonesia",
+        "https://pdfs.semanticscholar.org/d14f/2b7c821108630719fa51cc18e2d64306b037.pdf"
+      ],
+      "domains": [
+        "github.com",
+        "pdfs.semanticscholar.org"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t17-nonton-bantengan",
+      "topic": "T17",
+      "keys": [
+        "nonton",
+        "bantengan",
+        "trus",
+        "pawang"
+      ],
+      "text": "Nonton Bantengan di alun-alun, ndadi trus ngamuk tapi aman karena ada pawang",
+      "sources": [
+        "https://id.scribd.com/document/498534118/Skenario-Video-Dokumenter-Kesenian-Bantengan-Malang-Fix",
+        "https://malang.disway.id/agama-budaya/read/22039/bantengan-malang-mengenal-kesenian-tradisional-karakter-banteng-hingga-tradisi-ndadi"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "malang.disway.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t17-osob-malang",
+      "topic": "T17",
+      "keys": [
+        "osob",
+        "malang",
+        "kiwalan",
+        "walikan"
+      ],
+      "text": "Osob kiwalan iku boso walikan khas arek Malang.",
+      "sources": [
+        "https://id.wikipedia.org/wiki/Bahasa_Jawa_Malang–Pasuruan",
+        "https://www.nusadaily.com/osob-kiwalan-bahasa-gaul-tak-lekang-zaman"
+      ],
+      "domains": [
+        "id.wikipedia.org",
+        "www.nusadaily.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t17-momen-penari",
+      "topic": "T17",
+      "keys": [
+        "momen",
+        "penari",
+        "kalap",
+        "kesurupan"
+      ],
+      "text": "Momen ndadi pas penari kalap kesurupan iku sing paling ditunggu penonton",
+      "sources": [
+        "https://malang.disway.id/agama-budaya/read/22039/bantengan-malang-mengenal-kesenian-tradisional-karakter-banteng-hingga-tradisi-ndadi",
+        "https://www.sosiolegal.com/2026/06/kesenian-bantengan-malang-mistis.html"
+      ],
+      "domains": [
+        "malang.disway.id",
+        "www.sosiolegal.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t17-derby-timur",
+      "topic": "T17",
+      "keys": [
+        "derby",
+        "timur",
+        "stadion",
+        "arema"
+      ],
+      "text": "Derby Jawa Timur Arema lawan Persebaya nang Stadion Kanjuruhan Malang",
+      "sources": [
+        "https://natuna.times.co.id/news/peristiwa/8tnm9ysryx/cerita-aremania-yang-selamat-dari-tragedi-stadion-kanjuruhan",
+        "https://timesindonesia.co.id/peristiwa-daerah/431096/cerita-aremania-yang-selamat-dari-tragedi-stadion-kanjuruhan"
+      ],
+      "domains": [
+        "natuna.times.co.id",
+        "timesindonesia.co.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t17-stadion-kanjuruhan",
+      "topic": "T17",
+      "keys": [
+        "stadion",
+        "kanjuruhan",
+        "bersama",
+        "mengeti"
+      ],
+      "text": "Doa bersama nang njobo Stadion Kanjuruhan kanggo mengeti patang tahun tragedi",
+      "sources": [
+        "https://suryamalang.tribunnews.com/superball/288836/4-tahun-tragedi-kanjuruhan-aremania-kembali-membersamai-keluarga-korban-melalui-doa-bersama",
+        "https://www.youtube.com/watch?v=fYC6sTpihLU"
+      ],
+      "domains": [
+        "suryamalang.tribunnews.com",
+        "www.youtube.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t18-aremania-bonek",
+      "topic": "T18",
+      "keys": [
+        "aremania",
+        "bonek",
+        "musuh",
+        "damai"
+      ],
+      "text": "Bonek karo Aremania iku musuh lawas, saiki jare pengen damai",
+      "sources": [
+        "https://blitarkawentar.jawapos.com/lifestyle/2602190082/sejarah-rivalitas-bonek-vs-aremania-dari-konflik-era-90-an-hingga-momentum-damai-pasca-tragedi-kanjuruhan",
+        "https://radartulungagung.jawapos.com/sportainment/2602200098/sejarah-rivalitas-bonek-dan-aremania-dari-tawuran-era-90-an-hingga-tragedi-kanjuruhan-benarkah-media-jadi-pemicu"
+      ],
+      "domains": [
+        "blitarkawentar.jawapos.com",
+        "radartulungagung.jawapos.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t18-wakil-aremania",
+      "topic": "T18",
+      "keys": [
+        "wakil",
+        "aremania",
+        "bonek",
+        "lungguh"
+      ],
+      "text": "Wakil Bonek karo Aremania lungguh bareng, rivalitas cukup nang lapangan ae",
+      "sources": [
+        "https://pontas.id/2026/08/13/bonek-dan-aremania-sepakat-berdamai-polda-jatim-dorong-rivalitas-hanya-di-lapangan/",
+        "https://singhasaripost.com/2026/08/13/aremania-dan-bonek-duduk-bersama-polisi-dorong-rivalitas-tetap-di-lapangan/"
+      ],
+      "domains": [
+        "pontas.id",
+        "singhasaripost.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t2-malang-memungut",
+      "topic": "T2",
+      "keys": [
+        "malang",
+        "memungut",
+        "plus",
+        "biaya"
+      ],
+      "text": "UIN Malang memungut UKT plus biaya ma'had di awal semester.",
+      "sources": [
+        "https://mamikos.com/info/biaya-kuliah-ukt-uin-malang-mhs/",
+        "https://pmb.uin-malang.ac.id/biaya-kuliah/"
+      ],
+      "domains": [
+        "mamikos.com",
+        "pmb.uin-malang.ac.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t2-maba-malang",
+      "topic": "T2",
+      "keys": [
+        "maba",
+        "malang",
+        "belum",
+        "sendiri"
+      ],
+      "text": "Maba UIN Malang wajib mondok setahun di ma'had; belum boleh ngekos sendiri.",
+      "sources": [
+        "https://ketik.com/malang/pendidikan/pionir-kampus-islam-uin-malang-wajibkan-maba-tinggal-di-mahad-selama-tahun-pertama",
+        "https://www.doyanblog.com/wajib-mahad-1-tahun-mengenal-kehidupan-asrama-uin-malang-2026/"
+      ],
+      "domains": [
+        "ketik.com",
+        "www.doyanblog.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-panggih-puncak",
+      "topic": "T21",
+      "keys": [
+        "panggih",
+        "puncak",
+        "temune",
+        "akad"
+      ],
+      "text": "Panggih itu puncak acarane, temune pengantin lanang lan wedok sawise akad",
+      "sources": [
+        "https://id.scribd.com/presentation/538325840/siraman-midodareni-panggih",
+        "https://undaku.id/blog/urutan-prosesi-pernikahan-adat-jawa"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "undaku.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-jawa-unggah",
+      "topic": "T21",
+      "keys": [
+        "jawa",
+        "madya",
+        "miturut",
+        "umur"
+      ],
+      "text": "Unggah-ungguh basa Jawa ngatur pilihan ngoko, madya, krama inggil lan krama andhap miturut umur lan status lawan bicara",
+      "sources": [
+        "https://id.scribd.com/document/941729621/Unggah-Ungguh-Basa-Jawa",
+        "https://www.detik.com/jateng/budaya/d-8290331/pengertian-unggah-ungguh-basa-jawa-lengkap-dengan-contoh-ngoko-dan-krama"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "www.detik.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-krama-memuliakan",
+      "topic": "T21",
+      "keys": [
+        "krama",
+        "memuliakan",
+        "dihormati",
+        "inggil"
+      ],
+      "text": "Krama inggil dipakai untuk memuliakan lawan bicara yang lebih tua atau dihormati dalam acara resmi",
+      "sources": [
+        "https://belajarjawa.com/bahasa-jawa-krama-inggil-pengertian-fungsi-ciri-dan-contoh-lengkap-dalam-kehidupan-sehari-hari/",
+        "https://perawatcenter.com/artikel/panduan-belajar-bahasa-jawa-kromo-inggil-pemula"
+      ],
+      "domains": [
+        "belajarjawa.com",
+        "perawatcenter.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-grebeg-jogja",
+      "topic": "T21",
+      "keys": [
+        "grebeg",
+        "sekaten",
+        "jogja",
+        "perebutan"
+      ],
+      "text": "Grebeg Sekaten di Jogja ditutup dengan perebutan gunungan hasil bumi sebagai berkah",
+      "sources": [
+        "https://bakpiakukustugu.co.id/artikel/detail/mengenal-upacara-sekatenan-sejarah-dan-makna-prosesinya",
+        "https://www.indonesia.travel/id/id/destination/java/yogyakarta/grebeg-sekaten"
+      ],
+      "domains": [
+        "bakpiakukustugu.co.id",
+        "www.indonesia.travel"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-pasar-solo",
+      "topic": "T21",
+      "keys": [
+        "pasar",
+        "sekaten",
+        "solo",
+        "dolanan"
+      ],
+      "text": "Pasar malam Sekaten Solo rame dolanan, gamelan sekati, lan jajan tradisional ing alun-alun",
+      "sources": [
+        "https://solokini.com/read/mengenal-tradisi-sekaten-solo-sejarah-prosesi-dan-makna/",
+        "https://www.scribd.com/document/480957870/Sekaten"
+      ],
+      "domains": [
+        "solokini.com",
+        "www.scribd.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-kembar-mayang",
+      "topic": "T21",
+      "keys": [
+        "kembar",
+        "hiasan",
+        "digawa",
+        "sepasang"
+      ],
+      "text": "Kembar mayang iku hiasan janur sepasang sing digawa metu pas malam midodareni",
+      "sources": [
+        "https://id.wikipedia.org/wiki/Kembar_mayang",
+        "https://www.detik.com/jogja/budaya/d-7130706/kembar-mayang-dalam-pernikahan-adat-jawa-pengertian-sejarah-filosofinya"
+      ],
+      "domains": [
+        "id.wikipedia.org",
+        "www.detik.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-pasang-tandha",
+      "topic": "T21",
+      "keys": [
+        "pasang",
+        "tandha",
+        "hajatan",
+        "kuwi"
+      ],
+      "text": "Pasang tarub iku tandha resmi arep ana hajatan mantu nang omah kuwi",
+      "sources": [
+        "https://id.scribd.com/doc/299044981/Prosesi-Pasang-Tarub",
+        "https://www.detik.com/jateng/budaya/d-6611625/mengenal-prosesi-pasang-tarub-di-pernikahan-adat-jawa-yang-penuh-makna"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "www.detik.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t21-bleketepe-anyaman",
+      "topic": "T21",
+      "keys": [
+        "bleketepe",
+        "anyaman",
+        "peneduh",
+        "dipasang"
+      ],
+      "text": "Bleketepe anyaman janur kanggo peneduh, dipasang sakdurunge tarub didegake",
+      "sources": [
+        "https://id.scribd.com/doc/299044981/Prosesi-Pasang-Tarub",
+        "https://weddingmarket.com/artikel/pemasangan-tarub-bleketepe-dan-tuwuhan"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "weddingmarket.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t24-grup-sering",
+      "topic": "T24",
+      "keys": [
+        "grup",
+        "kode",
+        "lebih",
+        "sering"
+      ],
+      "text": "Grup campur sering pakai campur kode Jawa-Indonesia biar akrab tapi tetap sopan ke yang lebih tua",
+      "sources": [
+        "https://belajarjawa.com/chat-whatsapp-bahasa-jawa-sopan-lucu-lengkap-untuk-sehari-hari/",
+        "https://id.scribd.com/document/711379315/ANALISIS-CAMPUR-KODE-DALAM-PERCAKAPAN-GRUP-WHATSAPP"
+      ],
+      "domains": [
+        "belajarjawa.com",
+        "id.scribd.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t3-studi-banding",
+      "topic": "T3",
+      "keys": [
+        "studi",
+        "membandingkan",
+        "banding",
+        "himpunan"
+      ],
+      "text": "Studi banding ke himpunan kampus lain untuk mempererat silaturahmi dan membandingkan sistem organisasi",
+      "sources": [
+        "https://id.scribd.com/document/376089329/Proposal-Study-Banding",
+        "https://simormawa.ums.ac.id/static/proposal/PROPOSAL+KEGIATAN+STUDYBANDING+2025.pdf"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "simormawa.ums.ac.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t6-tradisi-melayu",
+      "topic": "T6",
+      "keys": [
+        "melayu",
+        "tradisi",
+        "pihak",
+        "pernikahan"
+      ],
+      "text": "Tradisi berbalas pantun dua pihak dalam pernikahan Melayu untuk menyampaikan maksud dengan cara tidak biasa",
+      "sources": [
+        "https://id.scribd.com/document/624054900/MAKNA-BERBALAS-PANTUN-DALAM-UPACARA-PERNIKAHAN-MELAYU",
+        "https://katadata.co.id/lifestyle/varia/66cd9ae49d4a6/12-contoh-pantun-berbalas-yang-bermakna-dan-menghibur"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "katadata.co.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t6-pantun-empat",
+      "topic": "T6",
+      "keys": [
+        "pantun",
+        "sajak",
+        "rima",
+        "gurindam"
+      ],
+      "text": "Pantun empat baris sajak akhir a-b-a-b, syair rima a-a-a-a, gurindam dua baris rima a-a",
+      "sources": [
+        "https://id.scribd.com/document/896211477/JAWABAN-LKPD-Matius-Lomban-UKIN",
+        "https://www.ruangbelajarchannel.com/2026/05/perbedaan-pantun-syair-dan-gurindam.html"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "www.ruangbelajarchannel.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t6-pola-bait",
+      "topic": "T6",
+      "keys": [
+        "pola",
+        "bait",
+        "sampiran",
+        "ucapan"
+      ],
+      "text": "Pola pantun penutup presentasi lucu dua bait sampiran alam isi ucapan terima kasih",
+      "sources": [
+        "https://lifestyle.kompas.com/read/2026/05/02/100000320/50-pantun-penutup-presentasi-yang-menarik-lucu-dan-berkesan",
+        "https://mediaindonesia.com/humaniora/836561/25-contoh-pantun-penutup-presentasi-lucu-berkesan--profesional"
+      ],
+      "domains": [
+        "lifestyle.kompas.com",
+        "mediaindonesia.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t6-pantun-mencairkan",
+      "topic": "T6",
+      "keys": [
+        "pantun",
+        "mencairkan",
+        "beri",
+        "kesan"
+      ],
+      "text": "Pantun lucu dipakai di akhir presentasi untuk mencairkan suasana dan beri kesan terakhir",
+      "sources": [
+        "https://www.brilio.net/ragam/30-pantun-lucu-penutup-presentasi-dan-nggak-garing-bikin-audiens-terkesan-250215j.html",
+        "https://www.detik.com/sulsel/berita/d-7785216/49-kata-kata-penutup-presentasi-yang-lucu-dan-bikin-audience-terkesan"
+      ],
+      "domains": [
+        "www.brilio.net",
+        "www.detik.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t6-pola-menyentuh",
+      "topic": "T6",
+      "keys": [
+        "pola",
+        "menyentuh",
+        "sahabat",
+        "perpisahan"
+      ],
+      "text": "Pola pantun perpisahan lucu menyentuh hati untuk teman sahabat dan guru",
+      "sources": [
+        "https://artikel.rumah123.com/pantun-perpisahan-lucu",
+        "https://lifestyle.kompas.com/read/2026/05/30/132000720/50-pantun-perpisahan-lucu-menghibur-dan-menyentuh-hati"
+      ],
+      "domains": [
+        "artikel.rumah123.com",
+        "lifestyle.kompas.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t8-guyonan-suroboyoan",
+      "topic": "T8",
+      "keys": [
+        "guyonan",
+        "suroboyoan",
+        "ceplas",
+        "ceplos"
+      ],
+      "text": "Guyonan ala Suroboyoan, ceplas-ceplos tapi ngena buat nyindir",
+      "sources": [
+        "https://www.instagram.com/reel/DLEplyCSaXP/",
+        "https://www.youtube.com/watch?v=LTpryoGHNFA"
+      ],
+      "domains": [
+        "www.instagram.com",
+        "www.youtube.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t9-wong-tuwek",
+      "topic": "T9",
+      "keys": [
+        "wong",
+        "anane",
+        "dipelintir",
+        "sarkas"
+      ],
+      "text": "Wong tuwek nggae emoji opo anane, arek nom nggae dipelintir dadi sarkas pisan",
+      "sources": [
+        "https://kabarpajajaran.com/2026/09/07/emoji-berdasarkan-generasi/",
+        "https://radarsolo.jawapos.com/lifestyle/2607030059/kirain-sama-ternyata-arti-emoji-bisa-beda-di-tiap-generasi"
+      ],
+      "domains": [
+        "kabarpajajaran.com",
+        "radarsolo.jawapos.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t9-emak-bapak",
+      "topic": "T9",
+      "keys": [
+        "emak",
+        "kesannya",
+        "dingin",
+        "agresif"
+      ],
+      "text": "Emak bapak suka kirim emoji jempol, anak muda bilang itu kesannya dingin dan pasif agresif",
+      "sources": [
+        "https://bacasore.com/emak-bapak-suka-emoji-jempol-generasi-z-bilang-kamu-nggak-sopan-pasif-agresif/",
+        "https://www.cnbcindonesia.com/tech/20240902125641-37-568405/dilarang-pakai-emoji-jempol-gen-z-ungkap-arti-buruknya"
+      ],
+      "domains": [
+        "bacasore.com",
+        "www.cnbcindonesia.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t9-balas-chat",
+      "topic": "T9",
+      "keys": [
+        "balas",
+        "hebat",
+        "kerjaan",
+        "tulis"
+      ],
+      "text": "Balas chat kerjaan ojo mek jempol tok, mending tulis matur nuwun atau hebat",
+      "sources": [
+        "https://jalantikus.com/news/133562/emoji-jempol-dibenci-gen-z/",
+        "https://telisik.id/article/ini-dampak-buruk-sering-balas-chat-pakai-emoji-jempol"
+      ],
+      "domains": [
+        "jalantikus.com",
+        "telisik.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t9-sadar-love",
+      "topic": "T9",
+      "keys": [
+        "sadar",
+        "warna",
+        "datar",
+        "persahabatan"
+      ],
+      "text": "Aku baru sadar emoji love tiap warna punya makna beda, dari persahabatan sampai datar",
+      "sources": [
+        "https://www.lemon8-app.com/@amoyimut14/7562567718944145921?region=id",
+        "https://www.popbela.com/relationship/single/makna-warna-emoji-hati-dalam-chat-00-vc3yb-215383"
+      ],
+      "domains": [
+        "www.lemon8-app.com",
+        "www.popbela.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t9-koleksi-jawa",
+      "topic": "T9",
+      "keys": [
+        "koleksi",
+        "jawa",
+        "sindiran",
+        "caption"
+      ],
+      "text": "Koleksi stiker sindiran bahasa Jawa, caption kocak gawe grup WA",
+      "sources": [
+        "https://id.pinterest.com/ideas/stiker-jawa-lucu/893779620746/",
+        "https://id.pinterest.com/ideas/stiker-wa-jawa-lucu/952929040908/",
+        "https://www.pinterest.com/restumeilaniputri/stiker-wa-kocak/"
+      ],
+      "domains": [
+        "id.pinterest.com",
+        "www.pinterest.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t14-wasana-pungkasaning",
+      "topic": "T14",
+      "keys": [
+        "wasana",
+        "pungkasaning",
+        "layang",
+        "utawa"
+      ],
+      "text": "Wasana basa: pungkasaning layang utawa obrolan",
+      "sources": [
+        "https://babaganjawa10.blogspot.com/2015/01/layang.html",
+        "https://imronyusril.blogspot.com/2016/04/ringkasan-materi-bahasa-jawa-rangkuman.html"
+      ],
+      "domains": [
+        "babaganjawa10.blogspot.com",
+        "imronyusril.blogspot.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t16-video-pendek",
+      "topic": "T16",
+      "keys": [
+        "video",
+        "ramai",
+        "relevan",
+        "format"
+      ],
+      "text": "Video pendek masih jadi format utama, netizen ramai bikin konten kreatif biar tetap relevan di media sosial.",
+      "sources": [
+        "https://netizenzone.id/10-tren-viral-media-sosial-hiburan-2026-yang-wajib-netizen-ikuti/",
+        "https://topikviral.com/tren-media-sosial-2026-konten-yang-jadi-sorotan-netizen/"
+      ],
+      "domains": [
+        "netizenzone.id",
+        "topikviral.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t16-biar-enggak",
+      "topic": "T16",
+      "keys": [
+        "biar",
+        "enggak",
+        "kudet",
+        "slang"
+      ],
+      "text": "Biar enggak dibilang kudet, yuk update slang terbaru biar nyambung sama tren netizen.",
+      "sources": [
+        "https://harianexpress.com/10-istilah-gaul-terpopuler-netizen-2026/",
+        "https://nolimit.id/blog/50-kata-slang-paling-hits-di-indonesia-2025-lengkap-dengan-artinya/"
+      ],
+      "domains": [
+        "harianexpress.com",
+        "nolimit.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t16-alpha-ditebak",
+      "topic": "T16",
+      "keys": [
+        "alpha",
+        "ditebak",
+        "susah",
+        "singkatan"
+      ],
+      "text": "Bahasa Gen Alpha susah ditebak karena campur singkatan dan emoji",
+      "sources": [
+        "https://lifestyle.kompas.com/read/2026/04/17/121500520/40-bahasa-gaul-gen-alpha--istilah-viral-yang-sering-bikin-bingung",
+        "https://www.tiktok.com/@weareastronot/video/7660750673969024272"
+      ],
+      "domains": [
+        "lifestyle.kompas.com",
+        "www.tiktok.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t16-konteks-tiktok",
+      "topic": "T16",
+      "keys": [
+        "tiktok",
+        "konteks",
+        "nemplek",
+        "singkatan"
+      ],
+      "text": "Konteks FYP TikTok 2026 akeh singkatan gaul nemplek nang kolom komen",
+      "sources": [
+        "https://dimudahin.com/2026/02/istilah-viral-tiktok-terbaru-2026-update-kata-gaul-dan-artinya.html",
+        "https://pubiway.com/kamus-bahasa-gaul-tiktok/"
+      ],
+      "domains": [
+        "dimudahin.com",
+        "pubiway.com"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t22-habis-mancing",
+      "topic": "T22",
+      "keys": [
+        "habis",
+        "ngakrabin",
+        "mancing",
+        "ngaliwet"
+      ],
+      "text": "Habis mancing bareng terus botram ngaliwet buat ngakrabin dua komunitas",
+      "sources": [
+        "https://ldiijabar.or.id/botram-ngaliwet-ldii-dan-mui-kabupaten-bandung-pererat-silaturahim",
+        "https://ldiikabbandung.or.id/botram-ngaliwet-momen-kebersamaan-ldii-dan-mui-kabupaten-bandung/"
+      ],
+      "domains": [
+        "ldiijabar.or.id",
+        "ldiikabbandung.or.id"
+      ],
+      "confidence": 3,
+      "varian": []
+    },
+    {
+      "id": "t1-surabaya-misuh",
+      "topic": "T1",
+      "keys": [
+        "surabaya",
+        "misuh",
+        "tenanan",
+        "bukan"
+      ],
+      "text": "Sapaan kon dan cok dipakai arek Surabaya buat akrab, bukan misuh tenanan",
+      "sources": [
+        "https://oala.id/bahasa-suroboyoan-ciri-khas-arek-surabaya/"
+      ],
+      "domains": [
+        "oala.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-tersedia-buka",
+      "topic": "T1",
+      "keys": [
+        "tersedia",
+        "buka",
+        "menu",
+        "makanan"
+      ],
+      "text": "Warkop buka 24 jam dengan menu makanan tersedia sampai jam 12 malam.",
+      "sources": [
+        "https://www.facebook.com/p/Warkop-Setro-Independent-100067477567684/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-kamis-diadakan",
+      "topic": "T1",
+      "keys": [
+        "kamis",
+        "diadakan",
+        "kopdar",
+        "setiap"
+      ],
+      "text": "Kopdar diadakan setiap Kamis malam.",
+      "sources": [
+        "https://www.instagram.com/nighthawks_sby/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-suroboyo-live",
+      "topic": "T1",
+      "keys": [
+        "suroboyo",
+        "live",
+        "ride",
+        "munggah"
+      ],
+      "text": "Wadah seduluran arek motor Suroboyo, live to ride, 250cc munggah",
+      "sources": [
+        "https://www.instagram.com/nighthawks_sby/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-surabaya-permintaan",
+      "topic": "T1",
+      "keys": [
+        "surabaya",
+        "permintaan",
+        "rekomendasi",
+        "skena"
+      ],
+      "text": "Ada permintaan rekomendasi tempat nongkrong skena ceria di daerah Surabaya selatan.",
+      "sources": [
+        "https://www.instagram.com/reel/DbgQrRfPJPh/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-ngagel-driver",
+      "topic": "T1",
+      "keys": [
+        "ngagel",
+        "driver",
+        "ngraketno",
+        "profesi"
+      ],
+      "text": "Kopdar rutin driver Ngagel kanggo ngraketno silaturahmi lan sharing profesi",
+      "sources": [
+        "https://www.matajatimnews.com/2025/08/tim-gojek-surabaya-gelar-kopdar-perkuat_28.html"
+      ],
+      "domains": [
+        "www.matajatimnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-rejo-pencurian",
+      "topic": "T1",
+      "keys": [
+        "rejo",
+        "pencurian",
+        "sehingga",
+        "disarankan"
+      ],
+      "text": "Ngagel Rejo rawan pencurian motor sehingga parkir disarankan aman dan dikunci ganda.",
+      "sources": [
+        "https://surabaya.tribunnews.com/surabaya-metro/1934568/gagal-curi-motor-di-ngagel-dua-pria-ini-disergap-warga-surabaya-hingga-pingsan"
+      ],
+      "domains": [
+        "surabaya.tribunnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-suroboyo-lifestyle",
+      "topic": "T1",
+      "keys": [
+        "suroboyo",
+        "lifestyle",
+        "nongkronge",
+        "informasi"
+      ],
+      "text": "Tempat nongkronge informasi arek Suroboyo, berita kuliner event sejarah lifestyle",
+      "sources": [
+        "https://www.instagram.com/areknongkrong/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-tulang-punggung",
+      "topic": "T1",
+      "keys": [
+        "tulang",
+        "punggung",
+        "ekonomi",
+        "pundak"
+      ],
+      "text": "Tulang punggung keluarga, tanggung jawab ekonomi nang pundak lanang",
+      "sources": [
+        "https://www.facebook.com/groups/1197722407319063/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-suroboyo-rantauan",
+      "topic": "T1",
+      "keys": [
+        "suroboyo",
+        "rantauan",
+        "wadah",
+        "dulur"
+      ],
+      "text": "Grup dulur Suroboyo wadah mahasiswa rantauan buat info kos dan kampus",
+      "sources": [
+        "https://www.instagram.com/dulursuroboyo/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-parade-perwakilan",
+      "topic": "T1",
+      "keys": [
+        "parade",
+        "perwakilan",
+        "saja",
+        "tiga"
+      ],
+      "text": "Rapat parade komunitas, tiap komunitas perwakilan tiga sampai empat orang saja",
+      "sources": [
+        "https://x.com/ForumBonek"
+      ],
+      "domains": [
+        "x.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-suroboyo-menjaga",
+      "topic": "T1",
+      "keys": [
+        "suroboyo",
+        "menjaga",
+        "tercinta",
+        "wadah"
+      ],
+      "text": "Kami wadah komunitas putra daerah Suroboyo yang wajib menjaga kota tercinta agar tetap aman dan nyaman",
+      "sources": [
+        "https://www.facebook.com/groups/799634044709026/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-kamis-iuran",
+      "topic": "T1",
+      "keys": [
+        "kamis",
+        "iuran",
+        "belas",
+        "lima"
+      ],
+      "text": "Mabar badminton rutin setiap Kamis jam malam, iuran lima belas ribu, khusus cowok",
+      "sources": [
+        "https://www.facebook.com/groups/167209570485177/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-selasa-jumat",
+      "topic": "T1",
+      "keys": [
+        "selasa",
+        "jumat",
+        "diadakan",
+        "berolahraga"
+      ],
+      "text": "Mabar rutin diadakan setiap Selasa dan Jumat untuk bermain santai sambil berolahraga.",
+      "sources": [
+        "https://www.instagram.com/badminton.forfun/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t1-tambaksari-hubungi",
+      "topic": "T1",
+      "keys": [
+        "tambaksari",
+        "hubungi",
+        "badminton",
+        "admin"
+      ],
+      "text": "Komunitas badminton Tambaksari akan open mabar, yuk sat set hubungi admin",
+      "sources": [
+        "https://www.facebook.com/groups/badmintonsurabaya/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t10-heran-protes",
+      "topic": "T10",
+      "keys": [
+        "heran",
+        "protes",
+        "nuansa",
+        "tanya"
+      ],
+      "text": "Partikel kok dipakai buat tanya heran atau protes halus, contoh nuansa kok bisa gitu",
+      "sources": [
+        "https://scholarhub.ui.ac.id/wacana/vol22/iss2/3/"
+      ],
+      "domains": [
+        "scholarhub.ui.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t10-wa-cepat",
+      "topic": "T10",
+      "keys": [
+        "wa",
+        "cepat",
+        "singkat",
+        "bukan"
+      ],
+      "text": "Mahasiswa sering singkat kata di WA biar cepat dan santai, bukan buat resmi",
+      "sources": [
+        "https://punggawajournal.com/pgr/article/view/376"
+      ],
+      "domains": [
+        "punggawajournal.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t11-surabaya-andi",
+      "topic": "T11",
+      "keys": [
+        "surabaya",
+        "andi",
+        "kosakata",
+        "sehari"
+      ],
+      "text": "Mangan andi, iki, ngono sebagai kosakata khas Surabaya sehari-hari",
+      "sources": [
+        "https://www.tiktok.com/@rantausuroboyo/video/7701336067609349377"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t11-banyuwangi-osing",
+      "topic": "T11",
+      "keys": [
+        "banyuwangi",
+        "osing",
+        "dialek",
+        "mewadahi"
+      ],
+      "text": "Grup dialek Osing Banyuwangi mewadahi ragam bahasa tiap desa agar tidak punah",
+      "sources": [
+        "https://www.facebook.com/groups/734248931611751/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t11-jember-cuaca",
+      "topic": "T11",
+      "keys": [
+        "jember",
+        "cuaca",
+        "terasa",
+        "panas"
+      ],
+      "text": "Cuaca di Jember sudah terasa panas.",
+      "sources": [
+        "https://www.tiktok.com/@denz_shter22/video/7684155057847307541"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t11-pelet-luntur",
+      "topic": "T11",
+      "keys": [
+        "pelet",
+        "luntur"
+      ],
+      "text": "Pelet iro wes luntur",
+      "sources": [
+        "https://www.tiktok.com/@xtnayaww/video/7700282681761746196"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t11-banyuwangi-osing-2",
+      "topic": "T11",
+      "keys": [
+        "banyuwangi",
+        "osing",
+        "perubahan",
+        "tentang"
+      ],
+      "text": "Kata-kata Osing Banyuwangi tentang perubahan hubungan sehari-hari",
+      "sources": [
+        "https://www.tiktok.com/@xtnayaww/video/7700282681761746196"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t11-banyuwangi-osing-3",
+      "topic": "T11",
+      "keys": [
+        "banyuwangi",
+        "osing",
+        "dialog",
+        "muda"
+      ],
+      "text": "Dialog Osing sehari-hari gaya komedi anak muda Banyuwangi",
+      "sources": [
+        "https://www.tiktok.com/@bpikri/video/7527658767182318866"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t11-osing-intonasi",
+      "topic": "T11",
+      "keys": [
+        "osing",
+        "intonasi",
+        "sesuai",
+        "bicara"
+      ],
+      "text": "Cara Osing dipakai sehari-hari beda intonasi dan kata ganti sesuai lawan bicara",
+      "sources": [
+        "https://p2k.stekom.ac.id/ensiklopedia/Bahasa_Osing"
+      ],
+      "domains": [
+        "p2k.stekom.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-sarkastik-merendahkan",
+      "topic": "T12",
+      "keys": [
+        "sarkastik",
+        "merendahkan",
+        "unggahan",
+        "tokoh"
+      ],
+      "text": "Komentar sarkastik dan merendahkan di kolom komentar berita dan unggahan tokoh publik",
+      "sources": [
+        "https://www.kompasiana.com/putrirahmawati4113/682f4aeac925c437a8653ad2/bahasa-kasar-dan-toxic-di-media-sosial-tantangan-etika-komunikasi-digital"
+      ],
+      "domains": [
+        "www.kompasiana.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-thread-membahas",
+      "topic": "T12",
+      "keys": [
+        "thread",
+        "membahas",
+        "muasal",
+        "milenial"
+      ],
+      "text": "Thread forum yang membahas asal muasal kata toxic milenial sebagai informasi edukatif",
+      "sources": [
+        "https://www.kaskus.co.id/thread/5bddae1f947868085d8b4577"
+      ],
+      "domains": [
+        "www.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-judul-netral",
+      "topic": "T12",
+      "keys": [
+        "judul",
+        "netral",
+        "plesetan",
+        "ejekan"
+      ],
+      "text": "Pola plesetan kata game dari judul lagu yang awalnya netral lalu jadi ejekan",
+      "sources": [
+        "https://www.kaskus.co.id/thread/5f110b22f4d695623f20b1c1/kosa-kata-game-pinoy-kata-yang-dibanggakan-oleh-sekelompok-gamers"
+      ],
+      "domains": [
+        "www.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-kemampuan-bermain",
+      "topic": "T12",
+      "keys": [
+        "kemampuan",
+        "bermain",
+        "menyalahkan",
+        "ejekan"
+      ],
+      "text": "Ejekan kemampuan bermain dan saling menyalahkan rekan satu tim lewat chat suara",
+      "sources": [
+        "https://kc.umn.ac.id/id/eprint/46550/"
+      ],
+      "domains": [
+        "kc.umn.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-timuran-jawa",
+      "topic": "T12",
+      "keys": [
+        "timuran",
+        "jawa",
+        "luapan",
+        "umpatan"
+      ],
+      "text": "Umpatan spontan khas Jawa Timuran dipakai sebagai luapan kesal.",
+      "sources": [
+        "https://retizen.republika.co.id/posts/493282/kata-kata-kasar-racun-yang-mendarah-daging"
+      ],
+      "domains": [
+        "retizen.republika.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-dampak-melukai",
+      "topic": "T12",
+      "keys": [
+        "dampak",
+        "melukai",
+        "perasaan",
+        "merusak"
+      ],
+      "text": "Dampak ujaran spontan yang melukai perasaan dan merusak hubungan sosial",
+      "sources": [
+        "https://retizen.republika.co.id/posts/493282/kata-kata-kasar-racun-yang-mendarah-daging"
+      ],
+      "domains": [
+        "retizen.republika.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-disisipi-disensor",
+      "topic": "T12",
+      "keys": [
+        "disisipi",
+        "disensor",
+        "candaan",
+        "dianggap"
+      ],
+      "text": "Candaan tongkrongan makin seru kalau disisipi umpatan yang disensor, dianggap tanda akrab",
+      "sources": [
+        "https://www.kompasiana.com/linisyahlini0219/65afcb2ec57afb39240e0bf2/semakin-kasar-kata-kata-semakin-akrab-pertemanan"
+      ],
+      "domains": [
+        "www.kompasiana.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-bermakna-sebaya",
+      "topic": "T12",
+      "keys": [
+        "bermakna",
+        "sebaya",
+        "forum",
+        "resmi"
+      ],
+      "text": "Yang kasar di forum resmi bisa bermakna akrab di komunitas sebaya",
+      "sources": [
+        "https://duta.co/bahasa-kasar-di-ruang-publik-antara-gejala-sosial-dan-tanggung-jawab-pendidikan"
+      ],
+      "domains": [
+        "duta.co"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-meminta-bersabar",
+      "topic": "T12",
+      "keys": [
+        "meminta",
+        "bersabar",
+        "terburu",
+        "buru"
+      ],
+      "text": "Seseorang meminta agar orang lain bersabar dan tidak terburu-buru.",
+      "sources": [
+        "https://understandingcharliehebdo.com/kata-kasar-dalam-bahasa-betawi-contoh-makna-dan-konteks-budayanya/"
+      ],
+      "domains": [
+        "understandingcharliehebdo.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t12-menghina-kudune",
+      "topic": "T12",
+      "keys": [
+        "menghina",
+        "kudune",
+        "bantu",
+        "antar"
+      ],
+      "text": "Antar konco ojo saling menghina, kudune saling bantu",
+      "sources": [
+        "https://www.muslimterkini.id/pendidikan/pr-905568354/mengapa-antar-teman-tidak-boleh-saling-menghina-ternyata-begini-hukumannya"
+      ],
+      "domains": [
+        "www.muslimterkini.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t13-tutup-ganti",
+      "topic": "T13",
+      "keys": [
+        "tutup",
+        "ganti"
+      ],
+      "text": "Ganti bab ae, bab iki tutup sik",
+      "sources": [
+        "https://id.wikihow.com/Mengubah-Topik-Pembicaraan"
+      ],
+      "domains": [
+        "id.wikihow.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t13-alihkan-disaring",
+      "topic": "T13",
+      "keys": [
+        "alihkan",
+        "disaring",
+        "perhatian",
+        "dianggap"
+      ],
+      "text": "Pola alihkan perhatian saat konten dianggap sensitif dan perlu disaring dulu",
+      "sources": [
+        "https://bantuan.kaskus.co.id/hc/id/articles/13900404878745-Konten-Sensitif"
+      ],
+      "domains": [
+        "bantuan.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t14-wa-panduan",
+      "topic": "T14",
+      "keys": [
+        "wa",
+        "panduan",
+        "menyinggung",
+        "ucap"
+      ],
+      "text": "Panduan pamit keluar grup WA: ucap terima kasih dan minta maaf biar tidak menyinggung.",
+      "sources": [
+        "https://id.scribd.com/document/968802046/7-Contoh-Kata-kata-Pamit-Yang-Sopan-Ketika-Keluar",
+        "https://www.sonora.id/read/423868955/20-contoh-kalimat-keluar-dari-grup-wa-yang-sopan-dan-berkesan"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "www.sonora.id"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t14-baik-berharap",
+      "topic": "T14",
+      "keys": [
+        "baik",
+        "berharap",
+        "putus",
+        "maaf"
+      ],
+      "text": "Chat pamit putus baik-baik: pamit, minta maaf, bilang capek karena terlalu berharap.",
+      "sources": [
+        "https://www.tiktok.com/@yourrpowers3/video/7666050143598431506"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t14-wa-nanti",
+      "topic": "T14",
+      "keys": [
+        "wa",
+        "nanti",
+        "akhiri",
+        "sambung"
+      ],
+      "text": "Cara akhiri chat WA sopan: bilang sibuk, janji sambung nanti, atau pamit izin keluar grup.",
+      "sources": [
+        "https://id.wikihow.com/Mengakhiri-Percakapan-Pesan-Singkat",
+        "https://www.detik.com/bali/berita/d-7443468/100-kata-kata-untuk-akhiri-chat-wa-selain-terima-kasih-singkat-dan-sopan"
+      ],
+      "domains": [
+        "id.wikihow.com",
+        "www.detik.com"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t15-persepsi-konflik",
+      "topic": "T15",
+      "keys": [
+        "persepsi",
+        "konflik",
+        "wajar",
+        "kebutuhan"
+      ],
+      "text": "Berantem atau konflik dalam hubungan itu wajar karena beda persepsi dan kebutuhan",
+      "sources": [
+        "https://www.halodoc.com/artikel/kenali-topik-berantem-sama-pacar-dan-tips-biar-cepat-baikan"
+      ],
+      "domains": [
+        "www.halodoc.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t15-pengin-urutannya",
+      "topic": "T15",
+      "keys": [
+        "pengin",
+        "urutannya",
+        "ditulis",
+        "drama"
+      ],
+      "text": "Berantem sama pacar dan pengin baikan tanpa drama, urutannya ditulis dulu baru ngomong",
+      "sources": [
+        "https://www.sojiwa.com/id/blog/cara-baikan-sama-pacar-setelah-berantem.html"
+      ],
+      "domains": [
+        "www.sojiwa.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t15-skrip-nunjukin",
+      "topic": "T15",
+      "keys": [
+        "skrip",
+        "nunjukin",
+        "rekonsiliasi",
+        "konflik"
+      ],
+      "text": "Caption atau skrip pendek buat video yang nunjukin rekonsiliasi setelah konflik",
+      "sources": [
+        "https://www.tiktok.com/@yourr_xxbced/video/7692393568199085333"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t15-mengakui-menyatakan",
+      "topic": "T15",
+      "keys": [
+        "mengakui",
+        "menyatakan",
+        "bahwa",
+        "serta"
+      ],
+      "text": "Seseorang mengakui pertengkarannya, menyatakan bahwa dia berarti, serta menyesal dan ingin berubah.",
+      "sources": [
+        "https://id.wikihow.com/Mengirim-Pesan-yang-Tepat-setelah-Bertengkar-dengan-Pacar"
+      ],
+      "domains": [
+        "id.wikihow.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t15-sebanyak-berdebat",
+      "topic": "T15",
+      "keys": [
+        "sebanyak",
+        "berdebat",
+        "akhirnya",
+        "kita"
+      ],
+      "text": "Sebanyak apa pun kita berdebat, pada akhirnya kita baikan karena cinta lebih penting",
+      "sources": [
+        "https://www.bola.com/ragam/read/5170111/40-kata-kata-ngajak-baikan-setelah-bertengkar-dengan-pacar"
+      ],
+      "domains": [
+        "www.bola.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t15-keserempet-ujung",
+      "topic": "T15",
+      "keys": [
+        "keserempet",
+        "ujung",
+        "ujunge",
+        "uang"
+      ],
+      "text": "Deskripsi pola video drama keserempet lalu ribut terus ujung-ujunge njaluk uang damai",
+      "sources": [
+        "https://www.facebook.com/jodi.andreski.2025/videos/gara-gara-keserempet-motor-dua-preman-kampung-bersi-keras-minta-minta-uang-damai/2435548727250926/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t15-suroboyo-duel",
+      "topic": "T15",
+      "keys": [
+        "suroboyo",
+        "duel",
+        "berujung",
+        "hukum"
+      ],
+      "text": "Konteks berita duel berujung hukum berat dipakai wong Suroboyo gawe pengeling ojo gampang gelut",
+      "sources": [
+        "https://www.beritasatu.com/dki-jakarta/2941906/kronologi-duel-maut-gara-gara-cemburu-di-cililitan"
+      ],
+      "domains": [
+        "www.beritasatu.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t15-kasus-penganiayaan",
+      "topic": "T15",
+      "keys": [
+        "kasus",
+        "penganiayaan",
+        "diselesaikan",
+        "cemburu"
+      ],
+      "text": "Kasus penganiayaan karena cemburu akhire diselesaikan secara damai lewat musyawarah",
+      "sources": [
+        "https://regional.kompas.com/read/2026/09/29/212930378/waria-di-mamasa-diduga-aniaya-wanita-gara-gara-cemburu-kasus-berakhir-damai"
+      ],
+      "domains": [
+        "regional.kompas.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t15-musuhan-jodoh",
+      "topic": "T15",
+      "keys": [
+        "musuhan",
+        "jodoh",
+        "loro",
+        "cilik"
+      ],
+      "text": "Arek loro iki musuhan ket cilik, berantem terus malah dadi jodoh",
+      "sources": [
+        "https://www.youtube.com/watch?v=pFTFQAqEdk4"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-indonesia-kategori",
+      "topic": "T16",
+      "keys": [
+        "indonesia",
+        "kategori",
+        "diakses",
+        "mesthi"
+      ],
+      "text": "Kategori video viral Indonesia isine tren paling anyar, gampang diakses lan mesthi update",
+      "sources": [
+        "https://pinkviral.media/Viral/viral-indonesia/"
+      ],
+      "domains": [
+        "pinkviral.media"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-terkini-diwaca",
+      "topic": "T16",
+      "keys": [
+        "terkini",
+        "diwaca",
+        "lengkap",
+        "isine"
+      ],
+      "text": "Tag komentar netizen isine kumpulan berita terkini sing iso diwaca lengkap saben dino",
+      "sources": [
+        "https://www.idntimes.com/tag/komentar-netizen"
+      ],
+      "domains": [
+        "www.idntimes.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-indonesia-dipantau",
+      "topic": "T16",
+      "keys": [
+        "indonesia",
+        "dipantau",
+        "moro",
+        "saben"
+      ],
+      "text": "Tren Indonesia saiki iso dipantau saben jam, moro-moro ganti topik sing lagi rame",
+      "sources": [
+        "https://twitter-trends.snaplytics.io/indonesia/"
+      ],
+      "domains": [
+        "twitter-trends.snaplytics.io"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-disegarkan-puluh",
+      "topic": "T16",
+      "keys": [
+        "disegarkan",
+        "puluh",
+        "telung",
+        "menit"
+      ],
+      "text": "Daftar topik trending disegarkan saben telung puluh menit, dadi gampang ngerti sing lagi rame",
+      "sources": [
+        "https://xtrends.iamrohit.in/indonesia"
+      ],
+      "domains": [
+        "xtrends.iamrohit.in"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-twitter-indonesia",
+      "topic": "T16",
+      "keys": [
+        "twitter",
+        "indonesia",
+        "dapat",
+        "dilihat"
+      ],
+      "text": "Topik Twitter Indonesia hari ini terus live dan dapat langsung dilihat tanpa perlu mendaftar.",
+      "sources": [
+        "https://playersells.com/id/tools/twitter-trends/indonesia"
+      ],
+      "domains": [
+        "playersells.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-vip-stasiun",
+      "topic": "T16",
+      "keys": [
+        "vip",
+        "stasiun",
+        "tugu",
+        "dishub"
+      ],
+      "text": "Rame bahas tarif parkir VIP Stasiun Tugu ditarik tiga ratus lima puluh ribu, Dishub Jogja ikut soroti",
+      "sources": [
+        "https://www.detik.com/tag/viral"
+      ],
+      "domains": [
+        "www.detik.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-dinilai-mahal",
+      "topic": "T16",
+      "keys": [
+        "dinilai",
+        "mahal",
+        "sehingga",
+        "menggunakan"
+      ],
+      "text": "Biaya parkir dinilai mahal sehingga menggunakan becak dianggap lebih baik.",
+      "sources": [
+        "https://www.detik.com/tag/viral"
+      ],
+      "domains": [
+        "www.detik.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-singapura-malaysia",
+      "topic": "T16",
+      "keys": [
+        "singapura",
+        "malaysia",
+        "indonesia",
+        "lintas"
+      ],
+      "text": "Pola komentar netizen Indonesia soal kabut asap lintas batas, njaluk Malaysia Singapura gugat pemerintah",
+      "sources": [
+        "https://www.kompas.com/tag/netizen-Indonesia"
+      ],
+      "domains": [
+        "www.kompas.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-singapura-ajudannya",
+      "topic": "T16",
+      "keys": [
+        "singapura",
+        "ajudannya",
+        "gubernur",
+        "pergi"
+      ],
+      "text": "Gubernur pergi ke Singapura saat karhutla dan ajudannya dianggap arogan oleh mahasiswa.",
+      "sources": [
+        "https://www.tribunnews.com/tag/viral"
+      ],
+      "domains": [
+        "www.tribunnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-indonesia-mencakup",
+      "topic": "T16",
+      "keys": [
+        "indonesia",
+        "mencakup",
+        "sultan",
+        "darurat"
+      ],
+      "text": "Info viral hari ini mencakup parkir sultan, karcis aspal, karo kabut asap, dan Indonesia darurat sabar.",
+      "sources": [
+        "https://www.inews.id/topic/viral"
+      ],
+      "domains": [
+        "www.inews.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-bahrain-indonesia",
+      "topic": "T16",
+      "keys": [
+        "bahrain",
+        "indonesia",
+        "ramai",
+        "imbang"
+      ],
+      "text": "Komentar warganet ramai soal hasil imbang Bahrain vs Indonesia",
+      "sources": [
+        "https://www.liputan6.com/tag/komentar-warganet"
+      ],
+      "domains": [
+        "www.liputan6.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-indonesia-hype",
+      "topic": "T16",
+      "keys": [
+        "indonesia",
+        "hype",
+        "akun",
+        "artis"
+      ],
+      "text": "Komentar warganet Indonesia hype artis punya akun baru",
+      "sources": [
+        "https://www.kompas.com/tag/komentar-warganet"
+      ],
+      "domains": [
+        "www.kompas.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-hujanan-gerai",
+      "topic": "T16",
+      "keys": [
+        "hujanan",
+        "gerai",
+        "kembali",
+        "perbincangan"
+      ],
+      "text": "Drama hujan-hujanan di gerai mie kembali jadi perbincangan warganet",
+      "sources": [
+        "https://www.tiktok.com/tag/indonesiaviral"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-rangkuman-heboh",
+      "topic": "T16",
+      "keys": [
+        "rangkuman",
+        "heboh",
+        "media",
+        "sosial"
+      ],
+      "text": "Rangkuman berita viral hari ini paling heboh di media sosial",
+      "sources": [
+        "https://www.poosi.or.id/blog/berita-viral-hari-ini-paling-heboh-di-media-sosial"
+      ],
+      "domains": [
+        "www.poosi.or.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t17-arema-jalinan",
+      "topic": "T17",
+      "keys": [
+        "arema",
+        "jalinan",
+        "mempererat",
+        "berbagi"
+      ],
+      "text": "Grup ini hanya untuk mempererat jalinan silaturahmi dan berbagi berita tentang Arema",
+      "sources": [
+        "https://www.facebook.com/groups/148043362460784/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t17-babu-malang",
+      "topic": "T17",
+      "keys": [
+        "babu",
+        "malang",
+        "seseorang",
+        "terpengaruh"
+      ],
+      "text": "Setelah away Malang, seseorang otomatis terpengaruh logat Babu Malang.",
+      "sources": [
+        "https://www.instagram.com/p/DeZTNIKD1Iz/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t17-malang-masyarakat",
+      "topic": "T17",
+      "keys": [
+        "malang",
+        "masyarakat",
+        "walikan",
+        "ciri"
+      ],
+      "text": "Boso walikan dipakai sehari-hari jadi ciri khas masyarakat Malang.",
+      "sources": [
+        "https://www.detik.com/jatim/budaya/d-7049210/asal-usul-boso-walikan-bahasa-gaul-arek-malang"
+      ],
+      "domains": [
+        "www.detik.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t17-dibalik-patokannya",
+      "topic": "T17",
+      "keys": [
+        "dibalik",
+        "patokannya",
+        "bunyi",
+        "tulisan"
+      ],
+      "text": "Tidak semua kata bisa dibalik, patokannya bunyi bukan tulisan.",
+      "sources": [
+        "https://cityguide911fm.com/osob-kiwalan-identitas-malang-yang-mulai-terlupakan/"
+      ],
+      "domains": [
+        "cityguide911fm.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t17-ngalam-asik",
+      "topic": "T17",
+      "keys": [
+        "ngalam",
+        "asik",
+        "anti",
+        "kadit"
+      ],
+      "text": "Arek Ngalam anti kadit asik, los sam.",
+      "sources": [
+        "https://www.detik.com/jatim/budaya/d-7049210/asal-usul-boso-walikan-bahasa-gaul-arek-malang"
+      ],
+      "domains": [
+        "www.detik.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t17-generasi-melestarikan",
+      "topic": "T17",
+      "keys": [
+        "generasi",
+        "melestarikan",
+        "diajak",
+        "walikan"
+      ],
+      "text": "Generasi muda diajak melestarikan boso walikan sebagai tradisi.",
+      "sources": [
+        "https://mabur.co/budaya/bahasa-walikan-malang-ruang-bagi-generasi-muda-mengenal-sejarah/"
+      ],
+      "domains": [
+        "mabur.co"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t17-bantengan-menonton",
+      "topic": "T17",
+      "keys": [
+        "bantengan",
+        "menonton",
+        "tarian",
+        "melainkan"
+      ],
+      "text": "Menonton Bantengan bukan sekadar menonton tarian, melainkan memasuki dimensi ritual leluhur.",
+      "sources": [
+        "https://www.humaneducationcentre.com/menggali-magisnya-bantengan-tarian-liar-mistis-dan-adrenalin-di-jantung-kota-malang/"
+      ],
+      "domains": [
+        "www.humaneducationcentre.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t17-hilang-ditelan",
+      "topic": "T17",
+      "keys": [
+        "hilang",
+        "ditelan",
+        "zaman",
+        "menolak"
+      ],
+      "text": "Bantengan menolak hilang ditelan zaman",
+      "sources": [
+        "https://www.youtube.com/watch?v=Tft9zVXPyfc"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-mania-rombongan",
+      "topic": "T18",
+      "keys": [
+        "mania",
+        "rombongan",
+        "biru",
+        "memadati"
+      ],
+      "text": "Rombongan biru La Mania memadati dalan menuju stadion lawan, hoho rame pol",
+      "sources": [
+        "https://www.tiktok.com/@kembar_fighter/video/7697597609615068434"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-super-league",
+      "topic": "T18",
+      "keys": [
+        "super",
+        "league",
+        "kanjuruhan",
+        "sakwise"
+      ],
+      "text": "Sakwise tragedi Kanjuruhan, awaydays di Super League oleh ijin maneh karo aturan khusus",
+      "sources": [
+        "https://lintasbalikpapan.com/2026/08/12/fifa-kasik-ijin-awaydays-di-super-league-tapi-ada-aturan-khusus/"
+      ],
+      "domains": [
+        "lintasbalikpapan.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-filipina-pembeda",
+      "topic": "T18",
+      "keys": [
+        "filipina",
+        "pembeda",
+        "nyanyian",
+        "timnas"
+      ],
+      "text": "Suporter timnas menjadi pembeda, bahkan di Filipina penuh dengan nyanyian.",
+      "sources": [
+        "https://www.bola.com/tag/awaydays-bolacom/text"
+      ],
+      "domains": [
+        "www.bola.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-gbk-believe",
+      "topic": "T18",
+      "keys": [
+        "gbk",
+        "believe",
+        "raksasa",
+        "rekor"
+      ],
+      "text": "Ribuan suporter nggawe koreo raksasa Believe nang GBK, pecah tenan rekor",
+      "sources": [
+        "https://www.tribunnews.com/superskor/7888647/6000-suporter-timnas-indonesia-bikin-koreografi-raksasa-believe-di-gbk-pecah-rekor-muri"
+      ],
+      "domains": [
+        "www.tribunnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-japan-kidul",
+      "topic": "T18",
+      "keys": [
+        "japan",
+        "kidul",
+        "instruksi",
+        "ngumpul"
+      ],
+      "text": "Garuda Japan ngumpul nang tribun away kidul gawe tifo bareng, manut instruksi",
+      "sources": [
+        "https://www.metrotvnews.com/play/bVDCj24p-tifo-kreativitas-suporter-warnai-perjuangan-timnas-indonesia-menuju-piala-dunia"
+      ],
+      "domains": [
+        "www.metrotvnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-grande-menghidupkan",
+      "topic": "T18",
+      "keys": [
+        "grande",
+        "menghidupkan",
+        "mereka",
+        "epik"
+      ],
+      "text": "La Grande menghidupkan tribun dan semua tifo mereka epik.",
+      "sources": [
+        "https://superlive.id/supersoccer/artikel/news/tifo-terbaik-la-grande-indonesia"
+      ],
+      "domains": [
+        "superlive.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-gbk-garuda",
+      "topic": "T18",
+      "keys": [
+        "gbk",
+        "garuda",
+        "menonton",
+        "memiliki"
+      ],
+      "text": "Menonton Garuda di GBK secara langsung memiliki suasana yang berbeda.",
+      "sources": [
+        "https://www.youtube.com/watch?v=lj27Po6dhjw"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-timnas-malaysia",
+      "topic": "T18",
+      "keys": [
+        "timnas",
+        "malaysia",
+        "pertandingan",
+        "melawan"
+      ],
+      "text": "Pertandingan Timnas melawan Malaysia dimulai pukul 19.30 malam.",
+      "sources": [
+        "https://mataraman.tribunnews.com/superball/72587/cara-nonton-gratis-live-streaming-timnas-indonesia-vs-malaysia-fifa-asean-cup-2026",
+        "https://nobartv.co.id/2026/09/28/jalalive-yalla-shoot-tv-alternatif-live-streaming-timnas-indonesia-vs-malaysia"
+      ],
+      "domains": [
+        "mataraman.tribunnews.com",
+        "nobartv.co.id"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t18-nekat-persebaya",
+      "topic": "T18",
+      "keys": [
+        "nekat",
+        "persebaya",
+        "bonek",
+        "surabaya"
+      ],
+      "text": "Bondho Nekat, Bonek total loyal militan dukung Persebaya Surabaya",
+      "sources": [
+        "https://id.wikipedia.org/wiki/Bondho_Nekat"
+      ],
+      "domains": [
+        "id.wikipedia.org"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-gbt-madura",
+      "topic": "T18",
+      "keys": [
+        "gbt",
+        "madura",
+        "united",
+        "pertandingan"
+      ],
+      "text": "Pertandingan di GBT berakhir dengan kekalahan dari Madura United sehingga perlu dievaluasi.",
+      "sources": [
+        "https://surabaya.tribunnews.com/superball/1937040/komentar-bonek-pecah-usai-persebaya-tumbang-dari-madura-united-di-gbt-ayo-evaluasi-jol"
+      ],
+      "domains": [
+        "surabaya.tribunnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-psim-seorang",
+      "topic": "T18",
+      "keys": [
+        "psim",
+        "seorang",
+        "striker",
+        "pembuka"
+      ],
+      "text": "Pada laga pembuka yang kalah dari PSIM, seorang pemain diminta menjadi striker.",
+      "sources": [
+        "https://surabaya.tribunnews.com/2025/08/14/kritik-bonek-ke-persebaya-surabaya-seusai-kekalahan-dari-psim-dejan-tumbas-diminta-jadi-striker"
+      ],
+      "domains": [
+        "surabaya.tribunnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-bonek-beberapa",
+      "topic": "T18",
+      "keys": [
+        "bonek",
+        "beberapa",
+        "menunggu",
+        "kelompok"
+      ],
+      "text": "Beberapa kelompok Bonek awaydays, masih menunggu info lebih lanjut",
+      "sources": [
+        "https://www.instagram.com/p/Dc1Pu6mhAdf/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-gbt-persijap",
+      "topic": "T18",
+      "keys": [
+        "gbt",
+        "persijap",
+        "bonek",
+        "ratusan"
+      ],
+      "text": "Ratusan Bonek hadang tim di luar GBT usai imbang 1-1 lawan Persijap",
+      "sources": [
+        "https://jatim.tribunnews.com/bola-jatim/565004/bonek-luapkan-kekecewaan-usai-persebaya-gagal-kalahkan-persijap-hadang-tim-di-luar-stadion-gbt"
+      ],
+      "domains": [
+        "jatim.tribunnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t18-aremania-bersama",
+      "topic": "T18",
+      "keys": [
+        "aremania",
+        "bersama",
+        "dinyanyikan",
+        "stadion"
+      ],
+      "text": "Yel-yel Aremania dinyanyikan bersama-sama di dalam stadion.",
+      "sources": [
+        "https://www.facebook.com/arema.clp/posts/-inilah-lirik-yel-yel-aremanianita-saat-di-dalam-stadion-bagi-yang-belum-hafalmo/625755597478851/",
+        "https://www.heloindonesia.com/sepakbola/4083/kumpulan-lirik-lagu-aremania-saat-mendukung-skuad-singo-edan"
+      ],
+      "domains": [
+        "www.facebook.com",
+        "www.heloindonesia.com"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t18-gbk-bonek",
+      "topic": "T18",
+      "keys": [
+        "gbk",
+        "bonek",
+        "nginap",
+        "truk"
+      ],
+      "text": "Ribuan Bonek nginap sekitar GBK, modal numpang truk dan kereta",
+      "sources": [
+        "https://www.heloindonesia.com/olahraga/3852/kumpulan-lirik-lagu-suporter-persebaya-dalam-mendukung-tim-kebanggannya"
+      ],
+      "domains": [
+        "www.heloindonesia.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-dslr-perbandingan",
+      "topic": "T19",
+      "keys": [
+        "dslr",
+        "perbandingan",
+        "menunjukkan",
+        "iphone"
+      ],
+      "text": "Perbandingan hasil iPhone dan DSLR menunjukkan banyak Gen-Z memilih DSLR.",
+      "sources": [
+        "https://wow.tribunnews.com/2023/04/13/viral-tren-bandingkan-hasil-foto-iphone-vs-kamera-dslr-siapa-yang-diunggulkan-di-kalangan-gen-z"
+      ],
+      "domains": [
+        "wow.tribunnews.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-hp-dslr",
+      "topic": "T19",
+      "keys": [
+        "hp",
+        "dslr",
+        "motret",
+        "bedone"
+      ],
+      "text": "Motret potret, video, sampek low light tak jajal kabeh gae HP karo DSLR, bedone kerasa pol.",
+      "sources": [
+        "https://gadgetsmart.id/kamera-hp-vs-kamera-dslr-mana-yang-lebih-unggul/"
+      ],
+      "domains": [
+        "gadgetsmart.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-bersifat-sedangkan",
+      "topic": "T19",
+      "keys": [
+        "bersifat",
+        "sedangkan",
+        "kondisi",
+        "cahaya"
+      ],
+      "text": "Lensa kit bersifat serbaguna, sedangkan lensa fix 50 mm unggul untuk potret dan kondisi cahaya rendah.",
+      "sources": [
+        "https://voi.id/teknologi/453999/perbedaan-lensa-kit-dan-fix"
+      ],
+      "domains": [
+        "voi.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-gerbang-ajaib",
+      "topic": "T19",
+      "keys": [
+        "gerbang",
+        "ajaib",
+        "bokeh",
+        "meriah"
+      ],
+      "text": "Fix 50mm f 1.8 iku gerbang ajaib gae bokeh murah meriah, pemula wajib jajal rek.",
+      "sources": [
+        "https://imx.co.id/review-lensa-kit-vs-lensa-fix-50mm-untuk-foto-bokeh-murah/"
+      ],
+      "domains": [
+        "imx.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-terpasang-membuat",
+      "topic": "T19",
+      "keys": [
+        "terpasang",
+        "membuat",
+        "lensa",
+        "seseorang"
+      ],
+      "text": "Lensa 50mm yang terpasang pada kamera membuat seseorang otomatis menjadi fotografer acara pernikahan dengan bayaran nasi kotak.",
+      "sources": [
+        "https://www.reddit.com/r/Cekrek/comments/1bj87fm/mencoba_lensa_fix_50mm/"
+      ],
+      "domains": [
+        "www.reddit.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-canon-fujifilm",
+      "topic": "T19",
+      "keys": [
+        "canon",
+        "fujifilm",
+        "anggaran",
+        "rupiah"
+      ],
+      "text": "Dengan anggaran lima juta rupiah, kamera mirrorless untuk belajar sudah tersedia dari Canon hingga Fujifilm.",
+      "sources": [
+        "https://kumparan.com/how-to-tekno/5-kamera-mirrorless-terbaik-di-bawah-5-juta-cocok-untuk-pemula-22drjGASVlr"
+      ],
+      "domains": [
+        "kumparan.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-mepet-kepingin",
+      "topic": "T19",
+      "keys": [
+        "mepet",
+        "kepingin",
+        "mumpuni",
+        "fotografi"
+      ],
+      "text": "Wes tau, budget mepet tapi kepingin mumpuni, mirrorless iki cocok gawe sinau fotografi pemula.",
+      "sources": [
+        "https://tekingame.indozone.id/gadget/924996780/5-pilihan-kamera-mirrorless-terbaik-di-bawah-rp5-juta-cocok-untuk-pemula"
+      ],
+      "domains": [
+        "tekingame.indozone.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-ngimbangno-cahyo",
+      "topic": "T19",
+      "keys": [
+        "ngimbangno",
+        "cahyo",
+        "gosong",
+        "flash"
+      ],
+      "text": "Flash iku koyok sambel, sitik ae cukup gawe ngimbangno cahyo ben gak gosong.",
+      "sources": [
+        "https://fstoppers.com/portraits/balancing-natural-and-flash-light-perfect-outdoor-portraits-680488"
+      ],
+      "domains": [
+        "fstoppers.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-hp-lightroom",
+      "topic": "T19",
+      "keys": [
+        "hp",
+        "lightroom",
+        "moody",
+        "tone"
+      ],
+      "text": "Tutorial preset moody ala selebgram, tone peteng kekinian gawe Lightroom HP.",
+      "sources": [
+        "https://www.youtube.com/watch?v=EXaS4kUPnD4",
+        "https://www.youtube.com/watch?v=c29RtLC5Szc"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-contohe-bukaken",
+      "topic": "T19",
+      "keys": [
+        "contohe",
+        "bukaken",
+        "artikel",
+        "settingane"
+      ],
+      "text": "Contohe foto mbengi akeh cak, bukaken artikel iku ben paham settingane langsung praktek",
+      "sources": [
+        "https://plaztikmag.com/setting-kamera-untuk-foto-malam-hari/"
+      ],
+      "domains": [
+        "plaztikmag.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t19-wedding-asalan",
+      "topic": "T19",
+      "keys": [
+        "wedding",
+        "asalan",
+        "buyar",
+        "tukang"
+      ],
+      "text": "Golek tukang foto wedding ojo asal-asalan rek, sing pengalaman ben momen gak buyar",
+      "sources": [
+        "https://pondokwedding.com/kesalahan-memilih-fotografer-pernikahan/"
+      ],
+      "domains": [
+        "pondokwedding.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-juli",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "juli",
+        "simpang",
+        "gajayana"
+      ],
+      "text": "Tanggal 1 Juli 2026 ono postingan kost putri Gajayana, lokasine Simpang Gajayana cedak UIN Malang",
+      "sources": [
+        "https://www.facebook.com/groups/1312111559233905/permalink/2483449788766737/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-enake-ngekos",
+      "topic": "T2",
+      "keys": [
+        "enake",
+        "ngekos"
+      ],
+      "text": "Enake ngekos",
+      "sources": [
+        "https://mamikos.com/kost/kost-dekat-uniga-malang-murah"
+      ],
+      "domains": [
+        "mamikos.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-malang",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "malang",
+        "sebulan",
+        "sangu"
+      ],
+      "text": "Deskripsi pola: arek UIN ngomong sangu rong juta sebulan nang Malang wes cukup gawe kos karo mangan",
+      "sources": [
+        "https://www.remedyteas.com/estimasi-biaya-hidup-mahasiswa-di-malang-makan-kost-dan-transport/"
+      ],
+      "domains": [
+        "www.remedyteas.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-islam",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "islam",
+        "barat",
+        "malang"
+      ],
+      "text": "Psikologi UIN Malang dipilih karena dianggap baik dan mengintegrasikan ilmu Barat dengan Islam.",
+      "sources": [
+        "https://pmb.uin-malang.ac.id/fakultas-psikologi/"
+      ],
+      "domains": [
+        "pmb.uin-malang.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-psikologi",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "psikologi",
+        "membaca",
+        "mata"
+      ],
+      "text": "Kuliah di Psikologi UIN banyak membaca buku dengan 65 mata kuliah sampai semester delapan.",
+      "sources": [
+        "https://intipjurusan.com/psikologi-uin-linna/"
+      ],
+      "domains": [
+        "intipjurusan.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-psikologi-2",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "psikologi",
+        "malang",
+        "akbar"
+      ],
+      "text": "Konteks: arek reuni akbar alumni Psikologi UIN diajak dekan kumpul bareng nang Malang",
+      "sources": [
+        "https://psikologi.uin-malang.ac.id/"
+      ],
+      "domains": [
+        "psikologi.uin-malang.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-takon",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "takon",
+        "kebutuhan",
+        "rincian"
+      ],
+      "text": "Deskripsi pola: ibu-ibu takon rincian sangu anak nang UIN mulai kos sampek kebutuhan sosial",
+      "sources": [
+        "https://www.remedyteas.com/estimasi-biaya-hidup-mahasiswa-di-malang-sekitar-kampus-uin/"
+      ],
+      "domains": [
+        "www.remedyteas.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-laboratorium-kehidupan",
+      "topic": "T2",
+      "keys": [
+        "laboratorium",
+        "kehidupan",
+        "mandiri",
+        "asrama"
+      ],
+      "text": "Ma'had dudu mung asrama, tapi laboratorium kehidupan gawe belajar mandiri.",
+      "sources": [
+        "https://kemahasiswaan.uin-malang.ac.id/ar/mengapa-maba-uin-maulana-malik-ibrahim-malang-perlu-tinggal-di-mahad-selama-1-tahun/"
+      ],
+      "domains": [
+        "kemahasiswaan.uin-malang.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-pondok-lawase",
+      "topic": "T2",
+      "keys": [
+        "pondok",
+        "lawase",
+        "setahun",
+        "konco"
+      ],
+      "text": "Pondok setahun, konco sak lawase.",
+      "sources": [
+        "https://www.doyanblog.com/wajib-mahad-1-tahun-mengenal-kehidupan-asrama-uin-malang-2026/"
+      ],
+      "domains": [
+        "www.doyanblog.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-disuruh-surat",
+      "topic": "T2",
+      "keys": [
+        "disuruh",
+        "surat",
+        "taat",
+        "manggon"
+      ],
+      "text": "Pas daftar ulang disuruh tanda tangan surat siap taat aturan lan gelem manggon setahun.",
+      "sources": [
+        "https://id.scribd.com/document/659463670/aturan-Ma-had"
+      ],
+      "domains": [
+        "id.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-disamakan-begadang",
+      "topic": "T2",
+      "keys": [
+        "disamakan",
+        "begadang",
+        "antre",
+        "mandi"
+      ],
+      "text": "Lulus ma'had disamakan dengan lulus begadang, ngaji, dan antre kamar mandi.",
+      "sources": [
+        "https://www.doyanblog.com/wajib-mahad-1-tahun-mengenal-kehidupan-asrama-uin-malang-2026/"
+      ],
+      "domains": [
+        "www.doyanblog.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-phk-terkena",
+      "topic": "T20",
+      "keys": [
+        "phk",
+        "terkena",
+        "kemarin",
+        "tetapi"
+      ],
+      "text": "Seseorang terkena PHK kemarin, tetapi mendapatkan pekerjaan baru dengan bayaran yang lebih tinggi.",
+      "sources": [
+        "https://www.reddit.com/r/MoneyDiariesACTIVE/comments/17ga86e/layoff_success_stories/"
+      ],
+      "domains": [
+        "www.reddit.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-phk-memang",
+      "topic": "T20",
+      "keys": [
+        "phk",
+        "memang",
+        "menyakitkan",
+        "tetapi"
+      ],
+      "text": "PHK memang menyakitkan, tetapi dapat menjadi jalan untuk memperoleh pekerjaan yang lebih cocok.",
+      "sources": [
+        "https://www.reddit.com/r/Layoffs/comments/1az3yte/any_success_stories_about_bouncing_back_after_a/"
+      ],
+      "domains": [
+        "www.reddit.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-zoom-merasa",
+      "topic": "T20",
+      "keys": [
+        "zoom",
+        "merasa",
+        "seseorang",
+        "dipecat"
+      ],
+      "text": "Seseorang dipecat tiga menit setelah masuk Zoom dan merasa kesal.",
+      "sources": [
+        "https://www.livemint.com/news/trends/it-took-just-3-minutes-of-his-day-redditors-brutal-layoff-story-sees-help-offers-pour-in-future-will-be-brighter-11759468126346.html"
+      ],
+      "domains": [
+        "www.livemint.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-phk-nawakno",
+      "topic": "T20",
+      "keys": [
+        "phk",
+        "nawakno",
+        "bantuan",
+        "referal"
+      ],
+      "text": "Wong-wong podo nawakno bantuan karo referal nang komen pas ono sing curhat kenek PHK pertama",
+      "sources": [
+        "https://www.livemint.com/news/trends/it-took-just-3-minutes-of-his-day-redditors-brutal-layoff-story-sees-help-offers-pour-in-future-will-be-brighter-11759468126346.html"
+      ],
+      "domains": [
+        "www.livemint.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-mengaku-terkena",
+      "topic": "T20",
+      "keys": [
+        "mengaku",
+        "terkena",
+        "kali",
+        "seseorang"
+      ],
+      "text": "Seseorang mengaku telah terkena layoff empat kali di perusahaan teknologi.",
+      "sources": [
+        "https://www.businessinsider.com/layoff-advice-tech-software-engineer-four-times-in-a-row-2022-11"
+      ],
+      "domains": [
+        "www.businessinsider.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-mengeluhkan-bosnya",
+      "topic": "T20",
+      "keys": [
+        "mengeluhkan",
+        "bosnya",
+        "terlambat",
+        "membayar"
+      ],
+      "text": "Seseorang mengeluhkan mantan bosnya yang sering terlambat membayar gaji setelah ia resign sekitar empat bulan.",
+      "sources": [
+        "https://x.com/KapudS640/status/2066511732743266793"
+      ],
+      "domains": [
+        "x.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-buruh-ritel",
+      "topic": "T20",
+      "keys": [
+        "buruh",
+        "ritel",
+        "upah",
+        "haknya"
+      ],
+      "text": "Buruh ritel curhat banyak yang lembur tapi tidak dibayar upah lembur yang jadi haknya",
+      "sources": [
+        "https://www.liputan6.com/bisnis/read/6014596/curhat-serikat-buruh-banyak-ritel-tak-bayar-uang-lembur"
+      ],
+      "domains": [
+        "www.liputan6.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-taun-ditolak",
+      "topic": "T20",
+      "keys": [
+        "taun",
+        "ditolak",
+        "diunggahno",
+        "mundur"
+      ],
+      "text": "Curhat arek sing kerjo meh rong taun, njaluk mundur malah ditolak terus diunggahno gaji sitik",
+      "sources": [
+        "https://id.jobstreet.com/community/groups/curhat-gaji/threads/bingung-resign-gaji-rendah-di-restoran-solusi-apa-116170"
+      ],
+      "domains": [
+        "id.jobstreet.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t21-solo-jogja",
+      "topic": "T21",
+      "keys": [
+        "solo",
+        "jogja",
+        "waton",
+        "kelakon"
+      ],
+      "text": "Alon-alon waton kelakon, prinsip Solo Jogja sing ngutamakake kesabaran lan ketekunan",
+      "sources": [
+        "https://www.detik.com/jateng/budaya/d-8290331/pengertian-unggah-ungguh-basa-jawa-lengkap-dengan-contoh-ngoko-dan-krama"
+      ],
+      "domains": [
+        "www.detik.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t21-solo-jogja-2",
+      "topic": "T21",
+      "keys": [
+        "solo",
+        "jogja",
+        "wujude",
+        "sakral"
+      ],
+      "text": "Gaya Solo lan gaya Jogja beda wujude, nanging podo-podo sakral kanggo mantenan",
+      "sources": [
+        "https://rencananikah.net/blog/kembar-mayang-adat-jawa/"
+      ],
+      "domains": [
+        "rencananikah.net"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t21-ditata-murub",
+      "topic": "T21",
+      "keys": [
+        "ditata",
+        "murub",
+        "katon",
+        "sumunar"
+      ],
+      "text": "Tarub iku ditata supaya murub, omahe manten katon sumunar bercahaya",
+      "sources": [
+        "https://rbtv.disway.id/serba-serbi/read/110605/urutan-lengkap-pernikahan-adat-jawa-makna-serta-filosofinya"
+      ],
+      "domains": [
+        "rbtv.disway.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-apeu-kamu",
+      "topic": "T22",
+      "keys": [
+        "apeu",
+        "kamu"
+      ],
+      "text": "Apeu sih kamu teh?",
+      "sources": [
+        "https://www.kaskus.co.id/thread/52e3cb0fbdcb17c5438b4644/gaul-bandung--kenalan-sama-istilah-sunda"
+      ],
+      "domains": [
+        "www.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-facebook-sunda",
+      "topic": "T22",
+      "keys": [
+        "facebook",
+        "sunda",
+        "berbahasa",
+        "pembaca"
+      ],
+      "text": "Status Facebook berbahasa Sunda yang lucu membahas cinta dan hidup agar pembaca ikut tertawa.",
+      "sources": [
+        "https://www.liputan6.com/hot/read/4204976/40-kata-kata-lucu-buat-status-fb-bahasa-sunda-dan-artinya-bikin-ngakak"
+      ],
+      "domains": [
+        "www.liputan6.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-sunda-undak",
+      "topic": "T22",
+      "keys": [
+        "sunda",
+        "undak",
+        "usuk",
+        "memandang"
+      ],
+      "text": "Undak-usuk basa dipakai beda-beda, Sunda kota dan daerah memandang level bahasa secara lain.",
+      "sources": [
+        "https://www.reddit.com/r/indonesia/comments/140y5mo/in_what_ways_is_sundanese_culture_egalitarian/"
+      ],
+      "domains": [
+        "www.reddit.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-sunda-siapa",
+      "topic": "T22",
+      "keys": [
+        "sunda",
+        "siapa",
+        "bicaranya",
+        "situasinya"
+      ],
+      "text": "Bahasa Sunda itu kaya banget tergantung siapa lawan bicaranya dan situasinya",
+      "sources": [
+        "https://www.instagram.com/reel/DLW0RUUzy_o/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-sunda-bedain",
+      "topic": "T22",
+      "keys": [
+        "sunda",
+        "bedain",
+        "belajar",
+        "lemes"
+      ],
+      "text": "Yuk belajar bareng bedain gaya ngomong Sunda yang kasar dan yang lemes",
+      "sources": [
+        "https://www.instagram.com/bdg.disarpus/reel/DLW0RUUzy_o/",
+        "https://www.instagram.com/reel/DLW0RUUzy_o/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-sunda-disusun",
+      "topic": "T22",
+      "keys": [
+        "sunda",
+        "disusun",
+        "dikenali",
+        "ucap"
+      ],
+      "text": "Daftar kata kasar Sunda disusun agar dikenali supaya tidak salah ucap",
+      "sources": [
+        "https://www.detik.com/jabar/budaya/d-7754945/40-kata-kata-kasar-di-sunda-dan-artinya-jangan-diucapkan"
+      ],
+      "domains": [
+        "www.detik.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-lembang-madrasyah",
+      "topic": "T22",
+      "keys": [
+        "lembang",
+        "madrasyah",
+        "masjid",
+        "barudak"
+      ],
+      "text": "Barudak Lembang, barudak madrasyah, barudak masjid",
+      "sources": [
+        "https://www.kaskus.co.id/thread/642e39d0cd7fa83478162c53/barudak-bandung"
+      ],
+      "domains": [
+        "www.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-sunda-indonesia",
+      "topic": "T22",
+      "keys": [
+        "sunda",
+        "indonesia",
+        "hati",
+        "jalan"
+      ],
+      "text": "Obrolan santai campur Sunda-Indonesia, bahas nongkrong sama hati-hati di jalan",
+      "sources": [
+        "https://www.tiktok.com/@kembalipaat/video/7595890295565274389"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-banjaran-saung",
+      "topic": "T22",
+      "keys": [
+        "banjaran",
+        "saung",
+        "tepi",
+        "sawah"
+      ],
+      "text": "Suasana saung tepi sawah di Banjaran, makan liwet sambil ngopi viral",
+      "sources": [
+        "https://www.youtube.com/watch?v=brD8VhL0FNI"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-agan-perbatasan",
+      "topic": "T23",
+      "keys": [
+        "agan",
+        "perbatasan",
+        "bahasane",
+        "adaptasi"
+      ],
+      "text": "Agan-agan sing tau ndek perbatasan, adaptasi rek, bahasane campur, adat e yo bedo.",
+      "sources": [
+        "https://www.kompasiana.com/rintawulandarii/6a887191c925c40a43552fb5/culture-shock-saat-aku-tinggal-di-perbatasan-negara"
+      ],
+      "domains": [
+        "www.kompasiana.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-jogja-penggunaan",
+      "topic": "T23",
+      "keys": [
+        "jogja",
+        "penggunaan",
+        "sedangkan",
+        "seseorang"
+      ],
+      "text": "Di kampung biasa penggunaan aku-kamu, sedangkan di Jogja seseorang harus belajar sapaan mas-mbak dan kromo.",
+      "sources": [
+        "https://kumparan.com/kumparanvideo/culture-shock-anak-rantau-dari-aku-kamu-sampai-kaget-jam-8-malam-sudah-sepi-214CO4mGrzB"
+      ],
+      "domains": [
+        "kumparan.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-jakarta-ekspektasi",
+      "topic": "T23",
+      "keys": [
+        "jakarta",
+        "ekspektasi",
+        "kenyataannya",
+        "merantau"
+      ],
+      "text": "Ekspektasi merantau ke Jakarta keren, kenyataannya keras dan bikin sedih",
+      "sources": [
+        "https://www.tiktok.com/@yudhirealls/video/7681253268135120148"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-jogja-diikuti",
+      "topic": "T23",
+      "keys": [
+        "jogja",
+        "diikuti",
+        "pertumbuhan",
+        "gegar"
+      ],
+      "text": "Gegar budaya di Jogja pada awalnya diikuti proses adaptasi dan pertumbuhan.",
+      "sources": [
+        "http://www.suarasikap.com/2026/03/ketika-jogja-terasa-berbeda-cerita.html"
+      ],
+      "domains": [
+        "www.suarasikap.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-jogja-dapat",
+      "topic": "T23",
+      "keys": [
+        "jogja",
+        "dapat",
+        "merasa",
+        "keliru"
+      ],
+      "text": "Pendatang di Jogja dapat merasa malu setelah keliru memakai bahasa ngoko kepada orang yang lebih tua.",
+      "sources": [
+        "https://id.scribd.com/document/685239614/Note-Unggah-Ungguh-Basa"
+      ],
+      "domains": [
+        "id.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-tetangga-harus",
+      "topic": "T23",
+      "keys": [
+        "tetangga",
+        "harus",
+        "halus",
+        "bagian"
+      ],
+      "text": "Mau pamit ke tetangga harus pakai bahasa halus, itu bagian dari unggah-ungguh",
+      "sources": [
+        "https://www.slideshare.net/slideshow/unggah-ungguh-tata-cara-pamitan-dan-sopan-santun-basa-jawa/287482681"
+      ],
+      "domains": [
+        "www.slideshare.net"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-tujuh-siapin",
+      "topic": "T23",
+      "keys": [
+        "tujuh",
+        "siapin",
+        "alat",
+        "bakti"
+      ],
+      "text": "Kerja bakti gotong royong bareng warga, mulai jam tujuh pagi siapin alat bareng-bareng",
+      "sources": [
+        "https://muhammadilhamrahadin.blogspot.com/",
+        "https://muhammadilhamrahadin.blogspot.com/2024/10/pengalaman-gotong-royong.html"
+      ],
+      "domains": [
+        "muhammadilhamrahadin.blogspot.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-sketsa-konyol",
+      "topic": "T23",
+      "keys": [
+        "sketsa",
+        "konyol",
+        "reaksi",
+        "berubah"
+      ],
+      "text": "Sketsa komedi pendek tentang gotong royong yang berubah jadi komedi gara-gara reaksi konyol",
+      "sources": [
+        "https://www.tiktok.com/@batretv/video/7674867446947269909",
+        "https://www.tiktok.com/@sisijadila/video/7651577473615924500"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-inisiatif-lokal",
+      "topic": "T23",
+      "keys": [
+        "inisiatif",
+        "lokal",
+        "warga",
+        "gotong"
+      ],
+      "text": "Semangat gotong royong masih hidup lewat cerita kampung dan inisiatif warga lokal",
+      "sources": [
+        "https://rakyat88x.com/"
+      ],
+      "domains": [
+        "rakyat88x.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-mengharuskan-penyediaan",
+      "topic": "T23",
+      "keys": [
+        "mengharuskan",
+        "penyediaan",
+        "menimbulkan",
+        "pertanyaan"
+      ],
+      "text": "Tradisi tahlilan yang mengharuskan penyediaan makanan menimbulkan pertanyaan apakah hal itu memberatkan orang yang sedang berduka.",
+      "sources": [
+        "https://x.com/bermatchaa/status/2071763516596593150"
+      ],
+      "domains": [
+        "x.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t23-slametan-tahlil",
+      "topic": "T23",
+      "keys": [
+        "slametan",
+        "tahlil",
+        "anggapan",
+        "dosa"
+      ],
+      "text": "Slametan sambil tahlil sudah biasa di kampung, tidak ada anggapan dosa kalau tidak ikut",
+      "sources": [
+        "https://x.com/mrhasanudin/status/2096633283971035368"
+      ],
+      "domains": [
+        "x.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-membolehkan-menghargai",
+      "topic": "T24",
+      "keys": [
+        "membolehkan",
+        "menghargai",
+        "asal",
+        "campuran"
+      ],
+      "text": "Deskripsi pola: grup campuran membolehkan bahasa daerah asal sopan dan saling menghargai.",
+      "sources": [
+        "https://id.scribd.com/document/368803968/Aturan-Yang-Harus-Dipatuhi-Di-Dalam-Group-WhatsApp",
+        "https://kompak.or.id/deskripsi-peraturan-grup-whatsapp-yang-baik-sopan-dan-menarik/"
+      ],
+      "domains": [
+        "id.scribd.com",
+        "kompak.or.id"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t24-wengi-diparingi",
+      "topic": "T24",
+      "keys": [
+        "wengi",
+        "diparingi",
+        "sakno",
+        "lembur"
+      ],
+      "text": "Sakno arek iki, wes wengi sek lembur, diparingi semangat rek.",
+      "sources": [
+        "https://journal.lppm-unasman.ac.id/index.php/pepatudzu/article/download/2837/pdf"
+      ],
+      "domains": [
+        "journal.lppm-unasman.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-pukul-diadakan",
+      "topic": "T24",
+      "keys": [
+        "pukul",
+        "diadakan",
+        "pertemuan",
+        "balai"
+      ],
+      "text": "Pukul 09.00 diadakan pertemuan di balai.",
+      "sources": [
+        "https://belajarjawa.com/percakapan-bahasa-jawa-sehari-hari-untuk-pemula-lengkap-sopan-dan-mudah-dipahami/"
+      ],
+      "domains": [
+        "belajarjawa.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-artine-ribut",
+      "topic": "T24",
+      "keys": [
+        "artine",
+        "ribut",
+        "nonton",
+        "bingung"
+      ],
+      "text": "Duo S ribut pakai bahasa daerah, sing nonton bingung artine opo",
+      "sources": [
+        "https://www.facebook.com/dewa.k.sulaiman/videos/part-1-duo-s-ribut-kira-kira-ada-yang-paham-ga-mereka-pake-bahasa-apa-wayanggole/1411045837021131/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-indonesia-sepakat",
+      "topic": "T24",
+      "keys": [
+        "indonesia",
+        "sepakat",
+        "akhire",
+        "rukun"
+      ],
+      "text": "Grup campuran akhire sepakat ganti Indonesia ben rukun",
+      "sources": [
+        "https://www.facebook.com/groups/2299156737193368/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-wa-notif",
+      "topic": "T24",
+      "keys": [
+        "wa",
+        "notif",
+        "mergane",
+        "protes"
+      ],
+      "text": "Grup WA rame notif mergane ribut gak jelas, akeh sing protes",
+      "sources": [
+        "https://www.facebook.com/asri.gusa.5/videos/ini-ceritanya-mereka-datang-minta-maaf-di-saya-sebagai-wali-kelas-mereka-karena-/2304443250329712/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-bem-hima",
+      "topic": "T3",
+      "keys": [
+        "bem",
+        "hima",
+        "pengurus",
+        "periode"
+      ],
+      "text": "Rek open recruitment BEM HIMA periode 2026 wes dibuka, ayo melu dadi pengurus!",
+      "sources": [
+        "https://www.instagram.com/p/DT4K0HUEpnH/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-diimbau-angkatan",
+      "topic": "T3",
+      "keys": [
+        "diimbau",
+        "angkatan",
+        "berperan",
+        "kepengurusan"
+      ],
+      "text": "Mahasiswa angkatan 2024 dan 2025 diimbau ikut berperan dalam kepengurusan.",
+      "sources": [
+        "https://www.instagram.com/p/DT4KpbKkuw-/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-bpm-temane",
+      "topic": "T3",
+      "keys": [
+        "bpm",
+        "temane",
+        "membangun",
+        "kritis"
+      ],
+      "text": "Oprec BPM tahun iki temane membangun karakter mahasiswa sing kritis, kreatif, lan demokratis.",
+      "sources": [
+        "https://www.scribd.com/document/764360684/Open-Recruitment-BPM-HIMA-2025"
+      ],
+      "domains": [
+        "www.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-hima-mewujudkan",
+      "topic": "T3",
+      "keys": [
+        "hima",
+        "mewujudkan",
+        "kepemimpinan",
+        "berintegritas"
+      ],
+      "text": "Oprec HIMA fokus mewujudkan kepemimpinan organisasi sing berintegritas lan tanggung jawab.",
+      "sources": [
+        "https://www.scribd.com/document/764360684/Open-Recruitment-BPM-HIMA-2025"
+      ],
+      "domains": [
+        "www.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-bem-peserta",
+      "topic": "T3",
+      "keys": [
+        "bem",
+        "peserta",
+        "diingatkan",
+        "membawa"
+      ],
+      "text": "Peserta seleksi wawancara BEM diingatkan membawa berkas lengkap.",
+      "sources": [
+        "https://id.scribd.com/document/842434643/PEDOMAN-PELAKSANAAN-OPEN-RECRUITMENT-BEM-UM-2023-KABINET-RESTORASI-ASA-1"
+      ],
+      "domains": [
+        "id.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-hima-mengikuti",
+      "topic": "T3",
+      "keys": [
+        "hima",
+        "mengikuti",
+        "memilih",
+        "tingkat"
+      ],
+      "text": "Tingkat satu wajib mengikuti tes tulis dan wawancara untuk memilih anggota baru HIMA.",
+      "sources": [
+        "https://id.scribd.com/document/705845507/PROPOSAL-OPREC-HIMA-D3-TLM-2023-revisi"
+      ],
+      "domains": [
+        "id.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-segenap-mengucapkan",
+      "topic": "T3",
+      "keys": [
+        "segenap",
+        "mengucapkan",
+        "sebesar",
+        "besarnya"
+      ],
+      "text": "Kami segenap panitia mengucapkan terima kasih sebesar-besarnya kepada seluruh media partner yang telah mendukung acara ini",
+      "sources": [
+        "https://www.instagram.com/p/DXzC2RmE40w/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-menyukseskan-eksternal",
+      "topic": "T3",
+      "keys": [
+        "menyukseskan",
+        "eksternal",
+        "perjalanan",
+        "menjadi"
+      ],
+      "text": "Open recruitment panitia eksternal resmi dibuka untuk menjadi bagian dari perjalanan menyukseskan acara.",
+      "sources": [
+        "https://www.instagram.com/p/Daa9w2eEoMH/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-khs-mensyaratkan",
+      "topic": "T3",
+      "keys": [
+        "khs",
+        "mensyaratkan",
+        "bukti",
+        "pengisian"
+      ],
+      "text": "Pendaftaran mahasiswa aktif mensyaratkan bukti KHS semester 3 dan pengisian formulir pendaftaran.",
+      "sources": [
+        "https://www.instagram.com/p/DdTlItelBTj/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-komisi-mendampingi",
+      "topic": "T3",
+      "keys": [
+        "komisi",
+        "mendampingi",
+        "mentor",
+        "terbesar"
+      ],
+      "text": "Pendaftaran mentor dan komisi disiplin resmi dibuka untuk mendampingi mahasiswa baru pada rangkaian acara kampus terbesar.",
+      "sources": [
+        "https://www.instagram.com/p/DZgo51-ptfd/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-mubes-dinamika",
+      "topic": "T3",
+      "keys": [
+        "mubes",
+        "dinamika",
+        "after",
+        "movie"
+      ],
+      "text": "After movie ini menjadi rangkuman perjalanan Mubes dan demisioner yang penuh dinamika dan kebersamaan",
+      "sources": [
+        "https://www.instagram.com/reel/DUFulJIkhhS/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-kabarnya-halo",
+      "topic": "T3",
+      "keys": [
+        "kabarnya",
+        "halo",
+        "semoga",
+        "kalian"
+      ],
+      "text": "Halo, apa kabarnya nih semoga kalian sehat selalu ya",
+      "sources": [
+        "https://www.instagram.com/p/CZJsrbpvwMK/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-dilaksanakan-ruang",
+      "topic": "T3",
+      "keys": [
+        "dilaksanakan",
+        "ruang",
+        "kepengurusan",
+        "mubes"
+      ],
+      "text": "Mubes dan demisioner kepengurusan periode lalu dilaksanakan di ruang kampus",
+      "sources": [
+        "https://www.instagram.com/p/CZJsrbpvwMK/",
+        "https://www.instagram.com/p/DHDafX0Syd_/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-berikut-dokumentasi",
+      "topic": "T3",
+      "keys": [
+        "berikut",
+        "dokumentasi",
+        "musyawarah",
+        "besar"
+      ],
+      "text": "Berikut ini hasil dokumentasi musyawarah besar dan acara demisioner kepengurusan",
+      "sources": [
+        "https://www.instagram.com/p/DHDafX0Syd_/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-ad-art",
+      "topic": "T3",
+      "keys": [
+        "ad",
+        "art",
+        "merupakan",
+        "tertinggi"
+      ],
+      "text": "Mubes merupakan forum tertinggi untuk evaluasi laporan pertanggungjawaban dan bahas AD ART",
+      "sources": [
+        "https://www.instagram.com/reel/DZulZG3Bdy5/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-purna-dimintai",
+      "topic": "T3",
+      "keys": [
+        "purna",
+        "dimintai",
+        "wejangan",
+        "kakak"
+      ],
+      "text": "Demisioner kakak-kakak senior yang sudah purna tugas tapi tetap dimintai wejangan",
+      "sources": [
+        "https://www.instagram.com/p/DHDafX0Syd_/",
+        "https://www.instagram.com/reel/DdN4MPOgP5R/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t4-sebelum-tidur",
+      "topic": "T4",
+      "keys": [
+        "sebelum",
+        "tidur",
+        "temenin",
+        "dong"
+      ],
+      "text": "Sebelum tidur temenin curhat dong",
+      "sources": [
+        "https://www.facebook.com/reel/602695302369197/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t4-dm-dewasa",
+      "topic": "T4",
+      "keys": [
+        "dm",
+        "dewasa",
+        "ruang",
+        "healing"
+      ],
+      "text": "Ruang curhat dan healing buat orang dewasa, butuh curhat soal kerjaan dan hubungan ya DM aja",
+      "sources": [
+        "https://www.instagram.com/overtthinking.id/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t4-membutuhkan-seseorang",
+      "topic": "T4",
+      "keys": [
+        "membutuhkan",
+        "seseorang",
+        "didengarkan",
+        "dihakimi"
+      ],
+      "text": "Seseorang kadang hanya membutuhkan didengarkan tanpa dihakimi.",
+      "sources": [
+        "https://www.youtube.com/watch?v=lSqu_R_PlVo"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t4-tunjukno-empati",
+      "topic": "T4",
+      "keys": [
+        "tunjukno",
+        "empati",
+        "masalah",
+        "abot"
+      ],
+      "text": "Dadi konco curhat masalah keluarga itu abot, sing penting tunjukno empati",
+      "sources": [
+        "https://kumparan.com/tips-dan-trik/4-cara-menanggapi-teman-yang-curhat-tentang-keluarga-yang-perlu-dipahami-24GPX3z2EbM"
+      ],
+      "domains": [
+        "kumparan.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t4-kegagalan-selamanya",
+      "topic": "T4",
+      "keys": [
+        "kegagalan",
+        "selamanya",
+        "dukungan",
+        "diberikan"
+      ],
+      "text": "Kegagalan sekali tidak berarti gagal selamanya, dan dukungan tetap diberikan untuk semangat.",
+      "sources": [
+        "https://www.detik.com/jateng/berita/d-7461318/60-kata-kata-penyemangat-untuk-teman-yang-mengalami-kegagalan"
+      ],
+      "domains": [
+        "www.detik.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t5-supaya-koleksi",
+      "topic": "T5",
+      "keys": [
+        "supaya",
+        "koleksi",
+        "dikirim",
+        "pasangan"
+      ],
+      "text": "Koleksi kata gombal romantis buat pacar biar baper, dikirim via chat supaya pasangan senyum dan salting",
+      "sources": [
+        "https://www.liputan6.com/hot/read/5111896/130-kata-kata-gombal-buat-pacar-bikin-baper-lucu-dan-romantis"
+      ],
+      "domains": [
+        "www.liputan6.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t5-koleksi-maut",
+      "topic": "T5",
+      "keys": [
+        "koleksi",
+        "maut",
+        "baper",
+        "deskripsi"
+      ],
+      "text": "Deskripsi pola koleksi 100 gombalan maut bikin baper untuk gebetan dan pacar.",
+      "sources": [
+        "https://www.brilio.net/ragam/100-kata-kata-gombalan-maut-bikin-baper-dan-salting-terbaru-2025-bikin-gebetan-meleleh-gagal-fokus-250424i.html"
+      ],
+      "domains": [
+        "www.brilio.net"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t5-kena-klepek",
+      "topic": "T5",
+      "keys": [
+        "kena",
+        "klepek",
+        "luluh",
+        "istilah"
+      ],
+      "text": "Klepek-klepek, istilah buat gebetan yang langsung luluh kena gombalan.",
+      "sources": [
+        "https://lifestyle.kompas.com/read/2026/04/13/160000020/120-gombalan-maut-yang-bikin-baper-dijamin-auto-salting"
+      ],
+      "domains": [
+        "lifestyle.kompas.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t5-tips-nembak",
+      "topic": "T5",
+      "keys": [
+        "tips",
+        "nembak",
+        "maut",
+        "romantis"
+      ],
+      "text": "Kasih tips pantun gombalan maut buat nembak gebetan biar ngakak tapi romantis.",
+      "sources": [
+        "https://www.tiktok.com/@andremxfrls/video/7690823315895667990"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t5-crush-gemas",
+      "topic": "T5",
+      "keys": [
+        "crush",
+        "gemas",
+        "klepek",
+        "maut"
+      ],
+      "text": "Gombalan maut dan salting bikin crush klepek-klepek dan suasana jadi gemas.",
+      "sources": [
+        "https://www.tiktok.com/@cla_raw0/video/7637821886138699028"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t5-polos-ucapan",
+      "topic": "T5",
+      "keys": [
+        "polos",
+        "ucapan",
+        "good",
+        "night"
+      ],
+      "text": "Kumpulan ucapan good night singkat dari yang polos sampai gombal buat dikirim malam ini.",
+      "sources": [
+        "https://www.tiktok.com/@oke._23/video/7668700358218157319"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t6-kanak-diajarkan",
+      "topic": "T6",
+      "keys": [
+        "kanak",
+        "diajarkan",
+        "referensi",
+        "kepada"
+      ],
+      "text": "Pantun kanak-kanak dipakai sebagai referensi untuk diajarkan kepada anak-anak",
+      "sources": [
+        "https://www.detik.com/sulsel/berita/d-7007311/100-contoh-pantun-kanak-kanak-yang-menarik-dan-penuh-nasihat-bijak"
+      ],
+      "domains": [
+        "www.detik.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t7-sepele-seharian",
+      "topic": "T7",
+      "keys": [
+        "sepele",
+        "seharian",
+        "gara",
+        "nostalgia"
+      ],
+      "text": "Dulu ketawa seharian gara-gara hal sepele, saiki ketawa gara-gara nostalgia",
+      "sources": [
+        "https://www.idntimes.com/hype/humor/meme-kenangan-bikin-flashback-c1c2-01-6q5sq-9qkjhr"
+      ],
+      "domains": [
+        "www.idntimes.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t7-lekang-waktu",
+      "topic": "T7",
+      "keys": [
+        "lekang",
+        "waktu",
+        "abadi",
+        "bahan"
+      ],
+      "text": "Waktu itu abadi, gak lekang oleh waktu, cocok gawe bahan guyonan",
+      "sources": [
+        "https://www.facebook.com/tumiran.abitum.3/videos/waktu-itu-abadi-dan-tidak-pernah-lekang-oleh-waktukontenkreator-fyp-komedi-katak/1626191108250034/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t7-membayangkan-raut",
+      "topic": "T7",
+      "keys": [
+        "membayangkan",
+        "raut",
+        "wajah",
+        "berkomentar"
+      ],
+      "text": "Membayangkan raut wajah seseorang jika terus berkomentar seperti ini.",
+      "sources": [
+        "https://lifestyle.bisnis.com/read/20250519/254/1878039/ragam-komentar-lucu-tiktok-yang-kerap-digunakan-oleh-netizen"
+      ],
+      "domains": [
+        "lifestyle.bisnis.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t7-seng-pancet",
+      "topic": "T7",
+      "keys": [
+        "seng",
+        "pancet",
+        "mlaku",
+        "lawas"
+      ],
+      "text": "Meme 2025 akeh seng viral, tapi seng lawas pancet mlaku",
+      "sources": [
+        "https://netizenzone.id/10-meme-viral-terpopuler-2025-yang-bikin-netizen-ngakak-dan-terinspirasi/"
+      ],
+      "domains": [
+        "netizenzone.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t7-alfamart-indomaret",
+      "topic": "T7",
+      "keys": [
+        "alfamart",
+        "indomaret",
+        "merupakan",
+        "rival"
+      ],
+      "text": "Indomaret dan Alfamart merupakan rival abadi, dan parkiran gratis menjadi penentu.",
+      "sources": [
+        "https://www.facebook.com/M3C1N/videos/rival-abadi/422011860902799/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t7-dosis-harianmu",
+      "topic": "T7",
+      "keys": [
+        "dosis",
+        "harianmu",
+        "mampir",
+        "dino"
+      ],
+      "text": "Dosis meme harianmu, dosis ngakak tiap dino ojo lali mampir",
+      "sources": [
+        "https://www.facebook.com/MemeAndRageComicIndonesia/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-musiman-wayahe",
+      "topic": "T8",
+      "keys": [
+        "musiman",
+        "wayahe",
+        "suara",
+        "politik"
+      ],
+      "text": "Politik musiman, wayahe njaluk suara tok baru ketok neng kampung.",
+      "sources": [
+        "https://m.kaskus.co.id/komunitas/73"
+      ],
+      "domains": [
+        "m.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-suroboyoan-kekecewaan",
+      "topic": "T8",
+      "keys": [
+        "suroboyoan",
+        "kekecewaan",
+        "kemarahan",
+        "diungkap"
+      ],
+      "text": "Deskripsi pola: kekecewaan dan kemarahan publik ke kebijakan diungkap lewat guyonan Suroboyoan.",
+      "sources": [
+        "https://www.researchgate.net/publication/338490144_POLITIK_SATIRE_INDONESIA_DI_MEDIA_SOSIAL"
+      ],
+      "domains": [
+        "www.researchgate.net"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-berjudul-menggambarkan",
+      "topic": "T8",
+      "keys": [
+        "berjudul",
+        "menggambarkan",
+        "negara",
+        "sakit"
+      ],
+      "text": "Lagu berjudul janji palsu pejabat menggambarkan negara yang sakit karena ingkar janji",
+      "sources": [
+        "https://www.youtube.com/watch?v=43L8ec2d1mo"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-wakanda-presiden",
+      "topic": "T8",
+      "keys": [
+        "wakanda",
+        "presiden",
+        "berpidato",
+        "melucu"
+      ],
+      "text": "Gaya bicara Presiden Wakanda saat berpidato ala pejabat dilebih-lebihkan untuk melucu.",
+      "sources": [
+        "https://www.tiktok.com/@arunalif_/video/7698344554042379528"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-logo-kemerdekaan",
+      "topic": "T8",
+      "keys": [
+        "logo",
+        "kemerdekaan",
+        "diedit",
+        "meniru"
+      ],
+      "text": "Logo kemerdekaan diedit jadi karakter meniru gaya pidato presiden, viral dan bikin ngakak",
+      "sources": [
+        "https://www.youtube.com/watch?v=B-glKRyF7og",
+        "https://www.youtube.com/watch?v=O0EDpPDMY0g"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-waspada-penipuan",
+      "topic": "T8",
+      "keys": [
+        "waspada",
+        "penipuan",
+        "catut",
+        "telepon"
+      ],
+      "text": "Waspada penipuan catut nama pejabat, janji palsu minta uang lewat telepon",
+      "sources": [
+        "https://www.insiden24.com/insiden/39617585805/awas-penipuan-catut-nama-pejabat-kejati-jabar-janji-palsu-minta-uang-berkedok-telepon"
+      ],
+      "domains": [
+        "www.insiden24.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t9-custom-telegram",
+      "topic": "T9",
+      "keys": [
+        "custom",
+        "telegram",
+        "ditempelke",
+        "golekane"
+      ],
+      "text": "Deskripsi pola: stiker custom di telegram ditempelke nang emoji ben gampang golekane",
+      "sources": [
+        "https://emojipedia.org/telegram"
+      ],
+      "domains": [
+        "emojipedia.org"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t9-paragraf-gambar",
+      "topic": "T9",
+      "keys": [
+        "paragraf",
+        "gambar",
+        "siji",
+        "alus"
+      ],
+      "text": "Stiker iku basa alus cah nom, siji gambar iso ganti sak paragraf",
+      "sources": [
+        "https://www.slangsphere.com/sticker-meaning-slang-understanding-the-language-of-digital-expression/"
+      ],
+      "domains": [
+        "www.slangsphere.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t9-ngenakke-capybara",
+      "topic": "T9",
+      "keys": [
+        "ngenakke",
+        "capybara",
+        "gambar",
+        "bales"
+      ],
+      "text": "Paket stiker capybara 40 gambar gawe bales chat saben dino, lucu lan ngenakke ati",
+      "sources": [
+        "https://store.line.me/stickershop/product/37655631/id"
+      ],
+      "domains": [
+        "store.line.me"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t9-wa-perang",
+      "topic": "T9",
+      "keys": [
+        "wa",
+        "perang",
+        "main",
+        "berarti"
+      ],
+      "text": "Stiker jempol WA bisa berarti siap perang sampai menang pas main game bareng",
+      "sources": [
+        "https://www.tiktok.com/@bakkara240798/video/7589335211285024008"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t13-jawa-pelajari",
+      "topic": "T13",
+      "keys": [
+        "jawa",
+        "pelajari",
+        "menggunakan",
+        "hormat"
+      ],
+      "text": "Pelajari cara menolak dengan halus menggunakan bahasa Jawa yang sopan dan penuh rasa hormat",
+      "sources": [
+        "https://www.tiktok.com/@agilnofian/video/7334203653085072646"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t13-detik-tenang",
+      "topic": "T13",
+      "keys": [
+        "detik",
+        "tenang",
+        "cara",
+        "teman"
+      ],
+      "text": "Teman yang tiap detik ganti topik, cara tetap tenang saat obrolan bingung",
+      "sources": [
+        "https://www.tiktok.com/@sibliwira/video/7657407102121610517"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t13-alesan-dompet",
+      "topic": "T13",
+      "keys": [
+        "alesan",
+        "dompet",
+        "tipis",
+        "urunan"
+      ],
+      "text": "Pola alesan dompet: ngomong isi dompet lagi tipis dadi ijin ora melu urunan sek.",
+      "sources": [
+        "https://www.idntimes.com/life/inspiration/cara-menolak-dengan-santun-c1c2-01-dbk1m-s689bv"
+      ],
+      "domains": [
+        "www.idntimes.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t13-makasih-diundang",
+      "topic": "T13",
+      "keys": [
+        "makasih",
+        "diundang",
+        "barengane",
+        "reuni"
+      ],
+      "text": "Konteks reuni: bilang makasih wes diundang, tapi barengane pas karo acara keluarga dadi ora iso teko.",
+      "sources": [
+        "https://life.indozone.id/trendz/2486691656/tips-menolak-undangan-reuni-secara-halus-wajib-tahu",
+        "https://sumsel.tribunnews.com/2024/06/09/25-contoh-kata-kata-menolak-ajakan-dan-permintaan-teman-sopan-tidak-menyinggung"
+      ],
+      "domains": [
+        "life.indozone.id",
+        "sumsel.tribunnews.com"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t14-menutup-ngoko",
+      "topic": "T14",
+      "keys": [
+        "menutup",
+        "ngoko",
+        "omongan",
+        "alus"
+      ],
+      "text": "Pola pamit ngoko alus untuk menutup omongan santai tapi tetap sopan",
+      "sources": [
+        "https://www.brilio.net/ragam/50-contoh-kalimat-ngoko-alus-dalam-bahasa-jawa-beserta-artinya-240920c.html"
+      ],
+      "domains": [
+        "www.brilio.net"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-interaksi-sepanjang",
+      "topic": "T16",
+      "keys": [
+        "interaksi",
+        "sepanjang",
+        "fenomena",
+        "challenge"
+      ],
+      "text": "Challenge online dan fenomena komunitas bikin interaksi netizen makin aktif sepanjang 2026.",
+      "sources": [
+        "https://netizenzone.id/7-tren-netizen-paling-viral-di-2026-yang-wajib-kamu-ikuti/"
+      ],
+      "domains": [
+        "netizenzone.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-menghibur-mengubah",
+      "topic": "T16",
+      "keys": [
+        "menghibur",
+        "mengubah",
+        "nama",
+        "tokoh"
+      ],
+      "text": "Pola netizen mengubah nama tokoh publik jadi kosakata gaul baru yang unik dan menghibur.",
+      "sources": [
+        "https://www.suara.com/tekno/2026/09/02/191357/netizen-ubah-nama-tokoh-jadi-kosakata-baru-lengkap-arti-gibran-hingga-prabowo"
+      ],
+      "domains": [
+        "www.suara.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-berkembang-variasi",
+      "topic": "T16",
+      "keys": [
+        "berkembang",
+        "variasi",
+        "menjadi",
+        "setelah"
+      ],
+      "text": "Satu istilah bisa berkembang menjadi banyak variasi baru setelah dipakai banyak orang.",
+      "sources": [
+        "https://www.suaranusa.com/2026/10/kumpulan-bahasa-gaul-terbaru-2026-dan.html"
+      ],
+      "domains": [
+        "www.suaranusa.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-gayanya-berani",
+      "topic": "T16",
+      "keys": [
+        "gayanya",
+        "berani",
+        "kebaca",
+        "vibe"
+      ],
+      "text": "Clock it, gayanya berani banget, langsung kebaca vibe-nya.",
+      "sources": [
+        "https://www.popbela.com/career/inspiration/mengenal-istilah-six-seven-hingga-clock-it-00-vp6g8-pm1gfw"
+      ],
+      "domains": [
+        "www.popbela.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-instagram-sedang",
+      "topic": "T16",
+      "keys": [
+        "instagram",
+        "sedang",
+        "couple",
+        "sound"
+      ],
+      "text": "Tren couple dan sound horeg sedang ramai di Instagram bulan ini.",
+      "sources": [
+        "https://rentak.id/8-tren-instagram-yang-lagi-viral-september-2026-ada-sound-horeg-sampai-tren-couple-654321/"
+      ],
+      "domains": [
+        "rentak.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-bawa-bensin",
+      "topic": "T16",
+      "keys": [
+        "bawa",
+        "bensin",
+        "patungan",
+        "have"
+      ],
+      "text": "Orang have itu yang nongkrong bawa mobil padahal bensin patungan",
+      "sources": [
+        "https://www.akurat.co/trend/893879/15-bahasa-gaul-terbaru-2026-yang-viral-di-tiktok-dan-threads-apa-artinya",
+        "https://www.akurat.co/trend/894661/20-istilah-gaul-yang-viral-di-tiktok-dan-threads-september-2026-lengkap-artinya"
+      ],
+      "domains": [
+        "www.akurat.co"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-fyp-mengalami",
+      "topic": "T16",
+      "keys": [
+        "fyp",
+        "mengalami",
+        "akibat",
+        "menggulir"
+      ],
+      "text": "Otak mengalami brainrot akibat menggulir FYP secara nonstop pada pukul 2 pagi.",
+      "sources": [
+        "https://www.akurat.co/trend/893879/15-bahasa-gaul-terbaru-2026-yang-viral-di-tiktok-dan-threads-apa-artinya",
+        "https://www.akurat.co/trend/894661/20-istilah-gaul-yang-viral-di-tiktok-dan-threads-september-2026-lengkap-artinya"
+      ],
+      "domains": [
+        "www.akurat.co"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-fyp-terbaru",
+      "topic": "T16",
+      "keys": [
+        "fyp",
+        "terbaru",
+        "update",
+        "muda"
+      ],
+      "text": "Update bahasa Gen Z terbaru biar paham obrolan anak muda di FYP",
+      "sources": [
+        "https://www.tiktok.com/@sepikul.indonesia/video/7653861505259080967"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t16-menyindir-hedon",
+      "topic": "T16",
+      "keys": [
+        "menyindir",
+        "hedon",
+        "ujaran",
+        "money"
+      ],
+      "text": "Pola ujaran no money no meimei untuk menyindir gaya hidup hedon",
+      "sources": [
+        "https://www.akurat.co/trend/893879/15-bahasa-gaul-terbaru-2026-yang-viral-di-tiktok-dan-threads-apa-artinya"
+      ],
+      "domains": [
+        "www.akurat.co"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-malang-2",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "malang",
+        "terdapat",
+        "permintaan"
+      ],
+      "text": "Terdapat permintaan informasi mengenai kost putri dekat UIN Malang yang murah tetapi aman.",
+      "sources": [
+        "https://lokanesia.com/kost-putri-dekat-uin-malang/",
+        "https://mamikos.com/kost/kost-dekat-uin-malang-murah"
+      ],
+      "domains": [
+        "lokanesia.com",
+        "mamikos.com"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t2-span-ptkin",
+      "topic": "T2",
+      "keys": [
+        "span",
+        "ptkin",
+        "berdasarkan",
+        "merupakan"
+      ],
+      "text": "SPAN-PTKIN merupakan seleksi berdasarkan nilai rapor saja tanpa ujian tulis.",
+      "sources": [
+        "https://admisi.uin-malang.ac.id/span-ptkin/",
+        "https://pmb.uin-malang.ac.id/span-ptkin/"
+      ],
+      "domains": [
+        "admisi.uin-malang.ac.id",
+        "pmb.uin-malang.ac.id"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-peta",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "peta",
+        "rute",
+        "tempuh"
+      ],
+      "text": "Konteks maba: cek peta rute kost ke UIN, jarak dan waktu tempuh.",
+      "sources": [
+        "https://lokanesia.com/kost-putri-dekat-uin-malang/",
+        "https://lokanesia.com/tempat-kost-dekat-uin-malang/"
+      ],
+      "domains": [
+        "lokanesia.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-msaa",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "msaa",
+        "malang",
+        "modele"
+      ],
+      "text": "MSAA iku ciri khas UIN Malang, kampus modele pesantren kampus.",
+      "sources": [
+        "https://www.remedyteas.com/wajib-mahad-1-tahun-mengenal-msaa-mahad-sunan-ampel-al-ali/"
+      ],
+      "domains": [
+        "www.remedyteas.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-msaa-kenangane",
+      "topic": "T2",
+      "keys": [
+        "msaa",
+        "kenangane",
+        "indah",
+        "pondasine"
+      ],
+      "text": "Anak asrama MSAA rong semester, kenangane indah lan pondasine spiritual kuwat.",
+      "sources": [
+        "https://www.doyanblog.com/wajib-mahad-1-tahun-mengenal-kehidupan-asrama-uin-malang-2026/"
+      ],
+      "domains": [
+        "www.doyanblog.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-menanamkan-program",
+      "topic": "T2",
+      "keys": [
+        "menanamkan",
+        "program",
+        "nilai",
+        "agama"
+      ],
+      "text": "Program wajib mahad setahun menanamkan nilai agama pada mahasiswa baru.",
+      "sources": [
+        "http://etheses.uin-malang.ac.id/69300/",
+        "http://etheses.uin-malang.ac.id/69300/1/19110137.pdf"
+      ],
+      "domains": [
+        "etheses.uin-malang.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-ukt-desember",
+      "topic": "T2",
+      "keys": [
+        "ukt",
+        "desember",
+        "genap",
+        "verifikasi"
+      ],
+      "text": "Periode ngajukno UKT semester genap dibuka online Desember, mari ngono verifikasi dosen wali.",
+      "sources": [
+        "https://id.scribd.com/document/850431990/2025"
+      ],
+      "domains": [
+        "id.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-cctv-ready",
+      "topic": "T2",
+      "keys": [
+        "cctv",
+        "ready",
+        "belakang",
+        "swalayan"
+      ],
+      "text": "Ready kost putra belakang kampus, aman nyaman CCTV 24 jam lokasi strategis dekat swalayan",
+      "sources": [
+        "https://www.facebook.com/groups/375675582622533/posts/2968729686650430/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-uin-menyediakan",
+      "topic": "T2",
+      "keys": [
+        "uin",
+        "menyediakan",
+        "pengecekan",
+        "klaim"
+      ],
+      "text": "Mamikos menyediakan pengecekan kost putra UIN secara langsung dengan klaim aman dan tepercaya.",
+      "sources": [
+        "https://mamikos.com/kost/kost-putra-dekat-uin-malang-murah"
+      ],
+      "domains": [
+        "mamikos.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-terdapat-pertanyaan",
+      "topic": "T2",
+      "keys": [
+        "terdapat",
+        "pertanyaan",
+        "mengenai",
+        "pencarian"
+      ],
+      "text": "Terdapat pertanyaan mengenai pencarian kost campur atau khusus putra, dan menurut beberapa orang kost khusus putra lebih nyaman.",
+      "sources": [
+        "https://mamikos.com/kost/kost-putra-malang-murah"
+      ],
+      "domains": [
+        "mamikos.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t2-ukm-uin",
+      "topic": "T2",
+      "keys": [
+        "ukm",
+        "uin",
+        "mapala",
+        "teater"
+      ],
+      "text": "Seseorang menanyakan pilihan antara mengikuti UKM Teater Komedi atau Mapala agar kuliah di UIN tidak hanya kupu-kupu.",
+      "sources": [
+        "https://kemahasiswaan.uin-malang.ac.id/en/",
+        "https://rmmaliki.uin-malang.ac.id/ukm/"
+      ],
+      "domains": [
+        "kemahasiswaan.uin-malang.ac.id",
+        "rmmaliki.uin-malang.ac.id"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t20-sidoarjo-bekerja",
+      "topic": "T20",
+      "keys": [
+        "sidoarjo",
+        "bekerja",
+        "daripada",
+        "menganggur"
+      ],
+      "text": "Bekerja di pabrik di Sidoarjo dengan sering lembur tetap disyukuri karena lebih baik daripada menganggur.",
+      "sources": [
+        "https://id.jobstreet.com/"
+      ],
+      "domains": [
+        "id.jobstreet.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-mikire-bondho",
+      "topic": "T20",
+      "keys": [
+        "mikire",
+        "bondho",
+        "karir",
+        "mburi"
+      ],
+      "text": "Bondho nekat, seng penting kerjo disek, karir mburi mikire",
+      "sources": [
+        "https://www.linovhr.com/blog/karir-adalah/"
+      ],
+      "domains": [
+        "www.linovhr.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-pekerja-shift",
+      "topic": "T20",
+      "keys": [
+        "pekerja",
+        "shift",
+        "mengeluh",
+        "ngantuk"
+      ],
+      "text": "Deskripsi pola: pekerja shift malam mengeluh ngantuk tapi kejar target lemburan",
+      "sources": [
+        "https://mediaindonesia.com/humaniora/760218/contoh-karir-inspirasi-dan-pilihan-profesi"
+      ],
+      "domains": [
+        "mediaindonesia.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-idle-minder",
+      "topic": "T20",
+      "keys": [
+        "idle",
+        "minder",
+        "awak",
+        "tahun"
+      ],
+      "text": "Wes 2 tahun nganggur, awak idle terus, rasane minder dewe",
+      "sources": [
+        "https://www.reddit.com/r/indonesia/comments/tgaglt/sudah_2_tahun_menganggur/"
+      ],
+      "domains": [
+        "www.reddit.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-sma-gresik",
+      "topic": "T20",
+      "keys": [
+        "sma",
+        "gresik",
+        "sidoarjo",
+        "suroboyo"
+      ],
+      "text": "Kebutuhan crew outlet untuk penempatan di Suroboyo, Sidoarjo, dan Gresik dengan pendidikan minimal SMA.",
+      "sources": [
+        "https://www.facebook.com/groups/infolokersby/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-nganggur-suwe",
+      "topic": "T20",
+      "keys": [
+        "nganggur",
+        "suwe"
+      ],
+      "text": "Nganggur suwe",
+      "sources": [
+        "https://www.facebook.com/Nganggur-suwe-105151565914080/",
+        "https://x.com/dwikyota/status/2114707936790643001"
+      ],
+      "domains": [
+        "www.facebook.com",
+        "x.com"
+      ],
+      "confidence": 2,
+      "varian": []
+    },
+    {
+      "id": "t20-disebutkan-meliputi",
+      "topic": "T20",
+      "keys": [
+        "disebutkan",
+        "meliputi",
+        "komunikatif",
+        "teliti"
+      ],
+      "text": "Syarat yang disebutkan meliputi jujur, tanggung jawab, komunikatif, teliti, dan disiplin.",
+      "sources": [
+        "https://www.instagram.com/p/De8mpjcP0Ze/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-microsoft-office",
+      "topic": "T20",
+      "keys": [
+        "microsoft",
+        "office",
+        "diperlukan",
+        "memenuhi"
+      ],
+      "text": "Kemampuan Microsoft Office diperlukan dan yang memenuhi kriteria diminta langsung chat.",
+      "sources": [
+        "https://www.instagram.com/p/De8mpjcP0Ze/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t20-barat-surabaya",
+      "topic": "T20",
+      "keys": [
+        "barat",
+        "surabaya",
+        "tersedia",
+        "posisi"
+      ],
+      "text": "Tersedia informasi lowongan kerja di Surabaya Barat untuk posisi kitchen serabutan.",
+      "sources": [
+        "https://www.instagram.com/p/DeGYhRLvioA/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-biwir-nyiru",
+      "topic": "T22",
+      "keys": [
+        "biwir",
+        "nyiru",
+        "rombeng",
+        "beungeut"
+      ],
+      "text": "Biwir nyiru rombeng beungeut, omonganna nyakitin batur.",
+      "sources": [
+        "https://www.masagipedia.com/edukasi/31411996008/100-babasan-atau-paribasa-bahasa-sunda-dan-artinya-biwir-nyiru-rombengeun-hingga-aya-jurig-tumpak-kuda"
+      ],
+      "domains": [
+        "www.masagipedia.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-jurig-tumpak",
+      "topic": "T22",
+      "keys": [
+        "jurig",
+        "tumpak",
+        "kuda",
+        "siga"
+      ],
+      "text": "Aya jurig tumpak kuda, siga anu rusuh teu puguh maksudna.",
+      "sources": [
+        "https://www.masagipedia.com/edukasi/31411996008/100-babasan-atau-paribasa-bahasa-sunda-dan-artinya-biwir-nyiru-rombengeun-hingga-aya-jurig-tumpak-kuda"
+      ],
+      "domains": [
+        "www.masagipedia.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t22-sunda-emang",
+      "topic": "T22",
+      "keys": [
+        "sunda",
+        "emang",
+        "bahkan",
+        "dikenal"
+      ],
+      "text": "Orang Sunda emang ramah-ramah, gampang akrab bahkan sama orang yang baru dikenal",
+      "sources": [
+        "https://medium.com/@yochiolo/orang-sunda-emang-ramah-ramah-tapi-jangan-sekali-kali-mencoba-untuk-mengusiknya-eac6e36227e5"
+      ],
+      "domains": [
+        "medium.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-sunda-kelepasan",
+      "topic": "T24",
+      "keys": [
+        "sunda",
+        "kelepasan",
+        "artinya",
+        "tanya"
+      ],
+      "text": "Di grup campuran ada yang kelepasan ngomong Sunda, teman lain langsung tanya artinya apa",
+      "sources": [
+        "https://www.kaskus.co.id/thread/52e3cb0fbdcb17c5438b4644/gaul-bandung--kenalan-sama-istilah-sunda"
+      ],
+      "domains": [
+        "www.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-solo-seperti",
+      "topic": "T24",
+      "keys": [
+        "solo",
+        "seperti",
+        "jiglok",
+        "oglangan"
+      ],
+      "text": "Istilah Solo seperti jiglok sampai oglangan sering bikin orang luar Solo bingung artinya",
+      "sources": [
+        "https://www.kaskus.co.id/thread/620cf9168a1910136354e9cf/10-istilah-asli-solo-yang-sering-bikin-orang-luar-bingung-jiglok-sampai-oglangan"
+      ],
+      "domains": [
+        "www.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-dayak-banjar",
+      "topic": "T24",
+      "keys": [
+        "dayak",
+        "banjar",
+        "sepintas",
+        "mirip"
+      ],
+      "text": "Logat Banjar sepintas mirip logat Dayak karena banyak campuran kosakata",
+      "sources": [
+        "https://www.kaskus.co.id/thread/597079bc12e257516b8b4570/bahasa-khas-banjarmasinbahasanya-bikin-ngakak-gan"
+      ],
+      "domains": [
+        "www.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-whatsapp-kantor",
+      "topic": "T24",
+      "keys": [
+        "whatsapp",
+        "kantor",
+        "nonstop",
+        "aktif"
+      ],
+      "text": "Grup WhatsApp kantor aktif 24 jam nonstop dan berisi campuran bahasa daerah.",
+      "sources": [
+        "https://www.instagram.com/p/DfAAil9zyED/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-diy-tengah",
+      "topic": "T24",
+      "keys": [
+        "diy",
+        "tengah",
+        "timur",
+        "jawa"
+      ],
+      "text": "Bahasa Jawa berstatus bahasa resmi di DIY, Jawa Tengah, dan Jawa Timur di samping bahasa Indonesia.",
+      "sources": [
+        "https://id.wikipedia.org/wiki/Bahasa_Jawa"
+      ],
+      "domains": [
+        "id.wikipedia.org"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t24-lidia-pasrah",
+      "topic": "T24",
+      "keys": [
+        "lidia",
+        "pasrah",
+        "dimaafkan",
+        "bahan"
+      ],
+      "text": "Cerita Lidia pasrah lalu dimaafkan jadi bahan diskusi campur bahasa",
+      "sources": [
+        "https://www.penana.com/story/230744/lidia-istriku-yang-meminta-maaf/issue/1"
+      ],
+      "domains": [
+        "www.penana.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-introvert-zona",
+      "topic": "T3",
+      "keys": [
+        "introvert",
+        "zona",
+        "coba",
+        "pertama"
+      ],
+      "text": "Pola cerita pengalaman pertama jadi panitia kampus oleh mahasiswa introvert yang coba keluar zona nyaman",
+      "sources": [
+        "https://osc.medcom.id/community/menjadi-panitia-di-acara-kampus-4745"
+      ],
+      "domains": [
+        "osc.medcom.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-horor-kemah",
+      "topic": "T3",
+      "keys": [
+        "horor",
+        "kemah",
+        "tampil",
+        "terakhir"
+      ],
+      "text": "Cerita horor saat jadi panitia ospek, malam terakhir kemah gabungan tiap kelompok wajib tampil",
+      "sources": [
+        "https://www.kaskus.co.id/thread/6170405db24bf16a622dceb3/kisah-nyata-horror---pengalaman-jadi-panitia-ospek"
+      ],
+      "domains": [
+        "www.kaskus.co.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-kendala-internal",
+      "topic": "T3",
+      "keys": [
+        "kendala",
+        "internal",
+        "eksternal",
+        "biaya"
+      ],
+      "text": "Pola laporan pertanggungjawaban konsumsi berisi anggota, tugas, kendala internal eksternal, dan rincian biaya",
+      "sources": [
+        "https://id.scribd.com/document/346622954/LPJ-Konsumsi"
+      ],
+      "domains": [
+        "id.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-peserta-mengikuti",
+      "topic": "T3",
+      "keys": [
+        "peserta",
+        "mengikuti",
+        "dinyatakan",
+        "hadir"
+      ],
+      "text": "Peserta yang lolos seleksi berkas wajib mengikuti wawancara dan dinyatakan gugur jika tidak hadir.",
+      "sources": [
+        "https://formadiksi.um.ac.id/wp-content/uploads/2023/02/Panduan-Open-Recruitment-Pengurus-Formadiksi-UM-Tahun-2023.pdf"
+      ],
+      "domains": [
+        "formadiksi.um.ac.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-berharga-tambah",
+      "topic": "T3",
+      "keys": [
+        "berharga",
+        "tambah",
+        "relasi",
+        "organisasi"
+      ],
+      "text": "Melok panitia iso tambah relasi lan pengalaman organisasi sing berharga rek",
+      "sources": [
+        "https://www.instagram.com/p/De_qGcwlNt9/"
+      ],
+      "domains": [
+        "www.instagram.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-pelantikan-kanthi",
+      "topic": "T3",
+      "keys": [
+        "pelantikan",
+        "kanthi",
+        "wacan",
+        "basmalah"
+      ],
+      "text": "Monggo dibuka acara pelantikan pengurus anyar kanthi wacan basmalah sesarengan",
+      "sources": [
+        "https://www.studocu.id/id/document/universitas-muhammadiyah-surabaya/badan-eksekutif-mahasiswa-fkip/teks-mc-pelantikan-bem-dpm-dan-hima-fkip-umsurabaya/130082085"
+      ],
+      "domains": [
+        "www.studocu.id"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-lpj-bem",
+      "topic": "T3",
+      "keys": [
+        "lpj",
+        "bem",
+        "km",
+        "ditanyakan"
+      ],
+      "text": "LPJ BEM KM ditanyakan sudah selesai atau belum dan diminta segera dikumpulkan agar dapat dilakukan demisioner.",
+      "sources": [
+        "https://id.scribd.com/document/630861277/LPJ-OK-compressed-pdf"
+      ],
+      "domains": [
+        "id.scribd.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-briefing-barisan",
+      "topic": "T3",
+      "keys": [
+        "briefing",
+        "barisan",
+        "kating",
+        "jurusan"
+      ],
+      "text": "Panitia ospek jurusan lagi briefing, kating-kating podo ngatur barisan maba anyar.",
+      "sources": [
+        "https://www.tiktok.com/@bolehtaunamakamu/video/7342363566269369606"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t3-dema-kabinet",
+      "topic": "T3",
+      "keys": [
+        "dema",
+        "kabinet",
+        "evaluasi",
+        "proker"
+      ],
+      "text": "Rapat DEMA wingi rame, arek-arek bahas kabinet anyar karo evaluasi proker sing gagal.",
+      "sources": [
+        "https://deepublishstore.com/blog/mahasiswa/apa-itu-demisioner/"
+      ],
+      "domains": [
+        "deepublishstore.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t7-fb-kaskus",
+      "topic": "T7",
+      "keys": [
+        "fb",
+        "kaskus",
+        "akhir",
+        "komunitas"
+      ],
+      "text": "Akhir 2000an rame komunitas nang Kaskus karo FB rek, sampek saiki sik rame",
+      "sources": [
+        "https://x.com/hikisakanakun/status/2106718374940287252"
+      ],
+      "domains": [
+        "x.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t7-ngomonge-kritik",
+      "topic": "T7",
+      "keys": [
+        "ngomonge",
+        "kritik",
+        "sosial",
+        "guyonan"
+      ],
+      "text": "Gen Z saiki ngomonge gawe meme rek, kritik sosial tapi guyonan",
+      "sources": [
+        "https://www.liputan6.com/hot/read/5511864/25-gen-z-meme-yang-populer-di-tiktok-facebook-instagram-dan-twitter"
+      ],
+      "domains": [
+        "www.liputan6.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-koyo-sindir",
+      "topic": "T8",
+      "keys": [
+        "koyo",
+        "sindir",
+        "pedes",
+        "terasi"
+      ],
+      "text": "Stand up sindir pemerintah, pedes rek rasane koyo sambel terasi",
+      "sources": [
+        "https://www.youtube.com/watch?v=gYd8Wp0hifU"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-cuci-menarik",
+      "topic": "T8",
+      "keys": [
+        "cuci",
+        "menarik",
+        "ngeri",
+        "uang"
+      ],
+      "text": "Roasting karo crito lucu soal cuci uang lan masalah pemerintah, ngeri tapi menarik",
+      "sources": [
+        "https://www.tiktok.com/@thewordwave_/video/7591521311139122439"
+      ],
+      "domains": [
+        "www.tiktok.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-komandan-buahe",
+      "topic": "T8",
+      "keys": [
+        "komandan",
+        "buahe",
+        "dimulai",
+        "ilustrasi"
+      ],
+      "text": "Komandan ngamuk mergane anak buahe keturon pas rapat dimulai, konten ilustrasi viral",
+      "sources": [
+        "https://www.facebook.com/bastianagus1994/videos/️konten-ilustratifviral️komandan-semprot-anggota-dpr-yang-tidur-saat-rapat-dimul/947623914934267/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-komika-ngenyek",
+      "topic": "T8",
+      "keys": [
+        "komika",
+        "ngenyek",
+        "polisi",
+        "penguasa"
+      ],
+      "text": "Komika viral bar ngenyek penguasa, terus onok laporan polisi dadakan",
+      "sources": [
+        "https://www.youtube.com/watch?v=okMwHQjSx-M"
+      ],
+      "domains": [
+        "www.youtube.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    },
+    {
+      "id": "t8-elus-dodo",
+      "topic": "T8",
+      "keys": [
+        "elus",
+        "dodo",
+        "kelakuane",
+        "ngenes"
+      ],
+      "text": "Elus dodo delok kelakuane pejabat, lucu tapi ngenes",
+      "sources": [
+        "https://www.facebook.com/gecek.godek/videos/standup-komedy-satir-kelakuan-pejabat-yang-bikin-kita-elus-dadastandupcomedykome/2013697182640160/"
+      ],
+      "domains": [
+        "www.facebook.com"
+      ],
+      "confidence": 1,
+      "varian": []
+    }
+  ]
+}

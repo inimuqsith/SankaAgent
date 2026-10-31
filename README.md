@@ -97,7 +97,7 @@ seeding for tests. The loader never creates directories.
 `SOUL.md` is the voice: identity, personality, register, behavioural rules, backstory, relationships,
 and four dialogue examples. It stays Indonesian and short, and it must not duplicate the moves.
 
-`sanka/data/patterns.json` is the runtime character sheet: 30-60 conditional moves ("if this, then
+`sanka/data/patterns.json` is the runtime character sheet: conditional moves ("if this, then
 that") tagged with a register, a gender target, and toxicity/adult gates. Each turn the engine reads
 the last messages, computes the room register, and picks `engine.character.patterns` lines (0-6,
 default 0; the production host uses 4). Selection is deterministic: keyword hits first, then cosine
@@ -303,7 +303,7 @@ mematikan seeding untuk tes. Loader tidak pernah membuat direktori.
 `SOUL.md` adalah suara: identitas, kepribadian, register, aturan perilaku, latar, hubungan, dan empat
 contoh dialog. Isinya tetap Indonesia, pendek, dan tidak menduplikasi gerakan.
 
-`sanka/data/patterns.json` adalah lembar karakter runtime: 30-60 gerakan bersyarat ("kalau ini, maka
+`sanka/data/patterns.json` adalah lembar karakter runtime: gerakan bersyarat ("kalau ini, maka
 itu") dengan tag register, target gender, dan gate toxicity/adult. Tiap turn engine membaca pesan
 terakhir, menghitung register ruangan, lalu memilih `engine.character.patterns` baris (0-6, default 0;
 host produksi memakai 4). Pemilihan deterministik: kata kunci dulu, lalu cosine vektor MiniLM yang

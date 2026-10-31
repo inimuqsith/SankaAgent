@@ -17,7 +17,7 @@ Checklist for the soul engine, the gateway contract, and the pattern-based chara
 
 ## Character layer
 
-- [x] `sanka/data/patterns.json`: 30-60 conditional moves with `register`, `keys`, `target`, toxicity/adult gates, `say` exemplars, `avoid`, `priority`, `always`, `source`.
+- [x] `sanka/data/patterns.json`: conditional moves (no upper cap, at least 30) with `register`, `keys`, `target`, toxicity/adult gates, `say` exemplars, `avoid`, `priority`, `always`, `source`.
 - [x] Only the six invariants are `always` (language lock, length, question limit, grounding, floor, curse trigger); they need no keyword hit and never crowd the register moves out of the sort.
 - [x] `sanka/data/pattern_vectors.json`: one 384-dim unit vector per pattern for `paraphrase-multilingual-MiniLM-L12-v2`.
 - [x] `sanka/engine/patterns.py`: `load_patterns` (cache, corrupt = empty, malformed rows dropped), `room_register`, `select_patterns` (gate filter, keyword hits, cosine, deterministic sort by score/priority/id, 180-char render).
@@ -30,11 +30,23 @@ Checklist for the soul engine, the gateway contract, and the pattern-based chara
 - [x] `target.py`: typing-style gender, avatar only as a fallback, `/gender` override; unsure means gentle and no curse.
 - [x] `scripts/replay.py` replays `tests/data/scenarios.json` through the live prompt and writes `workspace/replay-<id>.json` with a hard-fail count.
 
+## Knowledge layer
+
+- [x] `sanka/data/fakta.json`: 306 public facts from the research corpus, each with `topic`, `keys`, `text`, `sources`, and at least one `domain` (`confidence` 3 when two or more domains back it); no personal data, no raw transcripts.
+- [x] `sanka/data/fakta_vectors.json`: one 384-dim unit vector per fact for `paraphrase-multilingual-MiniLM-L12-v2`.
+- [x] `sanka/engine/knowledge.py`: `load_facts` (cache, corrupt = empty), `select_facts` (keyword hits or cosine ≥0.55, deterministic sort by score then id, 220-char render), keyword fallback without the model.
+- [x] `sanka/engine/agent.py` selects `config.character.facts` lines per turn and passes them to `character_block`; the prompt header is `## Known facts (use only when the room asks; never invent beyond these)`.
+- [x] `CharacterConfig.facts` clamped 0..6; `config.yaml` (3), `config.example.yaml` (0), and the admin template carry `facts`.
+- [x] `scripts/fakta.py`: `--check` (schema, ≥1 domain, URL sources, vector coverage), `--embed` (atomic), `--stats`.
+- [x] `scripts/grow.py`: `--facts`/`--patterns` + `--dry-run`/`--no-rewrite`; clusters the corpus at 0.82 cosine with ≥2 shared words, skips clusters already covered by a fact (0.60) or a pattern (0.80), so a rerun adds nothing twice. Declarative `context`/`description`/`idiom` rows land verbatim; `line`/`comment`/`meme` rows are rewritten by Muse (empty reply → default model, no model → skipped). Keys rank acronyms (UKM/BEM/UKT) first so campus vocabulary is reachable by keyword. 306 facts / 72 patterns are the output of this script, not hand-written rows.
+- [x] Facts and moves stay separate: the pattern selector never reads `fakta.json`, the fact selector never reads `patterns.json`.
+
 ## Character data contract
 
 - [x] The runtime character sheet is `sanka/data/patterns.json` (plus `pattern_vectors.json`); there is no second source of moves.
 - [x] No raw transcripts, private exports, phone numbers, or dataset copies live in the repo or in the prompt.
 - [x] Every `say` line comes from an owner-approved correction; `content` is imperative, one line, 10-200 chars.
+- [x] Every `say` line and every `fakta.text` starts with a capital letter; `--check` fails otherwise. A `say` line may not be reused across rows.
 - [x] Every pattern has a register the selector can reach, so no row is dead weight (`--check` fails otherwise).
 - [x] Editing content requires `--check` then `--embed`; the selector ignores vectors whose model/dim do not match.
 
@@ -65,7 +77,7 @@ Checklist for the soul engine, the gateway contract, and the pattern-based chara
 
 - [x] `pytest -q`.
 - [x] `python -m sanka selftest`.
-- [x] `python scripts/patterns.py --check` and `--embed` (43 patterns, 384 dims).
+- [x] `python scripts/patterns.py --check` and `--embed` (72 patterns, 384 dims).
 - [x] Selector smoke: comfort first for a distressed message, no roast pattern at toxicity 1, count 0 returns `[]`, banter returns the roast move first.
 - [x] Workbook roundtrip: `--build-xlsx`, edit one `konten` cell, `--apply-xlsx`, `--check` clean.
 - [x] `python -m sanka config import` mirrors `patterns` into the `engine` document.

@@ -38,6 +38,7 @@ from .inbound import Gateway, GatewayError, Inbound
 from .llm import LLM
 from .memory import MemoryBackend, MemoryContext, memory_status
 from .character import effective_limits, polish, regulate
+from .knowledge import select_facts
 from .permissions import command_allowed, command_patterns, commands_for, tool_patterns, tools_for
 from .privacy import PrivacyService
 from .patterns import room_register, select_patterns
@@ -652,6 +653,10 @@ class Agent:
                         limits=limits,
                         messages=[entry.text for entry in messages[-8:]],
                     )
+                    facts = select_facts(
+                        self.config.character.facts,
+                        messages=[entry.text for entry in messages[-8:]],
+                    )
                     character = character_block(
                         limits,
                         target,
@@ -659,6 +664,7 @@ class Agent:
                         gate=self.config.character.gender_gate,
                         jabs=self.config.character.roast_jabs,
                         patterns=patterns,
+                        facts=facts,
                     )
                     currents_block = ""
                     if self.currents is not None:

@@ -78,3 +78,79 @@ that"), and leave the repo small enough to audit.
   `config.load_config` (51 statements), `prompts.character_block` (long prose lines).
 
 **Open** — real WhatsApp end-to-end needs production credentials/QR; SonarCloud gate needs a run.
+
+## 2026-10-31 — riset korpus 1000 item: 15 pola baru + lapisan fakta
+
+**Riset** (`scripts/research.py`, 24 area, 3 run)
+- 1000 item unik dari Muse (`muse-spark-1.3-contributor`): 854 sintetis, 146 kutipan asli; 138 klaim
+  muncul di ≥2 domain, 59 di antaranya berjenis fakta.
+- Artefak: `workspace/research/<stamp>/` (balasan mentah Muse, `filtered.json`, `sources.json`,
+  workbook 8 sheet), `study.json`/`study.xlsx` (27 konstruksi berulang, leksikon, konteks 24 area),
+  `corpus_vectors.json` (1000 × 384), `fakta.json` (klaim + domain + URL). Salinan luar repo:
+  `~/sanka-research/20261031-korpus/` dengan `manifest.json` berisi sha256.
+
+**Pola** (`sanka/data/patterns.json`, 43 → 58)
+- 15 baris `riset_*`: curhat, kasar-akrab, Jawa Timuran, Sunda, konflik, menolak, kerja, bola, meme,
+  sindiran, singkatan chat, kampus UIN, grup campuran, ajak kumpul, sapa harian. 24 `say` dari
+  korpus; `source: derived`; `komentar` menunjuk run + topik.
+- Gate sindiran politik `min_toxicity` 1 → 0: sindiran bukan soal kekasaran ruangan. Diuji muncul di
+  ruangan toxicity 0 dan tetap muncul di 1-2.
+- `--check` → `patterns=58 ok`; `--embed` → `vectors=58 dim=384`.
+
+**Fakta** (`sanka/data/fakta.json`, lapisan baru)
+- 59 fakta publik, 129 domain sumber, tiap baris wajib ≥2 domain; `--check` ok, `--embed` 59 × 384.
+- `sanka/engine/knowledge.py`: `load_facts` (cache, rusak = kosong) + `select_facts` (kata kunci khas
+  atau cosine ≥0.55, sort deterministik skor lalu id, render ≤220). `agent.py` memilih
+  `character.facts` per turn dan `character_block` merender `## Known facts`.
+- `CharacterConfig.facts` 0..6; host `config.yaml` 3, `config.example.yaml` dan template admin 0.
+- Smoke: "uin malang maba mahad" → fakta mahad peringkat 1; "sekaten apa?" → 2 fakta Sekaten;
+  "orang bandung ke orang tua pakai bahasa apa?" → fakta lemes/loma peringkat 1; "wkwk" → kosong.
+
+**Verifikasi** — `pytest -q` 403 passed; `sanka selftest` OK; `scripts/patterns.py --check` dan
+`scripts/fakta.py --check` bersih.
+
+**Koreksi pemilik (ejaan + gaya)** — `nguyu` → `ngguyu` di `riset_konflik_netral` (korpus: 5×
+"ngguyu", 1× "nguyu"); 4 `say` yang dipakai di dua pola diganti baris korpus lain; semua 55 `say` dan
+59 `fakta.text` kini diawali huruf besar. Validator menolak `say`/fakta berhuruf kecil dan `say` ganda
+lintas baris (2 tes baru). Vektor pola tidak berubah (embed = `content + keys`); vektor fakta
+di-embed ulang. `pytest -q` 406 passed.
+
+## 2026-11-01 — tumbuh dari korpus: 306 fakta, 72 pola
+
+Goal: stop losing true material from the 1000-item corpus; every uncovered fact lands in
+`fakta.json` and every uncovered style cluster becomes a pattern.
+
+**Aturan bukti** — `scripts/fakta.py` `MIN_DOMAINS` 2 → 1: satu URL sudah cukup, `confidence` 3 hanya
+saat ≥2 domain itu juga `size >= 2`. `AGENTS.md`/`TASK.md` mengikuti (≥1 URL sumber, dua domain
+menaikkan keyakinan). Cap pola 30-60 dihapus (`>= 30` di dua tes, TASK/README).
+
+**Pola kurasi (7)** — `riset_oprec`, `riset_organisasi_pilih`, `riset_panitia_divisi`,
+`riset_mubes_demisioner`, `riset_ospek`, `riset_proker_dana`, `riset_ukt_jalur`: kosakata organisasi
+kampus (UKM/BEM/HIMA, open recruitment, mubes, demisioner, panitia, ospek, proker, danus, UKT,
+SPAN-PTKIN, KIP Kuliah) yang belum punya baris. 60 → 67 pola.
+
+**`scripts/grow.py`** (baru) — korpus JSONL → fakta/pola: embed MiniLM, gugus greedy (0.82 cosine + ≥2
+kata isi), lewati gugus yang sudah tertutup fakta (0.60) atau pola (0.80) sehingga rerun idempoten.
+`context`/`description`/`idiom` masuk apa adanya; `line`/`comment`/`meme` ditulis ulang lewat
+`research.client` (Muse) — Muse `muse-spark-1.3-contributor` selalu balas kosong untuk prompt JSON ini
+(reasoning menghabiskan budget, `finish=length`), jadi setelah balasan kosong pertama panggilan pindah
+ke model default repo pada budget 1500 token; panggilan diparalelkan 4 dan hasilnya dirakit berurutan
+supaya id/urutan tetap deterministik. Kunci: kata ≥4 huruf + akronim (UKM/BEM/UKT) dengan prioritas
+tertinggi, karena `[a-z]{4,}` lama membuang kosakata kampus yang justru jadi tujuan tugas ini.
+
+**Hasil** — `--facts --dry-run` `clusters=976 added=252 skipped=724` (tanpa tulis); run nyata
+`added=247` → `fakta=306`, `vectors=306 dim=384`, `--check` bersih. `--patterns` `added=5` →
+`patterns=72`, `vectors=72 dim=384`, `--check` bersih. Satu baris dibuang validator: `t3-tombok` (teks
+<10 karakter).
+
+**Verifikasi** — `pytest -q` 406 passed; `sanka selftest` OK. Smoke seleksi: query kampus natural
+("rek aku arep melu ukm teater komedi opo mapala nang uin malang") → fakta UKM peringkat 1; "bem hima
+ukm bedane opo rek nang kampus" → fakta BEM/HIMA peringkat 1; "mubes kemarin gimana hasil lpj
+pengurus lama demisioner" → `riset_mubes_demisioner` peringkat 1 (neutral dan serious); "oprec bem
+kapan dibuka" (soal) → `riset_oprec` peringkat 3.
+
+**Batas yang tersisa** — dua smoke 4-kata dari rencana tidak lolos ambang: "ukm uin malang apa aja
+rek" dan "mubes kemarin gimana" hanya menyumbang 1-2 keyword hit (bobot 0,3 di `knowledge._score`,
+0,1 di `patterns._score`), sedangkan cosine MiniLM untuk query pendek naik-turun — baris UKM jatuh ke
+peringkat 9, `riset_mubes_demisioner` ke peringkat 9 di register neutral. Perbaikannya ada di bobot
+selector (`KEY_WEIGHT`/`HIT_WEIGHT`), bukan di data, dan sengaja tidak diubah di sini.

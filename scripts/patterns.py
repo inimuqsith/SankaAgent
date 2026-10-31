@@ -148,7 +148,7 @@ def _gate_deficits(where: str, row: dict) -> list[str]:
     return out
 
 
-def _text_deficits(where: str, row: dict, seen: set[str]) -> list[str]:
+def _text_deficits(where: str, row: dict, seen: set[str], say_seen: set[str]) -> list[str]:
     out: list[str] = []
     content = row.get("content")
     if not isinstance(content, str) or not CONTENT_MIN <= len(content) <= CONTENT_MAX:
@@ -169,6 +169,15 @@ def _text_deficits(where: str, row: dict, seen: set[str]) -> list[str]:
             for item in items
             if not isinstance(item, str) or not item.strip() or len(item) > limit
         ]
+    says = row.get("say")
+    for item in says if isinstance(says, list) else []:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        if item[:1].isalpha() and item[:1].islower():
+            out.append(f"{where}: say harus diawali huruf besar {item!r}")
+        if item in say_seen:
+            out.append(f"{where}: say ganda lintas baris {item!r}")
+        say_seen.add(item)
     comment = row.get("komentar")
     if comment is not None and not isinstance(comment, str):
         out.append(f"{where}: komentar harus teks")
@@ -186,13 +195,14 @@ def validate(body: dict) -> list[str]:
         out.append("header: patterns kosong")
     seen_ids: set[str] = set()
     seen_content: set[str] = set()
+    seen_say: set[str] = set()
     for index, row in enumerate(found):
         where = f"patterns[{index}]"
         out += _id_deficits(where, row, seen_ids)
         out += _register_deficits(where, row)
         out += _key_deficits(where, row)
         out += _gate_deficits(where, row)
-        out += _text_deficits(where, row, seen_content)
+        out += _text_deficits(where, row, seen_content, seen_say)
     return out
 
 

@@ -115,6 +115,7 @@ engine:
     roast_jabs: 1
     gender_avatar: false
     patterns: 0
+    facts: 0
     max_questions: 1
   affect:
     enabled: true

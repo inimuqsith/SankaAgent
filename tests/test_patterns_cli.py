@@ -51,7 +51,7 @@ def test_shipped_catalogue_passes_the_schema() -> None:
     body = cli.load()
 
     assert cli.validate(body) == []
-    assert 30 <= len(body["patterns"]) <= 60
+    assert len(body["patterns"]) >= 30
 
 
 def test_validate_names_each_deficit() -> None:
@@ -78,6 +78,16 @@ def test_validate_names_each_deficit() -> None:
     assert "source 'ngarang'" in joined
 
 
+def test_validate_requires_capital_start_for_say() -> None:
+    body = book(row("kecil", say=["halo semua"]))
+    assert "huruf besar" in "\n".join(cli.validate(body))
+
+
+def test_validate_flags_say_reused_across_rows() -> None:
+    body = book(row("satu", say=["halo semua"]), row("dua", say=["halo semua"]))
+    assert "say ganda" in "\n".join(cli.validate(body))
+
+
 def test_always_pattern_may_omit_keys() -> None:
     assert cli.validate(book(row("invarian", keys=[], always=True))) == []
     assert "butuh minimal satu key" in "\n".join(cli.validate(book(row("kosong", keys=[]))))
@@ -85,7 +95,7 @@ def test_always_pattern_may_omit_keys() -> None:
 
 def test_build_and_apply_workbook_roundtrip(tmp_path) -> None:
     body = book(
-        row("satu", keys=["capek", "gak kuat"], say=["boleehhh"], avoid=["bukan drama"]),
+        row("satu", keys=["capek", "gak kuat"], say=["Boleehhh"], avoid=["bukan drama"]),
         row("dua", content="Konten kedua yang utuh."),
     )
     path = tmp_path / "review.xlsx"
@@ -95,7 +105,7 @@ def test_build_and_apply_workbook_roundtrip(tmp_path) -> None:
     header = built[0]
     assert header[:6] == ["id", "register", "target", "level", "keys", "konten"]
     assert built[1][header.index("level")] == "tox 0-4 / adult 0+"
-    assert built[1][header.index("contoh")] == "boleehhh"
+    assert built[1][header.index("contoh")] == "Boleehhh"
 
     built[1][header.index("konten")] = "Konten hasil edit pemilik."
     built[1][header.index("keys")] = "capek, numpuk"

@@ -216,6 +216,7 @@ class CharacterConfig:
     roast_jabs: int = 1
     gender_avatar: bool = False  # avatar hanya sinyal cadangan
     patterns: int = 0  # pola runtime per turn, 0..6
+    facts: int = 0  # fakta pengetahuan per turn, 0..6
     max_questions: int = 1  # pertanyaan per balasan, 1..2
 
 
@@ -786,6 +787,7 @@ def load_config(
             roast_jabs=_clamped(character_raw.get("roast_jabs"), 1, 1, 3),
             gender_avatar=_bool(character_raw.get("gender_avatar"), False),
             patterns=_clamped(character_raw.get("patterns"), 0, 0, 6),
+            facts=_clamped(character_raw.get("facts"), 0, 0, 6),
             max_questions=_clamped(character_raw.get("max_questions"), 1, 1, 2),
         ),
         affect=AffectConfig(
