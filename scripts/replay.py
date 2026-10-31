@@ -24,6 +24,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from _paths import safe_path  # noqa: E402
 
 from sanka.engine.character import (  # noqa: E402
     ASSISTANT_TELL,
@@ -349,7 +352,11 @@ async def main_async(args) -> int:
             use_judge=not args.no_judge,
             use_regulate=not args.no_regulate,
         )
-        target = Path(args.export) if args.export else OUT / f"replay-{scenario['id']}.json"
+        target = (
+            safe_path(OUT.parent, Path(args.export))
+            if args.export
+            else OUT / f"replay-{scenario['id']}.json"
+        )
         target.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
         target.write_text(payload, encoding="utf-8")

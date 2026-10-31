@@ -25,12 +25,30 @@ services:
     env_file: .env
     environment:
       SANKA_DATABASE_URL: postgresql+psycopg://sanka:CHANGE_ME@postgres:5432/sanka
+      GOOGLE_SERVICE_ACCOUNT_PATH: /run/secrets/google-sa.json
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./roles.yaml:/app/roles.yaml
       - ./SOUL.md:/app/SOUL.md
       - ./.sanka:/app/.sanka
+      - ./secrets/google-sa.json:/run/secrets/google-sa.json:ro
       - /var/run/docker.sock:/var/run/docker.sock
+
+  sandbox-proxy:
+    image: ubuntu/squid:latest
+    restart: unless-stopped
+    volumes:
+      - ./deploy/sandbox-proxy/squid.conf:/etc/squid/squid.conf:ro
+    networks:
+      - sanka-sandbox
+      - dokploy-network
 
 volumes:
   sanka-pg:
+
+networks:
+  sanka-sandbox:
+    name: sanka-sandbox
+    internal: true
+  dokploy-network:
+    external: true

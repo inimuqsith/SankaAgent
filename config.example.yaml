@@ -13,9 +13,13 @@ sandbox:
   runtime: ''
   image: docker.io/library/python:3.12-slim
   timeout_seconds: 120
-  network: none
+  network: sanka-sandbox
   host_workspace: null
   env: []
+  proxy: http://sandbox-proxy:3128
+  pids_limit: 256
+  memory: 512m
+  cpus: 1.0
 web_search:
   base_url: ''
   timeout_seconds: 10

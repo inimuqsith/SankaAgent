@@ -1,6 +1,7 @@
 messages:
   agent.api_error: "Sorry, the model is erroring. Try again in a moment."
   agent.command_denied: "🔒 Command /{name} is not allowed for role {roles}."
+  agent.cross_chat_blocked: "I can't quote another room. I can summarize without details."
   agent.empty_reply: "(empty)"
   agent.help_hint: "Type /help for the command list."
   agent.no_llm: "error: LLM is not available for prompt recipes"

@@ -1,6 +1,7 @@
 messages:
   agent.api_error: "Maaf, model sedang error. Coba lagi sebentar."
   agent.command_denied: "🔒 Command /{name} tidak diizinkan untuk role {roles}."
+  agent.cross_chat_blocked: "Aku nggak bisa kutip isi room lain. Kalau perlu, aku ringkas tanpa detail."
   agent.empty_reply: "(kosong)"
   agent.help_hint: "Ketik /help untuk daftar command."
   agent.no_llm: "error: LLM tidak tersedia untuk resep prompt"

@@ -308,8 +308,10 @@ async def selftest(config: Config) -> int:
         ctx = ToolContext(config, role, tool_patterns((role,)), memory=memory, skills=skills)
         specs = {handler.name: handler for handler in REGISTRY.by_name.values() if not handler.hidden}
 
-        wrote = await execute(specs, "write", {"path": "selftest.txt", "content": "sanka-selftest"}, ctx)
-        read = await execute(specs, "read", {"path": "selftest.txt"}, ctx)
+        wrote = await execute(
+            specs, "write", {"path": "private/selftest.txt", "content": "sanka-selftest"}, ctx
+        )
+        read = await execute(specs, "read", {"path": "private/selftest.txt"}, ctx)
         passed = wrote.startswith("ok:") and "sanka-selftest" in read
         results.append(_report("write/read", "PASS" if passed else "FAIL", "" if passed else f"{wrote} | {read[:80]}"))
 

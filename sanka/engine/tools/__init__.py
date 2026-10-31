@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from ..config import LEGACY_DATA, Config
@@ -17,6 +18,10 @@ MAX_ERROR = 500
 TRUNCATED = "\n...[dipotong: hasil melebihi 40000 karakter; persempit query/read range atau minta bagian lanjutan]"
 
 FAMILIES = frozenset({"shell", "read", "write", "web_search", "sandbox", "mcp"})
+
+PUBLIC = "public"
+SCRATCH = "scratch"
+PRIVATE = "private"
 
 
 class ToolContext:
@@ -63,11 +68,28 @@ class ToolContext:
         self.used: list[str] = []
         self.sent: list[dict] = []
         self.reads: set[str] = set()
+        self.cross_reads: list[str] = []
         self.memory_hits: list = []
 
     @property
     def role(self) -> Role | None:
         return self.roles[0] if self.roles else None
+
+    @property
+    def trusted(self) -> bool:
+        return trusted_roles(self.roles)
+
+    @property
+    def roots(self) -> tuple[Path, ...]:
+        return workspace_roots(self.config, self.roles, self.chat_id)
+
+    @property
+    def scratch(self) -> Path | None:
+        return (
+            self.config.workspace / SCRATCH / safe_chat(self.chat_id)
+            if self.chat_id
+            else None
+        )
 
     @property
     def memory_admin(self) -> bool:
@@ -85,20 +107,73 @@ def _int(args: dict, key: str, default: int) -> int:
         return default
 
 
-def resolve_path(config: Config, raw: str) -> Path:
-    """Resolve path terhadap workspace; tolak apa pun yang keluar dari workspace."""
+def safe_chat(chat_id: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9_.-]", "_", str(chat_id or "")).strip("._")
+    return (value or "chat")[:80]
+
+
+def trusted_roles(roles) -> bool:
+    return any("*" in (role.tools or ()) for role in roles)
+
+
+def workspace_roots(config: Config, roles, chat_id: str) -> tuple[Path, ...]:
     base = config.workspace.resolve()
-    path = Path(str(raw)).expanduser()
+    if trusted_roles(roles):
+        return (base,)
+    found = [base / PUBLIC]
+    if chat_id:
+        found.append(base / SCRATCH / safe_chat(chat_id))
+    return tuple(found)
+
+
+def resolve_path(config: Config, raw: str, roots: tuple[Path, ...]) -> Path:
+    """Resolve path dan tolak apa pun yang keluar dari root yang diizinkan role."""
+    text = str(raw or "").strip()
+    if not text:
+        raise PermissionError("path kosong")
+    base = config.workspace.resolve()
+    path = Path(text).expanduser()
     path = (path if path.is_absolute() else base / path).resolve()
     if path == LEGACY_DATA or path.is_relative_to(LEGACY_DATA):
         raise PermissionError("path lama ~/.sanka sudah dipindah ke .sanka di project")
-    if not path.is_relative_to(base):
-        raise PermissionError(f"path di luar workspace: {raw}")
+    if not any(path.is_relative_to(root) for root in roots):
+        raise PermissionError(f"path tidak diizinkan untuk role ini: {text}")
     return path
 
 
+def resolve_for(config: Config, raw: str, roles, chat_id: str) -> Path:
+    """Map prefix model-facing (`public/`, `scratch/`, `private/`) lalu resolve per role."""
+    text = str(raw or "").strip()
+    if not text:
+        raise PermissionError("path kosong")
+    trusted = trusted_roles(roles)
+    if (
+        not trusted
+        and not chat_id
+        and not (text == PUBLIC or text.startswith(PUBLIC + "/"))
+    ):
+        raise PermissionError("scratch butuh chat aktif")
+    if text == PUBLIC or text.startswith(PUBLIC + "/"):
+        target = text
+    elif text == SCRATCH or text.startswith(SCRATCH + "/"):
+        rest = text[len(SCRATCH) :].lstrip("/")
+        target = str(Path(SCRATCH) / safe_chat(chat_id) / rest)
+    elif text == PRIVATE or text.startswith(PRIVATE + "/") or trusted:
+        target = text
+    else:
+        target = str(Path(SCRATCH) / safe_chat(chat_id) / text)
+    return resolve_path(config, target, workspace_roots(config, roles, chat_id))
+
+
 def _resolve(ctx: ToolContext, raw: str) -> Path:
-    return resolve_path(ctx.config, raw)
+    return resolve_for(ctx.config, raw, ctx.roles, ctx.chat_id)
+
+
+def _resolve_write(ctx: ToolContext, raw: str) -> Path:
+    path = _resolve(ctx, raw)
+    if not ctx.trusted and path.is_relative_to(ctx.config.workspace.resolve() / PUBLIC):
+        raise PermissionError("public hanya read-only untuk role ini")
+    return path
 
 
 def truncate(text: str) -> str:

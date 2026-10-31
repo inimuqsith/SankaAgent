@@ -825,6 +825,11 @@ class Agent:
                     if review.handled:
                         return
                     reply = review.reply
+                    if reply and tool_ctx.cross_reads and guard.cross_chat_leak(
+                        reply, tool_ctx.cross_reads
+                    ):
+                        log.warning("cross-chat verbatim reply blocked chat=%s", chat_id)
+                        reply = t("agent.cross_chat_blocked", self.soul.language)
 
                 professional = bool(decision is not None and decision.mode == "professional")
                 humanize = self.config.humanize

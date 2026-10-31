@@ -55,6 +55,7 @@ def test_builtin_handlers_discovered() -> None:
     }
     assert set(TOOLS.names()) == {
         "chat_history",
+        "google",
         "mcp",
         "memory",
         "read",

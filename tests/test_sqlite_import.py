@@ -451,16 +451,16 @@ def test_upgrade_check_and_lease(tmp_path: Path) -> None:
     )
 
     info = admin_db.upgrade(config)
-    assert info["schema_version"] == "4"
+    assert info["schema_version"] == "5"
     assert info["dialect"] == "sqlite"
     assert set(info["documents"]) == {"engine", "soul", "persona", "role:guest"}
     assert any(name.endswith("whatsapp.schema") for name in info["gateways"])
 
     data = admin_db.check(config)
-    assert data["schema_version"] == "4"
+    assert data["schema_version"] == "5"
     assert data["counts"]["documents"] == 4
     assert data["lease_active"] is False
-    assert "Schema version: 4" in admin_db.format_check(data)
+    assert "Schema version: 5" in admin_db.format_check(data)
 
     db = database(tmp_path)
     assert admin_db.lease_active(db) is None

@@ -140,6 +140,27 @@ checked only in `sanka/engine/tools/__init__.py:execute`. Addresses in several r
 contexts are ordered by `priority` then name. `memory_admin: true` is required for global memory
 writes. `/approve` never calls the LLM and re-checks role permissions.
 
+### Workspace roots
+
+A role without `*` in `tools` sees only `public/` (shared, read-only) and `scratch/<chat>/`
+(writable); every other workspace path stays private. A bare member path resolves under
+`scratch/<chat>/`, explicit `public/...` is shared, and `private/...` is denied. Trusted roles (`*`
+in `tools`) keep the whole workspace and may write `public/`. The sandbox follows the same rule:
+members get `/work/public` read-only and `/work/scratch` writable, trusted roles get `/work`.
+Cross-room reads stay allowed, but a reply carrying an eight-word verbatim span from another room is
+replaced before sending.
+
+### Google Workspace
+
+`google` is an in-process tool (family `mcp`, no Node server or `mcp__*` grant). One service account
+sees every file shared with it; each sender links a Google identity once in a DM through the device
+flow (`openid email profile`). `list/read/write` check the file's explicit user permission for that
+verified email and reject `anyone`/`domain` link-sharing. Set `GOOGLE_SERVICE_ACCOUNT_PATH`,
+`GOOGLE_OAUTH_CLIENT_ID`, and `GOOGLE_OAUTH_CLIENT_SECRET`. The OAuth client is External, type
+"TVs and Limited Input devices", scopes `openid email profile` (no Drive/Docs/Sheets user scopes,
+so no sensitive-scope review).
+
+
 ## Safety and approvals
 
 | Level | Meaning | Group ceiling | DM ceiling |
@@ -159,6 +180,12 @@ auditor pass runs only when a risky entry exists.
 default mode is `yolo` (auto-approve), and `off` disables approval checks entirely - document the risk
 if you switch. Levels for tone come from `engine.character`: `toxicity` 0-4 and `adult_memes` 0-3,
 with a permanent floor (no sexual content with minors, no doxxing, no credible threats, no hate).
+
+The sandbox fails closed unless `sandbox.network` is a dedicated internal network (not `none`,
+`bridge`, `host`, or `default`) and `sandbox.proxy` points at the egress proxy. `compose.example.yaml`
+runs `sandbox-proxy` (Squid) on the internal `sanka-sandbox` network; `deploy/sandbox-proxy/squid.conf`
+blocks private destinations. `sandbox.host_workspace` must be the host path that mirrors
+`config.workspace`, with `public/` and `scratch/` present.
 
 ## Database, lease, and console
 
@@ -348,6 +375,26 @@ dan izin diperiksa hanya di `sanka/engine/tools/__init__.py:execute`. Alamat di 
 digabung, konteks diurutkan menurut `priority` lalu nama. `memory_admin: true` wajib untuk menulis
 memori global. `/approve` tidak pernah memanggil LLM dan memeriksa ulang izin role.
 
+### Root workspace
+
+Role tanpa `*` di `tools` hanya melihat `public/` (bersama, read-only) dan `scratch/<chat>/` (bisa
+ditulis); path workspace lain tetap privat. Path polos anggota dipetakan ke `scratch/<chat>/`, `public/`
+eksplisit berarti bersama, dan `private/...` ditolak. Role tepercaya (`*` di `tools`) tetap memegang
+seluruh workspace dan boleh menulis `public/`. Sandbox mengikuti aturan yang sama: anggota mendapat
+`/work/public` read-only dan `/work/scratch` yang bisa ditulis, role tepercaya mendapat `/work`. Baca
+lintas ruang tetap boleh, tetapi balasan yang memuat delapan kata verbatim dari room lain diganti
+sebelum dikirim.
+
+### Google Workspace
+
+`google` adalah tool in-process (keluarga `mcp`, tanpa server Node atau izin `mcp__*`). Satu service
+account melihat setiap file yang dibagikan kepadanya; tiap pengirim menautkan identitas Google sekali
+lewat DM dengan device flow (`openid email profile`). `list/read/write` memeriksa izin user eksplisit
+untuk email terverifikasi itu dan menolak link-sharing `anyone`/`domain`. Isi
+`GOOGLE_SERVICE_ACCOUNT_PATH`, `GOOGLE_OAUTH_CLIENT_ID`, dan `GOOGLE_OAUTH_CLIENT_SECRET`. OAuth
+client-nya External, tipe "TVs and Limited Input devices", scope `openid email profile` (tanpa scope
+Drive/Docs/Sheets milik user, jadi tidak perlu review sensitive scope).
+
 ## Keamanan dan approval
 
 | Level | Arti | Plafon grup | Plafon DM |
@@ -367,6 +414,12 @@ pembicaranya. Auditor hanya jalan kalau ada entri berisiko.
 default `yolo` (otomatis setuju), dan `off` mematikan pemeriksaan approval sepenuhnya - catat
 risikonya kalau diubah. Level nada datang dari `engine.character`: `toxicity` 0-4 dan `adult_memes`
 0-3, dengan floor permanen (tanpa konten seksual dengan anak, doxing, ancaman kredibel, kebencian).
+
+Sandbox gagal tertutup kecuali `sandbox.network` adalah network internal khusus (bukan `none`,
+`bridge`, `host`, atau `default`) dan `sandbox.proxy` menunjuk proxy egress. `compose.example.yaml`
+menjalankan `sandbox-proxy` (Squid) di network internal `sanka-sandbox`;
+`deploy/sandbox-proxy/squid.conf` memblokir tujuan privat. `sandbox.host_workspace` harus path host
+yang mencerminkan `config.workspace`, dengan `public/` dan `scratch/` sudah ada.
 
 ## Database, lease, dan console
 

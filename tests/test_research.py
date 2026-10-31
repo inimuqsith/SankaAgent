@@ -104,7 +104,8 @@ def test_item_ok_rejects_paths_urls_phones_and_long_text() -> None:
     assert research.item_ok(item("```json")) is not None
 
 
-def test_from_file_pipeline_writes_workbook(tmp_path: Path) -> None:
+def test_from_file_pipeline_writes_workbook(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(research, "OUT_ROOT", tmp_path)
     assert research.main(["--from-file", str(FIXTURE), "--out", str(tmp_path)]) == 0
     books = list(tmp_path.glob("audit-research-*.xlsx"))
     assert len(books) == 1

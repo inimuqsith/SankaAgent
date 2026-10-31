@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import xlsx  # noqa: E402
+from _paths import safe_path  # noqa: E402
 from patterns import REGISTERS, TARGETS  # noqa: E402
 
 from sanka.engine.config import load_config, load_env  # noqa: E402
@@ -38,6 +39,7 @@ from sanka.engine.patterns import load_patterns  # noqa: E402
 from sanka.engine.tools.web_search import _search_sync  # noqa: E402
 
 OUT = ROOT / "workspace" / "research"
+OUT_ROOT = OUT.parent
 MODEL = "muse-spark-1.3-contributor"  # satu-satunya varian Muse yang tersedia di plan Go
 MIN_DOMAINS, MIN_REPEATS, MIN_CONFIDENCE, GROUP_MIN = 2, 3, 2, 3
 QUERIES_PER_ROUND, HITS_PER_QUERY, QUERY_ROUNDS = 4, 6, 3
@@ -791,22 +793,28 @@ def _dump(path: Path, text: str) -> None:
     path.write_text(str(text or ""), encoding="utf-8")
 
 
+def _safe_name(value: object) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", str(value)).strip(".-") or "topic"
+
+
 def write(out, results: list[dict], *, stamped: bool = True) -> Path:
     """Tulis raw/, filtered.json, sources.json, dan workbook audit; tidak pernah menimpa."""
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
-    base = Path(out)
+    root = safe_path(OUT_ROOT, out)
+    base = root
     if stamped:
-        base = base / stamp
+        base = root / stamp
         suffix = 2
         while base.exists():
-            base = Path(out) / f"{stamp}-{suffix}"
+            base = root / f"{stamp}-{suffix}"
             suffix += 1
     base.mkdir(parents=True, exist_ok=True)
     for result in results:
+        topic = _safe_name(result["topic"])
         for name, payload in result["raw_query"].items():
-            _dump(base / "raw" / f"{result['topic']}-{name}.json", payload)
+            _dump(base / "raw" / f"{topic}-{_safe_name(name)}.json", payload)
         for name, payload in result["raw_items"].items():
-            _dump(base / "raw" / f"{result['topic']}-{name}.json", payload)
+            _dump(base / "raw" / f"{topic}-{_safe_name(name)}.json", payload)
     filtered = {
         "promoted": [row for result in results for row in result["promoted"]],
         "rejected": [
@@ -875,6 +883,8 @@ def _env() -> None:
 
 
 def _run_file(path: Path, out: Path, patterns: list[dict]) -> int:
+    path = safe_path(ROOT, path)
+    out = safe_path(OUT_ROOT, out)
     try:
         body = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -947,18 +957,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     chosen = _chosen(args.topics)
+    out = safe_path(OUT_ROOT, args.out)
     if args.dry_run:
         for tid in chosen:
             print(f"{tid} {TOPICS[tid]['label']}")
         return 0
     if args.from_file:
         _env()
-        return _run_file(Path(args.from_file), Path(args.out), load_patterns())
+        return _run_file(Path(args.from_file), out, load_patterns())
     _env()
     if not os.environ.get("OPENCODE_GO_API_KEY"):
         raise SystemExit("OPENCODE_GO_API_KEY tidak ada di .env")
     results = _run_async(chosen, args)
-    _report(results, write(Path(args.out), results))
+    _report(results, write(out, results))
     return 0
 
 

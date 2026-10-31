@@ -1,5 +1,45 @@
 # LOG
 
+## 2026-10-31 — batas workspace, sandbox, dan Google per identitas
+
+Goal: member tidak lagi membaca seluruh workspace, menjalankan sandbox dengan network bebas, atau
+memakai setiap tool Google terhadap setiap file yang dilihat service account.
+
+**Workspace** — `sanka/engine/tools/__init__.py` sekarang punya `workspace_roots`, `safe_chat`,
+`trusted_roles`, `resolve_for`, dan `_resolve_write`. Member (tanpa `*` di `tools`) hanya mendapat
+`public/` read-only dan `scratch/<chat>/`; path polos dipetakan ke scratch, `private/` ditolak, dan
+path absolut di luar root ditolak. `read`, `write`, `send`, `send_to`, `/kirim`, dan sandbox memakai
+resolver yang sama. `public/` hanya read-only untuk non-trusted; owner menulis lewat `write` atau
+sandbox tepercaya. Aset kurasi dipindah ke `.sanka/workspace/public/stickers` dan
+`humanize.reaction_stickers` diperbarui; `config import` dijalankan.
+
+**Lintas ruang** — `chat_history` cross-room mengisi `ctx.cross_reads` (600 char per body, 300 per
+quote, maksimal 50 entri); `guard.cross_chat_leak` menolak balasan yang memuat span verbatim 8 kata
+atau >=40 karakter, lalu balasan diganti `agent.cross_chat_blocked`. Parafrase tidak terdeteksi;
+tradeoff ini disengaja.
+
+**Sandbox** — `SandboxConfig` menambah `proxy`, `pids_limit`, `memory`, `cpus`. Argv sekarang selalu
+memakai `--read-only`, tmpfs `/tmp`, `--cap-drop ALL`, `no-new-privileges`, limit pids/memori/CPU,
+network internal, dan env proxy; Podman mendapat suffix `ro,Z`. Member memasang `public` read-only di
+`/work/public` dan `scratch` writable di `/work/scratch`; trusted mendapat `/work`. Tool gagal
+tertutup bila proxy kosong atau network `none`/`bridge`/`host`/`default`. `compose.example.yaml`
+menambah `sandbox-proxy` (Squid) dan network internal `sanka-sandbox`;
+`deploy/sandbox-proxy/squid.conf` memblokir tujuan privat.
+
+**Google** — Node MCP dan `mcp.servers.gworkspace` dihapus. Plugin in-process
+`sanka/vendor/google_workspace/service.py` memakai satu service account, device flow
+(`openid email profile`) per pengirim, tabel `google_identity`/`google_device` (schema v5), dan
+pengecekan izin user eksplisit per file; `anyone`/`domain` ditolak. Tool `google` (family `mcp`)
+menggantikan `mcp__*` di role member; Docs read + Sheets read/write.
+
+**Sonar** — `scripts/_paths.py` `safe_path` dipakai di `grow`, `research`, `patterns`, dan `replay`;
+`sonar.python.version` 3.12 dan exclusion vendor dipindah ke `sonar-project.properties`.
+
+**Verifikasi** — `pytest -q` 438 passed; `python -m sanka selftest` OK; smoke Podman nyata: scratch
+writable, `public` read-only, private tidak ter-mount, flag hardening terlihat di argv; `uv lock`
+regenerasi. Smoke Google live tidak dijalankan karena tidak ada service account/OAuth client/Sheet di
+mesin ini.
+
 ## 2026-11-01 — pattern character sheet, clean tree, Sonar-ready
 
 Goal: stop carrying a dirty training corpus, make the character data conditional ("if this, then

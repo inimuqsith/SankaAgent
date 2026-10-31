@@ -46,7 +46,10 @@ async def _send(args: dict, ctx: ToolContext) -> str:
 TOOL = Handler(
     name="send",
     family="write",
-    description="Kirim file dari workspace ke chat aktif (stiker/foto/dokumen dipilih otomatis).",
+    description=(
+        "Send a file from public/ or scratch/; trusted roles may send other workspace paths "
+        "(sticker/photo/document chosen automatically)."
+    ),
     fn=_send,
     aliases=("kirim_file",),
     parameters={

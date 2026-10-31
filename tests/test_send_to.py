@@ -57,7 +57,7 @@ class FailingClient:
         raise RuntimeError("koneksi putus")
 
 
-def cross_env(tmp_path, role_tools=("send_to", "chat_history")):
+def cross_env(tmp_path, role_tools=("send_to", "chat_history", "*")):
     from sanka.engine.context import ChatMessage
 
     gateway = make_gateway(tmp_path)

@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import xlsx  # noqa: E402
+from _paths import safe_path  # noqa: E402
 
 PATTERNS = ROOT / "sanka" / "data" / "patterns.json"
 VECTORS = ROOT / "sanka" / "data" / "pattern_vectors.json"
@@ -221,6 +222,9 @@ def vectors_deficits(body: dict, path: Path) -> list[str]:
 
 
 def _atomic_write(path: Path, payload: str) -> None:
+    path = safe_path(PATTERNS.parent, path)
+    if path not in {PATTERNS.resolve(), VECTORS.resolve()}:
+        raise SystemExit(f"refusing to write outside data: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
     temp.write_text(payload, encoding="utf-8")

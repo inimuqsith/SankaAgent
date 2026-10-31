@@ -190,7 +190,7 @@ def test_ensure_adds_missing_columns_and_bumps_version(tmp_path) -> None:
     assert row["deleted_by"] == ""
     assert row["deleted_admin"] is False
     assert row["text"] == "halo"
-    assert version is not None and version["value"] == "4"
+    assert version is not None and version["value"] == "5"
     person = db.fetch_one(select(people).where(people.c.person_id == "u1"))
     assert person is not None
     assert person["gender"] == "" and person["gender_source"] == ""

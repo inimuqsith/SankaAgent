@@ -68,6 +68,8 @@ async def _send_to(args: dict, ctx: ToolContext) -> str:
             )
         return f'error: target "{raw_chat}" tidak ada di arsip.\n{_known(ctx)}'
     chat_id, name = target
+    if chat_id != ctx.chat_id and not ctx.trusted:
+        return "error: cross-chat send is only for trusted roles"
     if chat_id != ctx.chat_id and chat_id not in ctx.reads:
         label = directory.label(chat_id, name)
         return (

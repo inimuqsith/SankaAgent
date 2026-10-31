@@ -24,7 +24,10 @@ async def _read(args: dict, ctx: ToolContext) -> str:
 TOOL = Handler(
     name="read",
     family="read",
-    description="Read a text file inside the workspace with line numbers.",
+    description=(
+        "Read a text file under public/ (shared) or scratch/ (this chat); any other "
+        "workspace path is private and only trusted roles may read it."
+    ),
     fn=_read,
     aliases=("cat",),
     parameters={

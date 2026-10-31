@@ -10,6 +10,9 @@ dependencies = [
   "mcp>=2.3,<3",
   "PyYAML>=6",
   "ddgs>=9",
+  "google-api-python-client>=2.150,<3",
+  "google-auth>=2.35,<3",
+  "httpx>=0.27,<1",
 ]
 
 [project.optional-dependencies]

@@ -87,9 +87,13 @@ class SandboxConfig:
     runtime: str = ""  # kosong = autodetect podman lalu docker
     image: str = "docker.io/library/python:3.12-slim"
     timeout_seconds: float = 120.0
-    network: str = "none"  # none | bridge | nama network lain
+    network: str = "none"  # network internal khusus; bridge/none/host ditolak
     host_workspace: Path | None = None  # source mount bila daemon ada di host
     env: tuple[str, ...] = ()  # variabel tambahan yang boleh masuk container
+    proxy: str = ""  # http://sandbox-proxy:3128
+    pids_limit: int = 256
+    memory: str = "512m"
+    cpus: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -488,6 +492,10 @@ def _sandbox(raw: Mapping, base: Path) -> SandboxConfig:
         network=str(body.get("network") or "none").strip(),
         host_workspace=host_workspace,
         env=_str_tuple(body.get("env")),
+        proxy=str(body.get("proxy") or "").strip(),
+        pids_limit=max(1, int(_num(body.get("pids_limit"), 256))),
+        memory=str(body.get("memory") or "512m").strip(),
+        cpus=_num(body.get("cpus"), 1.0),
     )
 
 

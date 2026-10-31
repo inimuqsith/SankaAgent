@@ -21,9 +21,13 @@ HOST: dict = {
         "runtime": "",
         "image": "docker.io/library/python:3.12-slim",
         "timeout_seconds": 120,
-        "network": "none",
+        "network": "sanka-sandbox",
         "host_workspace": None,
         "env": [],
+        "proxy": "http://sandbox-proxy:3128",
+        "pids_limit": 256,
+        "memory": "512m",
+        "cpus": 1.0,
     },
     "web_search": {"base_url": "", "timeout_seconds": 10},
     "mcp": {"servers": {}},
@@ -182,7 +186,7 @@ ROLES: dict[str, dict] = {
             "skill",
             "recipe",
             "send",
-            "mcp__*",
+            "google",
         ],
         "commands": [
             "help",
@@ -218,6 +222,9 @@ ROLES: dict[str, dict] = {
 
 ENV = """OPENCODE_GO_API_KEY=
 SANKA_DATABASE_URL=postgresql+psycopg://sanka:CHANGE_ME@127.0.0.1:5432/sanka
+GOOGLE_SERVICE_ACCOUNT_PATH=
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
 """
 
 

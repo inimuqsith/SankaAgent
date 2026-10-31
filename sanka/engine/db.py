@@ -17,7 +17,7 @@ from .schema import engine_control, metadata, schema_meta
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 UPSERT_BATCH_ROWS = 500
 MESSAGE_COLUMNS = (
     ("author", "VARCHAR(20) NOT NULL DEFAULT 'unknown'"),

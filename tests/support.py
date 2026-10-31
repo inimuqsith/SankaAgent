@@ -381,6 +381,8 @@ def make_agent(
         approval=approvals or ApprovalConfig(),
     )
     config.workspace.mkdir(parents=True, exist_ok=True)
+    (config.workspace / "public").mkdir(parents=True, exist_ok=True)
+    (config.workspace / "scratch").mkdir(parents=True, exist_ok=True)
     gateway = gateway or FakeGateway()
     history = HistoryStore(db, config.workspace)
     windows = WorkingMemory(store=history)

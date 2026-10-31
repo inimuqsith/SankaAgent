@@ -65,6 +65,16 @@ def _target(raw: str, ctx: ToolContext) -> str | tuple[str, str]:
     return target
 
 
+def _remember_cross(ctx: ToolContext, results, chat_id: str) -> None:
+    ctx.reads.add(chat_id)
+    for entry in results[:50]:
+        ctx.cross_reads.append(_body(entry)[:600])
+        if entry.quote is not None:
+            quote = " ".join((entry.quote.text or "").split())
+            if quote:
+                ctx.cross_reads.append(quote[:300])
+
+
 async def _search(args: dict, ctx: ToolContext) -> str:
     if ctx.history is None:
         return "error: arsip riwayat tidak tersedia"
@@ -89,7 +99,7 @@ async def _search(args: dict, ctx: ToolContext) -> str:
     cross = chat_id != ctx.chat_id
     title = name or ctx.history.chat_name(chat_id) or chat_id
     if cross and results:
-        ctx.reads.add(chat_id)
+        _remember_cross(ctx, results, chat_id)
     if cross:
         if not results:
             return (

@@ -32,11 +32,18 @@ class FakeProc:
         return self.returncode
 
 
-def make_ctx(tmp_path: Path, **cfg) -> SimpleNamespace:
+def make_ctx(
+    tmp_path: Path, *, trusted: bool = False, chat_id: str = "chat1", **cfg
+) -> SimpleNamespace:
     workspace = tmp_path / "work"
-    workspace.mkdir(exist_ok=True)
+    (workspace / "public").mkdir(parents=True, exist_ok=True)
+    (workspace / "scratch").mkdir(parents=True, exist_ok=True)
+    cfg.setdefault("network", "sanka-sandbox")
+    cfg.setdefault("proxy", "http://sandbox-proxy:3128")
     return SimpleNamespace(
-        config=SimpleNamespace(workspace=workspace, sandbox=SandboxConfig(**cfg))
+        config=SimpleNamespace(workspace=workspace, sandbox=SandboxConfig(**cfg)),
+        trusted=trusted,
+        chat_id=chat_id,
     )
 
 
@@ -72,15 +79,62 @@ def test_podman_argv_has_keep_id_and_selinux_suffix(tmp_path: Path, monkeypatch)
     result = run(ctx)
 
     argv = calls[0][0]
-    mount = argv[argv.index("-v") + 1]
+    mounts = [argv[index + 1] for index, item in enumerate(argv) if item == "-v"]
+    workspace = ctx.config.workspace
     assert "--userns=keep-id" in argv
     assert "--user" not in argv
-    assert mount == f"{ctx.config.workspace}:/work:Z"
-    assert argv[argv.index("--network") + 1] == "none"
+    assert mounts == [
+        f"{workspace / 'public'}:/work/public:ro,Z",
+        f"{workspace / 'scratch' / 'chat1'}:/work/scratch:Z",
+    ]
+    assert argv[argv.index("-w") + 1] == "/work/scratch"
+    assert argv[argv.index("--network") + 1] == "sanka-sandbox"
+    assert argv[argv.index("--cap-drop") + 1] == "ALL"
+    assert argv[argv.index("--security-opt") + 1] == "no-new-privileges"
+    assert argv[argv.index("--pids-limit") + 1] == "256"
+    assert argv[argv.index("--memory") + 1] == "512m"
+    assert argv[argv.index("--cpus") + 1] == "1.0"
     assert "--read-only" in argv
     assert argv[argv.index("--tmpfs") + 1] == "/tmp:rw,noexec,nosuid,nodev"
-    assert ["--env", "TZ=Asia/Jakarta"] == list(argv[argv.index("--env") : argv.index("--env") + 2])
+    pairs = [argv[index + 1] for index, item in enumerate(argv) if item == "--env"]
+    assert "TZ=Asia/Jakarta" in pairs
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        assert f"{name}=http://sandbox-proxy:3128" in pairs
+    assert "NO_PROXY=127.0.0.1,localhost" in pairs
     assert result.startswith("exit=0")
+
+
+def test_trusted_role_mounts_the_whole_workspace(tmp_path: Path, monkeypatch) -> None:
+    fake_runtimes(monkeypatch, {"podman"})
+    calls = capture(monkeypatch, FakeProc())
+    ctx = make_ctx(tmp_path, runtime="podman", trusted=True)
+
+    run(ctx)
+
+    argv = calls[0][0]
+    mounts = [argv[index + 1] for index, item in enumerate(argv) if item == "-v"]
+    assert mounts == [f"{ctx.config.workspace}:/work:Z"]
+    assert argv[argv.index("-w") + 1] == "/work"
+
+
+def test_missing_proxy_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    fake_runtimes(monkeypatch, {"podman"})
+    calls = capture(monkeypatch, FakeProc())
+
+    result = run(make_ctx(tmp_path, runtime="podman", proxy=""))
+
+    assert result == "error: sandbox egress proxy belum dikonfigurasi (sandbox.proxy)"
+    assert calls == []
+
+
+def test_open_network_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    fake_runtimes(monkeypatch, {"podman"})
+    calls = capture(monkeypatch, FakeProc())
+
+    result = run(make_ctx(tmp_path, runtime="podman", network="bridge"))
+
+    assert result == "error: sandbox.network harus network internal khusus (bukan bridge/none/host)"
+    assert calls == []
 
 
 def test_docker_argv_drops_podman_flags_and_uses_host_workspace(
@@ -92,7 +146,11 @@ def test_docker_argv_drops_podman_flags_and_uses_host_workspace(
     host_ws = tmp_path / "host-workspace"
     assert not host_ws.exists()
     ctx = make_ctx(
-        tmp_path, runtime="docker", host_workspace=host_ws, network="bridge", env=("NO_PROXY",)
+        tmp_path,
+        runtime="docker",
+        trusted=True,
+        host_workspace=host_ws,
+        env=("NO_PROXY",),
     )
     monkeypatch.setenv("NO_PROXY", "localhost")
 
@@ -104,7 +162,7 @@ def test_docker_argv_drops_podman_flags_and_uses_host_workspace(
     assert argv[argv.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
     assert not mount.endswith(":Z")
     assert mount == f"{host_ws}:/work"
-    assert argv[argv.index("--network") + 1] == "bridge"
+    assert argv[argv.index("--network") + 1] == "sanka-sandbox"
     pairs = [argv[index + 1] for index, item in enumerate(argv) if item == "--env"]
     assert "NO_PROXY=localhost" in pairs
 
@@ -193,7 +251,15 @@ def test_container_env_does_not_inherit_secrets(tmp_path: Path, monkeypatch) -> 
     forwarded = [
         argv[index + 1].split("=", 1)[0] for index, item in enumerate(argv) if item == "--env"
     ]
-    assert set(forwarded) <= {"TZ", "LANG"}
+    assert set(forwarded) <= {
+        "TZ",
+        "LANG",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "NO_PROXY",
+    }
 
 
 def test_load_config_reads_host_workspace_and_rejects_file(tmp_path: Path, monkeypatch) -> None:
@@ -231,6 +297,10 @@ sandbox:
     assert loaded.sandbox.host_workspace == host_ws
     assert loaded.sandbox.network == "bridge"
     assert loaded.sandbox.env == ("NO_PROXY",)
+    assert loaded.sandbox.proxy == ""
+    assert loaded.sandbox.pids_limit == 256
+    assert loaded.sandbox.memory == "512m"
+    assert loaded.sandbox.cpus == 1.0
 
     (tmp_path / "not-a-dir").write_text("x")
     target.write_text(

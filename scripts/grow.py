@@ -35,10 +35,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import fakta  # noqa: E402
 import patterns as cli  # noqa: E402
 import research  # noqa: E402
+from _paths import safe_path  # noqa: E402
 
 from sanka.engine.config import load_config  # noqa: E402
 
 CORPUS = Path.home() / "sanka-research" / "20261031-korpus" / "items.jsonl"
+CORPUS_ROOT = CORPUS.parent.parent
 MODEL = fakta.MODEL
 GROW_SIMILARITY = 0.82
 GROW_SHARED_WORDS = 2
@@ -119,6 +121,7 @@ register hanya salah satu: serious, comfort, soal, banter, meme, neutral. keys 2
 
 
 def _read(path: Path) -> list[dict]:
+    path = safe_path(CORPUS_ROOT, path)
     if not path.is_file():
         raise SystemExit(f"korpus tidak ada: {path}")
     out: list[dict] = []
@@ -591,7 +594,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-rewrite", action="store_true", help="lewati gugus yang butuh Muse")
     args = parser.parse_args(argv)
 
-    items = _read(args.corpus)
+    items = _read(safe_path(CORPUS_ROOT, args.corpus))
     if args.facts:
         return asyncio.run(grow_facts(items, dry_run=args.dry_run, rewrite=not args.no_rewrite))
     return asyncio.run(grow_patterns(items, dry_run=args.dry_run))
