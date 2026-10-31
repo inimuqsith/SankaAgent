@@ -12,7 +12,7 @@ from sanka.engine.registry import Handler
 from sanka.engine.schema import recipes as recipes_table
 from sanka.engine.stores.recipes import RecipeStore, run_recipe
 from sanka.engine.tools import ToolContext
-from support import build_config, database, role
+from support import build_config, database, inbound_message, make_agent, role
 
 
 def make_config(root: Path) -> Config:
@@ -135,3 +135,19 @@ def test_run_recipe_chain_substitution_and_failure(tmp_path: Path) -> None:
     store.save("gagal", "recipe", "d", steps=[{"tool": "nosuch", "args": {}}])
     out = asyncio.run(run_recipe(store.get("gagal"), "", ctx, specs))
     assert out.startswith("error: langkah 1 (nosuch) gagal:")
+
+
+def test_agent_dispatches_recipe_command(tmp_path: Path) -> None:
+    env = make_agent(tmp_path)
+    (env.config.workspace / "catatan.txt").write_text("halo dari resep", encoding="utf-8")
+    env.recipes.save(
+        "baca",
+        "recipe",
+        "Baca catatan.",
+        steps=[{"tool": "read", "args": {"path": "catatan.txt"}}],
+    )
+
+    asyncio.run(env.agent.handle(inbound_message("/baca", chat_id="chat"), env.gateway))
+
+    assert env.gateway.sent
+    assert "halo dari resep" in env.gateway.sent[0][1]

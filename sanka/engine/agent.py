@@ -927,7 +927,7 @@ class Agent:
         if handler is not None and not command_allowed(roles, handler.name):
             return denied
         if recipe is not None:
-            from .recipes import run_recipe
+            from .stores.recipes import run_recipe
 
             ctx = self.tool_context(chat_id, sender, roles, gateway, request=args)
             if recipe.kind == "recipe":
