@@ -106,6 +106,20 @@ def test_marker_inside_fence_does_not_split() -> None:
     assert len(parts) == 1
 
 
+def test_inline_marker_splits_like_a_line_marker() -> None:
+    parts = humanize_reply("sedihnya karena apa? --- aku di sini kalau mau cerita", max_parts=3)
+
+    assert parts == ["sedihnya karena apa?", "aku di sini kalau mau cerita"]
+
+
+def test_inline_marker_inside_fence_stays_one_bubble() -> None:
+    text = "```\nsatu --- dua\n```"
+
+    parts = humanize_reply(text, max_parts=3)
+
+    assert parts == ["```\nsatu --- dua\n```"]
+
+
 def test_structured_list_stays_one_message() -> None:
     text = (
         "Alur kurasi foto HB 2026, versi simpel\n"
@@ -180,3 +194,12 @@ def test_explicit_marker_still_wins() -> None:
     parts = humanize_reply(text, max_parts=3)
 
     assert parts == ["satu kalimat", "kalimat kedua\n\nmasih kalimat kedua"]
+
+
+def test_tool_call_markup_never_becomes_a_bubble() -> None:
+    text = '<tool_call>{"name":"memory","arguments":"{}"}</tool_call>'
+
+    assert human_chunks(text, max_parts=3) == []
+
+    mixed = 'oke, aku catat ya\n<tool_call>{"name":"memory"}</tool_call>'
+    assert humanize_reply(mixed, max_parts=3) == ["oke, aku catat ya"]

@@ -354,6 +354,7 @@ def make_agent(
     humanize=None,
     approvals=None,
     soul=None,
+    currents=None,
 ):
     """Bangun Agent lengkap dengan DB SQLite temp dan FakeGateway."""
     from types import SimpleNamespace
@@ -403,6 +404,7 @@ def make_agent(
         recipes=recipes,
         affect=affect_store,
         style=style,
+        currents=currents,
         gateways=tuple(gateways) if gateways is not None else (gateway,),
         approvals=ApprovalStore(db, config.approval),
     )

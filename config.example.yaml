@@ -103,6 +103,19 @@ engine:
   style:
     enabled: true
     max_chars: 800
+  character:
+    enabled: false
+    max_chars: 400
+    max_tokens: 500
+    temperature: 0.7
+    toxicity: 2
+    adult_memes: 1
+    gender_gate: true
+    gender_confidence: 0.6
+    roast_jabs: 1
+    gender_avatar: false
+    patterns: 0
+    max_questions: 1
   affect:
     enabled: true
     volatility: expressive
@@ -126,6 +139,10 @@ engine:
     research_cooldown: 21600
     research_per_day: 6
     research_results: 5
+    context_enabled: true
+    context_hours: 6
+    context_topics: 2
+    context_results: 4
 gateways:
   whatsapp:
     enabled: false

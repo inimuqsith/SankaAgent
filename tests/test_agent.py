@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 
-from sanka.engine.config import ApprovalConfig, HumanizeConfig
+from sanka.engine.config import ApprovalConfig, CharacterConfig, HumanizeConfig
 from sanka.engine.tools import execute
 from support import (
     FakeGateway,
@@ -124,6 +125,22 @@ def test_memory_block_and_runtime_reach_prompt(tmp_path) -> None:
     assert "Reply in Indonesian" in env.llm.system
     assert "## Fake interface" in env.llm.system
     assert "WhatsApp" not in env.llm.system
+
+
+def test_character_patterns_reach_the_system_prompt(tmp_path, monkeypatch) -> None:
+    from sanka.engine import patterns as pattern_catalog
+
+    monkeypatch.setattr(pattern_catalog, "VECTORS", tmp_path / "no-vectors.json")
+    pattern_catalog._load_vectors.cache_clear()
+    env = make_agent(tmp_path, answer="berat ya. capeknya di bagian mana?")
+    env.agent.config = replace(
+        env.agent.config, character=CharacterConfig(enabled=True, patterns=2)
+    )
+
+    handle(env, inbound_message("aku capek banget, gak kuat", chat_id=DM))
+
+    assert "## Room patterns (apply the move, never copy the wording):" in env.llm.system
+    assert "Validasi satu kata dulu" in env.llm.system
 
 
 def test_humanize_splits_bubbles(tmp_path) -> None:
@@ -273,3 +290,48 @@ def test_partial_send_does_not_mark_answered(tmp_path) -> None:
 
     assert gateway.calls == 2
     assert env.agent.answered.get(DM, frozenset()) == frozenset()
+
+
+def test_gender_command_sets_a_manual_target(tmp_path) -> None:
+    env = make_agent(tmp_path, affect=True)
+    env.affect.turn_end(DM, "628222", "Raka", "gue anjir goblok", "member", "", None, "m0")
+
+    handle(env, inbound_message("/gender Raka male", chat_id=DM))
+
+    assert "male" in env.gateway.sent[-1][1]
+    assert env.affect.gender("628222") == ("male", 1.0, "manual")
+    assert env.llm.calls == 0
+
+
+def test_gender_command_reports_unknown_names_and_usage(tmp_path) -> None:
+    env = make_agent(tmp_path, affect=True)
+
+    handle(env, inbound_message("/gender Siapa male", chat_id=DM))
+    assert "tidak ada di chat ini" in env.gateway.sent[-1][1]
+
+    handle(env, inbound_message("/gender Raka", chat_id=DM))
+    assert "/gender <nama>" in env.gateway.sent[-1][1]
+
+    handle(env, inbound_message("/gender Raka banana", chat_id=DM))
+    assert "/gender <nama>" in env.gateway.sent[-1][1]
+
+
+def test_konteks_command_prints_the_stored_block(tmp_path) -> None:
+    import time
+
+    from sanka.engine.stores.currents import CurrentsStore
+
+    env = make_agent(tmp_path)
+    env.agent.currents = CurrentsStore(env.db)
+    now = time.time()
+    env.agent.currents.save(
+        {
+            "updated_at": now,
+            "topics": {"rupiah": {"text": "rupiah melemah", "fetched_at": now, "source": "web_search"}},
+        }
+    )
+
+    handle(env, inbound_message("/konteks", chat_id=DM))
+
+    assert "rupiah: rupiah melemah" in env.gateway.sent[-1][1]
+    assert env.llm.calls == 0

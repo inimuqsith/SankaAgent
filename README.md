@@ -1,36 +1,32 @@
 # SankaAgent
 
 Sanka is a persistent soul engine: one identity, one memory, many chat surfaces. The engine
-(`sanka/engine/`) owns the agent loop, config, memory, emotion, and tools. Gateways are appendages
-that only carry messages in and out. WhatsApp is one gateway; a local CLI REPL is another.
+(`sanka/engine/`) owns the turn loop, config, memory, emotion, and tools. Gateways only carry
+messages in and out; the core never imports `neonize` or `sanka.gateways`.
 
-- **One database = one soul.** Transcripts, memory, affect, style, skills, recipes, config/soul/role
-  documents, approvals, and the engine lease live in Postgres. Any host that points at the same
-  `SANKA_DATABASE_URL` sees the same Sanka.
-- **One primary at a time.** `engine_lease` makes exactly one instance serve turns. Other instances
-  stay in standby, frozen. `/freeze` or a local `sanka console --takeover` moves the heartbeat.
-- **Identity is cross-chat.** Semantic memory is stored per person/agent/chat with Mem0 and queried
-  across chats for the same person. Raw transcripts stay per chat.
-- **Privacy is a disclosure layer.** Every memory entry carries a level 0-4. Ordinary chat stays
-  fluid; only sensitive or grave entries are guarded, and the speaker or the subject decides.
-- **Actions are explicit.** `shell`, `sandbox`, and internal `settings` changes wait for `/approve`
-  unless approval is disabled. Common tools still run automatically in the default `yolo` mode.
-- **Config is data.** One `config.yaml` holds host keys plus `engine`, `gateways`, and `soul`; one
-  `roles.yaml` holds every role; `SOUL.md` holds the persona. The same documents live in the
-  database and are mirrored back to those files.
+- **One database = one soul.** Transcripts, Mem0 memory, affect, style, skills, recipes, the
+  `engine`/`soul`/`persona`/`role:<name>` documents, approvals, and `engine_lease` live in Postgres.
+- **One primary at a time.** A follower stays frozen; `/freeze` or `sanka console --takeover` moves
+  the heartbeat through the lease, never through two hearts.
+- **Identity is cross-chat.** Semantic memory is queried for `global` + `person:<sender>` +
+  `chat:<this chat>` only. Raw transcripts stay per chat.
+- **Privacy is a disclosure layer.** Entries carry a level 0-4; ordinary chat stays fluid, and only
+  sensitive or grave entries are guarded.
+- **Config is data.** `config.yaml` + `roles.yaml` + `SOUL.md` are seeds and mirrors of DB documents.
+- **Character is a pattern catalogue.** `sanka/data/patterns.json` holds the runtime moves; `SOUL.md`
+  holds the voice. No raw transcripts are shipped.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  WA[WhatsApp gateway] -->|Inbound| AG[Agent]
+  WA[WhatsApp gateway] -->|Inbound| AG[Agent turn]
   CLI[CLI gateway] -->|Inbound| AG
-  AG --> LLM[LLM + tools]
+  AG --> LLM[LLM + tool families]
+  AG --> PAT[patterns.json + MiniLM]
   AG --> MEM[Mem0 semantic memory]
   AG --> PRIV[Privacy policy + auditor]
-  AG --> ACT[ActionLedger]
   AG --> AFF[Affect + style + vibe]
-  AG --> SK[Skills + recipes]
   AG --> DB[(Postgres + pgvector)]
   AG -->|deliver_*| WA
   AG -->|deliver_*| CLI
@@ -38,14 +34,13 @@ flowchart LR
   DB --- SUP
 ```
 
-The core (`sanka/engine`) never imports `neonize` or `sanka.gateways`; `tests/test_gateway_contract.py`
-proves it with a subprocess import.
+The five repo docs are `TASK.md`, `README.md`, `LOG.md`, `AGENTS.md`, and `SOUL.md`.
 
 ## Quickstart (Postgres + pgvector)
 
 ```bash
-# 1. Database: any Postgres 14+ with pgvector, e.g. the sample compose file
-cp compose.example.yaml compose.yaml   # set a real password
+# 1. Database: Postgres 14+ with pgvector
+cp compose.example.yaml compose.yaml          # set a real password
 podman compose -f compose.yaml up -d postgres
 
 # 2. Scaffold config.yaml, roles.yaml, SOUL.md, and .env
@@ -55,24 +50,23 @@ python -m sanka init --dir .
 #    OPENCODE_GO_API_KEY=...
 #    SANKA_DATABASE_URL=postgresql+psycopg://sanka:CHANGE_ME@127.0.0.1:5432/sanka
 
-# 4. Create the schema, seed documents from the files, verify
+# 4. Schema + documents + check
 python -m sanka db upgrade
 python -m sanka db check
 
-# 5. Enable WhatsApp in the `gateways` section of config.yaml (sanka init disables it),
-#    then run the primary
+# 5. Enable WhatsApp in `gateways`, then run the primary
 python -m sanka run
 
-# Local console against the same DB (takes the lease by default)
+# Local console against the same DB (takes the lease)
 python -m sanka console --takeover
 ```
 
-Requirements: Python 3.11+, Postgres 14+ with `vector`, and the WhatsApp extra for the WhatsApp
-gateway. `sentence-transformers` downloads the default embedder once
-(`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, 384 dims).
+Requirements: Python 3.11+, Postgres 14+ with `vector`, and the WhatsApp extra for that gateway.
+`sentence-transformers` downloads the embedder once (`paraphrase-multilingual-MiniLM-L12-v2`,
+384 dims); it powers both memory embeddings and pattern retrieval.
 
 Dependency note: Mem0 pins `protobuf<7` while Neonize needs `protobuf>=7`. Install Neonize first,
-then Mem0 without its resolver, and provide Mem0's other dependencies explicitly:
+then Mem0 without its resolver:
 
 ```bash
 pip install -e ".[whatsapp,vibe]"
@@ -81,319 +75,178 @@ pip install --no-deps "mem0ai>=2.2,<3"
 pip install httpx openai posthog pydantic pytz qdrant-client protobuf
 ```
 
-The `Dockerfile` does exactly this. Without Mem0 the bot still replies and `/status` reports
-`Memory: unavailable: <reason>`.
+Without Mem0 the bot still replies and `/status` reports `Memory: unavailable: <reason>`. Without
+`sentence-transformers` the pattern selector falls back to keyword scoring.
 
 ## Config surfaces
 
 | File / document | Where | Contents |
 |---|---|---|
-| `config.yaml` | host only | host keys (`database`, `workspace`, `roles_file`, `sandbox`, `web_search`, `mcp`, `sync_documents`) plus `engine`, `gateways`, and `soul` |
-| `roles.yaml` | host only, `0600` | every role under one `roles:` mapping: `tools`, `commands`, `users`, `context`, `priority`, `memory_admin` |
-| `SOUL.md` / document `persona` | DB + mirror | persona prose (never translated by the engine) |
-| `engine` section / document `engine` | DB + `config.yaml` | `llm`, `default_role`, `reply`, `memory` (incl. `privacy`), `approval`, `skills`, `prompt`, `humanize`, `style`, `affect`, `ambient` |
-| `gateways` section | `config.yaml` | `whatsapp` (`enabled`, `session_db`, `backlog_seconds`), `cli` (`enabled`, `role`, `user`, `chat_id`, `chat_name`) |
-| `soul` section / document `soul` | DB + `config.yaml` | `name`, `language` (`id`/`en`), `pronouns` |
-| `role:<name>` documents | DB + `roles.yaml` | the same explicit role bodies |
+| `config.yaml` | host only | host keys (`database`, `workspace`, `roles_file`, `sandbox`, `web_search`, `mcp`, `sync_documents`) plus `engine`, `gateways`, `soul` |
+| `roles.yaml` | host only, `0600` | every role under one `roles:` mapping |
+| `SOUL.md` / `persona` | DB + mirror | persona voice, Indonesian, never translated |
+| `engine` / `soul` sections | DB + `config.yaml` | LLM, reply, memory + privacy, approval, affect, ambient, language |
+| `role:<name>` | DB + `roles.yaml` | `tools`, `commands`, `users`, `context`, `priority`, `memory_admin` |
 
-`config.yaml` and `roles.yaml` stay host-local because they describe the deployment and may hold
-phone numbers. The loader never creates directories. `sync_documents: false` disables
-seeding/exporting for tests.
+After editing `engine`/`soul`, `SOUL.md`, or `roles.yaml` by hand: `python -m sanka config import`.
+To write files from the DB: `python -m sanka config export`. `sync_documents: false` disables
+seeding for tests. The loader never creates directories.
 
-**Manual edits:** the runtime reads DB documents. After editing the `engine`/`soul` sections,
-`SOUL.md`, or `roles.yaml` by hand, run `python -m sanka config import`. To write the files from the
-DB, run `python -m sanka config export`.
+## Character: SOUL.md and the pattern catalogue
 
-## Roles
+`SOUL.md` is the voice: identity, personality, register, behavioural rules, backstory, relationships,
+and four dialogue examples. It stays Indonesian and short, and it must not duplicate the moves.
 
-Roles are explicit and modular; there is no default permission in handlers. Every role names the
-tools and commands it may use (`*` works as a glob). Addresses may appear in several roles; their
-permissions are unioned and their contexts are ordered by `priority` (descending) then name. A
-sender who matches nothing gets `default_role`. `memory_admin: true` is required for global memory
-writes and deletes.
+`sanka/data/patterns.json` is the runtime character sheet: 30-60 conditional moves ("if this, then
+that") tagged with a register, a gender target, and toxicity/adult gates. Each turn the engine reads
+the last messages, computes the room register, and picks `engine.character.patterns` lines (0-6,
+default 0; the production host uses 4). Selection is deterministic: keyword hits first, then cosine
+similarity against precomputed MiniLM vectors. The `always` invariants (language lock, length,
+question limit, grounding, floor, curse trigger) need no keyword hit.
 
-```yaml
-roles:
-  owner:
-    name: owner
-    description: Pemilik dan admin Sanka
-    priority: 100
-    users: ["6280000000000", "130799689031758"]
-    tools: ["*"]
-    commands: ["*"]
-    memory_admin: true
-    context: |
-      Kamu sedang bicara dengan pemilik Sanka.
-  guest:
-    name: guest
-    description: Pengirim tak dikenal
-    priority: 0
-    tools: [read, web_search, chat_history, memory]
-    commands: [help, ping, reset, whoami, status, tools, cari]
-    memory_admin: false
+The move reaches the model inside `## Room patterns (apply the move, never copy the wording)`. `say`
+lines are owner-approved exemplars and must come from an owner correction, never from raw private
+chat.
+
+Pattern lifecycle:
+
+```bash
+python scripts/patterns.py --check                      # schema, gates, duplicates, reachability
+python scripts/patterns.py --embed                      # rebuild pattern_vectors.json (384 dims)
+python scripts/patterns.py --stats                      # counts per register and gate
+python scripts/patterns.py --build-xlsx workspace/review-patterns.xlsx
+python scripts/patterns.py --apply-xlsx workspace/review-patterns.xlsx   # 1:1 by id
 ```
 
-`sanka init` writes `owner`, `member`, and `guest` examples; edit them with the `settings` tool,
-`/language`, or directly plus `sanka config import`.
+`--apply-xlsx` writes back `konten`, `contoh`, `hindari`, `keys`, and `komentar`, and reports unknown
+ids. After editing content, rerun `--check` then `--embed` so the vectors match.
 
-## Language selector
+Scenario replay against the live prompt:
 
-Sanka always speaks exactly one language at a time, configured in YAML, never in code strings:
-
-```yaml
-soul:
-  language: id   # catalog code: sanka/lang/<code>.yaml
+```bash
+python scripts/replay.py --scenario roast_group --limit 4
+python scripts/replay.py --no-regulate --no-judge --limit 6
 ```
 
-- `/language` prints the current value and the installed codes; `/language <code>` changes it.
-- Only the owner role may run it (owner has `commands: ["*"]`; member/guest do not list it).
-- The command writes the `soul` document, mirrors `config.yaml`, and hot-reloads.
-- `auto`/`in` map to `id`; a code with no catalog is rejected and the reply lists what is installed.
-- `/status` shows `Language: <code>`; the Self prompt block and `Reply in ...` line follow it.
+It reads `tests/data/scenarios.json` (turns, per-speaker targets, rubric, bad examples), builds the
+turn with `character_block(...)`, applies `regulate`, and writes `workspace/replay-<id>.json` with a
+transcript and a `hard_fail` count. It never writes back to the scenarios or the catalogue.
 
-Every chat-visible string lives in `sanka/lang/<code>.yaml`; add a language by copying a catalog and
-translating its values, and `soul.language` selects which one the bot speaks.
+## Roles and permissions
 
-## Privacy levels and disclosure
+No handler has default permissions; a role that omits `tools`/`commands` denies everything. Tools
+come from six families (`shell`, `read`, `write`, `web_search`, `sandbox`, `mcp`); permission is
+checked only in `sanka/engine/tools/__init__.py:execute`. Addresses in several roles are unioned, and
+contexts are ordered by `priority` then name. `memory_admin: true` is required for global memory
+writes. `/approve` never calls the LLM and re-checks role permissions.
 
-Memory entries carry a numeric level; credential-like text is never stored.
+## Safety and approvals
 
-| Level | Meaning | Group | DM |
+| Level | Meaning | Group ceiling | DM ceiling |
 |---|---|---|---|
-| 0 | public (event info, jokes) | fluid | fluid |
-| 1 | team/internal logistics | fluid | fluid |
-| 2 | personal, preferences, casual facts | fluid | fluid |
-| 3 | sensitive/aib/harmony risk | owner confirmation | owner: fluid |
-| 4 | grave secret | owner confirmation | confirmation once |
+| 0 | public | fluid | fluid |
+| 1 | team | fluid | fluid |
+| 2 | personal | fluid | fluid |
+| 3 | sensitive | confirmation | fluid |
+| 4 | secret | confirmation | confirmation |
 | 5 | credentials | never stored | never stored |
 
-Rules:
+Levels 0-2 stay fluid everywhere; level 3 in a group and level 4 ask through `approvals`; vetoed
+entries are never shown or disclosed, and the subject of a memory (not the speaker) may veto it. The
+auditor pass runs only when a risky entry exists.
 
-- `owner_id` is the speaker who stated the fact; `subject_id` is the person it is about. Only the
-  subject may veto an entry; a veto hides it from context and tool output and blocks disclosure.
-- L0-L2 never trigger confirmation or the auditor. Group ceiling is `group_max_level` (2) and DM
-  ceiling is `dm_max_level` (4); `ask_level` (4) asks at capture time.
-- The LLM only labels a provisional level/subject, phrases the confirmation question in the soul's
-  language, and lists which entries a draft mentions. The verdict itself is deterministic
-  (`sanka/engine/memory/privacy.py`): vetoed → deny, non-owner group disclosure → deny, unconfirmed
-  owner disclosure → ask, otherwise allow.
-- The auditor runs only when a risky entry exists; if it fails, the safe default is ask/deny, never
-  the unsanitized draft.
-- The `memory` tool exposes `level`, `subject`, `confirmed`, `veto`, and `active=false` to unveto;
-  `/memori` shows levels, hides vetoed entries, and limits global add/delete to `memory_admin`.
+`shell` and `sandbox` calls and internal `settings` changes pass `SafetyPolicy`/`approvals`; the
+default mode is `yolo` (auto-approve), and `off` disables approval checks entirely - document the risk
+if you switch. Levels for tone come from `engine.character`: `toxicity` 0-4 and `adult_memes` 0-3,
+with a permanent floor (no sexual content with minors, no doxxing, no credible threats, no hate).
 
-## Gateways
-
-- **WhatsApp** (`sanka/gateways/whatsapp`): Neonize transport, session DB `0600`, media download,
-  history sync, contact/LID directory, mention resolution, and `send`/`send_to` tools plus
-  `/backfill`. Ingress stores who actually spoke: a `fromMe` echo is `bot` only when its ID is in
-  the gateway's 15-minute sent cache, otherwise `manual_owner` (the human typing from the owner's
-  number); history sync cannot know and writes `unknown`. A sender LID resolves to its phone JID
-  through `SenderAlt` or `wa_lid_map`, and each payload line carries a `mention=@<digits>` handle
-  that only becomes a real mention when it matches a known sender; an unmatched `@number` stays plain
-  text. A revoke marks the archived row (`deleted`, `deleted_by`, `deleted_admin`) and the payload
-  shows `(pesan dihapus …)` instead of the text, while `chat_history` still returns it as `[dihapus]`.
-  View-once lines are tagged `sekali lihat`; a stanza this device cannot decrypt becomes a
-  `tidak terbaca` placeholder row and never triggers a reply. `chat_history chat=<name|JID>` reads
-  another archived chat, and `send_to` refuses a cross-chat send until that chat was read.
-- **CLI** (`sanka/gateways/cli`): REPL for a local terminal. `sanka console` always enables it, even
-  if `config.yaml` disables it, and never starts WhatsApp. Anyone with shell access is treated as
-  the configured `cli.role` (default: `default_role`).
-- Adding a gateway: expose an entry point in group `sanka.gateways` and implement the protocol in
-  `sanka/engine/inbound.py`. Gateway-owned tools/commands are discovered from
-  `sanka/gateways/<name>/tools` and `commands`; duplicate names are rejected at startup.
-
-`gateway.render()` converts markdown to the transport dialect; `gateway.prompt_hints()` adds
-transport syntax only (WhatsApp formatting, mentions, surface). The base prompt is transport-neutral.
-
-## Shared DB, lease, freeze, console
-
-Only the lease holder serves turns. `sanka run` and `sanka console` acquire `engine_lease`;
-renewals happen every 5 seconds with a 30 second TTL. Losing the lease (or `/freeze`) stops the
-gateways and ambient loop, releases the lease, and keeps the process in standby, retrying.
+## Database, lease, and console
 
 ```bash
-# Production
-python -m sanka run
-# Local, take the lease; the production instance freezes within ~5 seconds
-python -m sanka console --takeover
-# Inspect the holder
-python -m sanka db check
+python -m sanka db check                       # schema and row summary
+python -m sanka db backup                      # pg_dump
+python -m sanka console --takeover             # local REPL takes the lease
 ```
 
-`/quit` in the console releases the lease; the production instance promotes itself again. WhatsApp
-reconnects with the same session DB after promotion.
+`engine_lease` holds exactly one heartbeat. Other instances stay standby and frozen; `sanka console`
+without `--takeover` joins as a follower, and the production instance refreezes within about five
+seconds of losing the lease.
 
-## Memory engine (Mem0)
-
-Mem0 OSS performs extraction, dedupe, embedding, and retrieval. Sanka stores only the identities,
-the autographical `ActionLedger`, and affect/style/skill data.
-
-| Scope | Mem0 identity | Metadata | Visibility |
-|---|---|---|---|
-| `person` | `user_id=person:<id>` | `audience=private` | follows that person into other chats |
-| `chat` | `run_id=chat:<chat_id>` | `audience=group` | stays in that chat |
-| `global` | `agent_id=sanka` | `audience=shared` | shared team facts |
-
-Every turn queries exactly `global` + `person:<sender>` + `chat:<current chat>`. Another person's
-private memory is never queried. The prompt tells the model never to reveal one chat's private
-memory to a third person. `memory.backend: null` disables Mem0; failures fail open with a reason in
-`/status`.
-
-`memory_legacy` stages SQLite-era memories. `sanka memory migrate` maps DMs to `person`, groups to
-`chat`, and globals to `global`; it is idempotent, never re-migrates a row, and writes level 2.
-
-## Affect, style, skills, recipes
-
-- `AffectStore` keeps PAD emotion, trust, relationships, topics, and drives in Postgres; the state
-  row is read/written under one transaction with `FOR UPDATE` on Postgres.
-- `StyleStore` aggregates rhythm/diction statistics from the archive; raw message content is not
-  stored there.
-- `SkillStore` keeps procedures (`skills`, `skill_files`, `skill_usage`). The model loads an index
-  and full bodies via the `skill` tool.
-- `RecipeStore` keeps user commands (`/nama`) as YAML bodies; `recipe` steps run tools with
-  `{{args}}`, `prompt` steps are one LLM turn.
-- `VibeRunner` keeps room mood per chat in the `state` table.
-
-## Approvals and safety
-
-Default `approval.mode: yolo` lets ordinary tools run. These need `/approve`:
-
-- destructive shell commands matched against `approval.sensitive_commands` (default patterns:
-  `rm *`, `dd *`, `systemctl *`, `git reset --hard*`, `git push *--force*`, `find * -delete*`, …),
-  including the same command inside `sudo`/`env`/`xargs` wrappers, `;`/`&&`/`|` segments, and
-  `$(…)`/backtick substitutions,
-- destructive internal actions: `memory` `forget` and `skill` `archive`,
-- every internal change through the `settings` tool when `approval.settings: true`,
-- every tool in `approval.sensitive_tools` (empty by default; globs allowed) — set it to `[shell]`
-  to gate every shell call again,
-- privacy/disclosure confirmations (`kind=privacy|disclosure`),
-- in `strict` mode, every tool except read-only observation (`read`, `memory`, `skill`,
-  `chat_history`, `web_search`).
-
-Flow: the model receives `pending approval #ID`, tells the sender, and stops. `/pending` lists,
-`/approve ID` executes with the original role and re-checks permissions, `/deny ID` cancels. Pending
-items are bound to `chat_id` + sender, expire after `ttl_seconds` (default 900), and `/approve` never
-calls the LLM or changes emotion. An approved `shell` is host access by design; `settings` is the
-validated path for config changes. The command classifier is a coarse denylist: redirection,
-`python -c` one-liners, and script files are not gated, and `sensitive_commands: []` disables the
-command gate entirely.
-
-## Status, settings, audit
-
-`/status` reports mode, lease holder, uptime, surface, model, database, chat/roles, archive size,
-memory status, legacy pending, approvals, skills, people/actions, soul/persona mirror, language,
-privacy flags, engine mirror, and the last config change. `/whoami` reports roles, chat, surface,
-and self handles.
-
-The `settings` tool (role-granted) reads and changes Sanka itself: `engine`, `host`, `gateway`,
-`soul`, `persona`, `role`. `engine`/`soul` map to the `config.yaml` sections and DB documents;
-`gateway` edits only the `gateways` mapping; `role` regenerates `roles.yaml`; `host` rejects paths
-inside `engine`/`gateways`/`soul`. `set`/`unset`/`write` validate the candidate through the real
-loader, write the DB document, export the mirror atomically, back up the file, record
-`config_changes`, and hot-reload. Restart-only keys return `ok: saved; restart required ...` instead
-of reloading. Secret-looking keys (`api_key`, `password`, `secret`, `token`) are rejected except
-`api_key_env`; paths stay inside the known files.
-
-Audit examples:
-
-```sql
-select count(*) from sanka_memories;                    -- Mem0 pgvector collection
-select scope, kind, count(*) from memory_legacy group by 1,2;
-select count(*) from messages;
-select * from engine_lease;
-select id, kind, status, summary from approvals order by id desc limit 5;
-select * from config_changes order by id desc limit 5;
-```
-
-## Migration from SQLite or the split config
+## Migration from SQLite or the split layout
 
 ```bash
-# 1. Stop the bot.
-# 2. Fold the old layout into config.yaml + roles.yaml (add --dry-run to inspect).
-#    A backup lands in config.bak-<timestamp>/; --force removes the old files afterwards.
-python -m sanka config migrate --dir .
-# 3. Point SANKA_DATABASE_URL at Postgres, then
-python -m sanka db upgrade
-# 4. Import the old .sanka data (history, affect, style, skills, recipes, legacy memory)
-python -m sanka db import --sqlite .sanka
-# 5. Move staged memories into Mem0
-python -m sanka memory migrate
-# 6. Copy host-local files: whatsapp.db, workspace attachments, .env
-# 7. Verify and start
-python -m sanka db check
-python -m sanka run
+python -m sanka config migrate --dir .        # fold the old layout into config.yaml + roles.yaml
+python -m sanka db import                     # old .sanka data
+python -m sanka memory migrate                # memory_legacy -> Mem0
+python -m sanka db upgrade && python -m sanka db check
 ```
 
-`db import` refuses while a fresh lease exists (`--force` overrides). `db backup --out file.dump`
-uses `pg_dump --format=custom`; `db restore file.dump --yes` uses `pg_restore --clean --if-exists`.
-Back up the host-local session DB and workspace separately.
-
-## Development and tests
+## Development
 
 ```bash
-pytest -q
-python -m sanka selftest          # temporary SQLite DB for stores; real LLM if the key exists
-python -m sanka console --takeover
+.venv/bin/python -m pytest -q
+.venv/bin/python -m sanka selftest
+python scripts/patterns.py --check
+ruff check . && ruff format --check .
+pytest -q --cov=sanka --cov-report=xml
 ```
 
-Tests use SQLite file URLs and fake gateways/LLMs; runtime uses Postgres. `sanka selftest` never
-touches the production database. If Mem0/pgvector is unavailable, its memory check is `SKIP`, not
-`FAIL`, and the privacy policy matrix still prints PASS.
+The suite is small and covers repo contracts only: routing/format/permission, gateway contract,
+lease, approval, cross-chat memory, privacy/disclosure, language selection, pattern selection, the
+pattern CLI, and the Neonize reply path. `sonar-project.properties` is ready for SonarCloud; code
+must stay at complexity 12 or lower.
 
-## Security
+## Removed corpus pipeline
 
-- Secrets only in `.env` (referred by name from YAML). `config.yaml`, `roles.yaml`, `.env`, and
-  `.sanka/` are ignored by git.
-- `roles.yaml`, the session DB, and `.env` are `0600`. `sanka db backup` writes `0600`.
-- The database password is redacted from logs, `/status`, and audit rows.
-- `settings` never touches `.env` and rejects sensitive key paths.
-- Vetoed and L3/L4 entries are hidden from group tool output; a non-owner cannot confirm disclosure.
+The old collection and training toolchain is gone: no fetch/ingest scripts, no Excel review, no
+training loop, no downloaded dataset inbox, no `conversation_datasheet.json`. The character data is
+the hand-authored catalogue plus `SOUL.md`, and the replay harness is the only evaluation entry
+point. A future corpus refresh would be a new tool, not part of this repository.
 
-## Design principles
+---
 
-1. Identity persists beyond a session: windows are per chat, memory is per person/agent/chat.
-2. A gateway is an appendage, never the brain; sensors and actuators can be added the same way.
-3. Memory has layers: Mem0 for semantic facts, `ActionLedger` for autobiography, affect/style for
-   how Sanka feels and talks, skills/recipes for procedures.
-4. Safety and privacy are deterministic and auditable (`SafetyPolicy` + `approvals` +
-   `PrivacyPolicy`), not a prompt suggestion.
-5. Real-time motor control is out of scope for this iteration; the seams (`Gateway`,
-   `WorkingMemory`, `SafetyPolicy`, nullable `where`/`sensor_context` metadata) are in place.
+# Bahasa Indonesia
 
-## Bahasa Indonesia
+Sanka adalah mesin jiwa yang menetap: satu identitas, satu memori, banyak permukaan chat. Engine
+(`sanka/engine/`) mengurus giliran, config, memori, emosi, dan tool. Gateway cuma membawa pesan
+masuk dan keluar; core tidak pernah mengimpor `neonize` atau `sanka.gateways`.
 
-Sanka adalah mesin jiwa persisten: satu identitas, satu memori, banyak surface chat. Engine
-(`sanka/engine/`) memegang loop agen, config, memori, emosi, dan tool. Gateway hanyalah appendage
-yang membawa pesan masuk dan keluar. WhatsApp salah satu gateway; REPL CLI lokal gateway lainnya.
+- **Satu database = satu jiwa.** Transkrip, memori Mem0, affect, gaya, skill, resep, dokumen
+  `engine`/`soul`/`persona`/`role:<name>`, approval, dan `engine_lease` ada di Postgres.
+- **Satu primary.** Instance lain standby dan beku; `/freeze` atau `sanka console --takeover`
+  memindahkan heartbeat lewat lease, bukan dua jantung.
+- **Identitas lintas chat.** Memori semantik hanya ditanya untuk `global` + `person:<pengirim>` +
+  `chat:<chat ini>`. Transkrip mentah tetap per chat.
+- **Privasi itu lapisan pengungkapan.** Entri membawa level 0-4; obrolan biasa tetap cair.
+- **Config adalah data.** `config.yaml` + `roles.yaml` + `SOUL.md` adalah seed dan mirror dokumen DB.
+- **Karakter adalah katalog pola.** `sanka/data/patterns.json` menyimpan gerakan runtime; `SOUL.md`
+  menyimpan suara. Tidak ada transkrip mentah di repo.
 
-- **Satu database = satu jiwa.** Transkrip, memori, affect, style, skills, recipes, dokumen
-  config/soul/role, approval, dan lease engine tinggal di Postgres. Host mana pun yang menunjuk
-  `SANKA_DATABASE_URL` yang sama melihat Sanka yang sama.
-- **Satu primary pada satu waktu.** `engine_lease` memastikan hanya satu instance melayani turn.
-  Instance lain standby dan beku. `/freeze` atau `sanka console --takeover` memindahkan heartbeat.
-- **Identitas lintas chat.** Memori semantik disimpan per person/agent/chat lewat Mem0 dan di-query
-  lintas chat untuk orang yang sama. Transkrip mentah tetap per chat.
-- **Privasi adalah lapisan pengungkapan.** Setiap entri memori punya level 0-4. Obrolan biasa tetap
-  cair; hanya entri sensitif atau berat yang dijaga, dan pembicara atau subjek yang memutuskan.
-- **Aksi eksplisit.** `shell`, `sandbox`, dan perubahan internal `settings` menunggu `/approve`
-  kecuali approval dimatikan. Tool umum tetap berjalan otomatis di mode default `yolo`.
-- **Config adalah data.** Satu `config.yaml` memuat kunci host plus `engine`, `gateways`, dan
-  `soul`; satu `roles.yaml` memuat semua role; `SOUL.md` memuat persona. Dokumen yang sama hidup di
-  database dan dicerminkan kembali ke berkas itu.
+Lima dokumen repo: `TASK.md`, `README.md`, `LOG.md`, `AGENTS.md`, `SOUL.md`.
 
-### Arsitektur
+## Arsitektur
 
-Diagram yang sama seperti di atas: gateway WhatsApp/CLI memanggil `Agent` lewat `Inbound`; `Agent`
-memakai LLM+tools, Mem0, privacy policy/auditor, `ActionLedger`, affect/style/vibe, skills/recipes,
-dan Postgres+pgvector. Core tidak pernah mengimpor `neonize` atau `sanka.gateways`
-(`tests/test_gateway_contract.py` membuktikannya lewat subprocess import).
+```mermaid
+flowchart LR
+  WA[Gateway WhatsApp] -->|Inbound| AG[Giliran agent]
+  CLI[Gateway CLI] -->|Inbound| AG
+  AG --> LLM[LLM + keluarga tool]
+  AG --> PAT[patterns.json + MiniLM]
+  AG --> MEM[Memori Mem0]
+  AG --> PRIV[Kebijakan privasi + auditor]
+  AG --> AFF[Affect + gaya + vibe]
+  AG --> DB[(Postgres + pgvector)]
+  AG -->|deliver_*| WA
+  AG -->|deliver_*| CLI
+  SUP[Supervisor + lease] --> AG
+  DB --- SUP
+```
 
-### Quickstart (Postgres + pgvector)
+## Quickstart (Postgres + pgvector)
 
 ```bash
-# 1. Database: Postgres 14+ dengan pgvector, mis. compose contoh
-cp compose.example.yaml compose.yaml   # isi password sungguhan
+# 1. Database: Postgres 14+ dengan pgvector
+cp compose.example.yaml compose.yaml          # ganti password
 podman compose -f compose.yaml up -d postgres
 
 # 2. Scaffold config.yaml, roles.yaml, SOUL.md, dan .env
@@ -403,24 +256,23 @@ python -m sanka init --dir .
 #    OPENCODE_GO_API_KEY=...
 #    SANKA_DATABASE_URL=postgresql+psycopg://sanka:CHANGE_ME@127.0.0.1:5432/sanka
 
-# 4. Buat schema, seed dokumen dari berkas, verifikasi
+# 4. Schema + dokumen + verifikasi
 python -m sanka db upgrade
 python -m sanka db check
 
-# 5. Aktifkan WhatsApp di bagian `gateways` config.yaml (sanka init mematikan),
-#    lalu jalankan primary
+# 5. Aktifkan WhatsApp di `gateways`, lalu jalankan primary
 python -m sanka run
 
-# Console lokal ke DB yang sama (mengambil lease secara default)
+# Console lokal ke DB yang sama (mengambil lease)
 python -m sanka console --takeover
 ```
 
-Kebutuhan: Python 3.11+, Postgres 14+ dengan `vector`, dan extra WhatsApp untuk gateway WhatsApp.
-`sentence-transformers` mengunduh embedder default sekali
-(`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`, 384 dim).
+Butuh Python 3.11+, Postgres 14+ dengan `vector`, dan extra WhatsApp untuk gateway itu.
+`sentence-transformers` mengunduh embedder sekali (`paraphrase-multilingual-MiniLM-L12-v2`, 384
+dimensi); dipakai untuk embedding memori dan pengambilan pola.
 
 Catatan dependensi: Mem0 mem-pin `protobuf<7` sementara Neonize butuh `protobuf>=7`. Pasang Neonize
-dulu, lalu Mem0 tanpa resolver, dan sediakan dependensi Mem0 lain secara eksplisit:
+dulu, lalu Mem0 tanpa resolver-nya:
 
 ```bash
 pip install -e ".[whatsapp,vibe]"
@@ -429,287 +281,133 @@ pip install --no-deps "mem0ai>=2.2,<3"
 pip install httpx openai posthog pydantic pytz qdrant-client protobuf
 ```
 
-`Dockerfile` melakukan hal yang sama. Tanpa Mem0 bot tetap membalas dan `/status` menampilkan
-`Memory: unavailable: <alasan>`.
+Tanpa Mem0 bot tetap menjawab dan `/status` melaporkan `Memory: unavailable: <alasan>`. Tanpa
+`sentence-transformers` pemilih pola jatuh ke pencocokan kata kunci.
 
-### Permukaan config
+## Permukaan config
 
 | Berkas / dokumen | Lokasi | Isi |
 |---|---|---|
-| `config.yaml` | host saja | kunci host (`database`, `workspace`, `roles_file`, `sandbox`, `web_search`, `mcp`, `sync_documents`) plus `engine`, `gateways`, dan `soul` |
-| `roles.yaml` | host saja, `0600` | semua role dalam satu mapping `roles:`: `tools`, `commands`, `users`, `context`, `priority`, `memory_admin` |
-| `SOUL.md` / dokumen `persona` | DB + mirror | prosa persona (tidak diterjemahkan engine) |
-| bagian `engine` / dokumen `engine` | DB + `config.yaml` | `llm`, `default_role`, `reply`, `memory` (termasuk `privacy`), `approval`, `skills`, `prompt`, `humanize`, `style`, `affect`, `ambient` |
-| bagian `gateways` | `config.yaml` | `whatsapp` (`enabled`, `session_db`, `backlog_seconds`), `cli` (`enabled`, `role`, `user`, `chat_id`, `chat_name`) |
-| bagian `soul` / dokumen `soul` | DB + `config.yaml` | `name`, `language` (`id`/`en`), `pronouns` |
-| dokumen `role:<nama>` | DB + `roles.yaml` | body role eksplisit yang sama |
+| `config.yaml` | host saja | kunci host (`database`, `workspace`, `roles_file`, `sandbox`, `web_search`, `mcp`, `sync_documents`) plus `engine`, `gateways`, `soul` |
+| `roles.yaml` | host saja, `0600` | semua role dalam satu mapping `roles:` |
+| `SOUL.md` / `persona` | DB + mirror | suara persona, Indonesia, tidak diterjemahkan |
+| bagian `engine` / `soul` | DB + `config.yaml` | LLM, reply, memori + privasi, approval, affect, ambient, bahasa |
+| `role:<name>` | DB + `roles.yaml` | `tools`, `commands`, `users`, `context`, `priority`, `memory_admin` |
 
-`config.yaml` dan `roles.yaml` tetap host-local karena mendeskripsikan deployment dan bisa memuat
-nomor telepon. Loader tidak pernah membuat direktori. `sync_documents: false` mematikan
-seed/export untuk test.
+Setelah mengedit `engine`/`soul`, `SOUL.md`, atau `roles.yaml` manual: `python -m sanka config
+import`. Untuk menulis berkas dari DB: `python -m sanka config export`. `sync_documents: false`
+mematikan seeding untuk tes. Loader tidak pernah membuat direktori.
 
-**Edit manual:** runtime membaca dokumen DB. Setelah mengedit bagian `engine`/`soul`, `SOUL.md`,
-atau `roles.yaml` secara manual, jalankan `python -m sanka config import`. Untuk menulis berkas dari
-DB, jalankan `python -m sanka config export`.
+## Karakter: SOUL.md dan katalog pola
 
-### Role
+`SOUL.md` adalah suara: identitas, kepribadian, register, aturan perilaku, latar, hubungan, dan empat
+contoh dialog. Isinya tetap Indonesia, pendek, dan tidak menduplikasi gerakan.
 
-Role eksplisit dan modular; tidak ada izin default di handler. Setiap role menyebut tool dan command
-yang boleh dipakai (`*` berlaku sebagai glob). Satu alamat boleh muncul di beberapa role; izinnya
-di-union dan context-nya diurutkan menurut `priority` (turun) lalu nama. Pengirim yang tidak cocok
-mendapat `default_role`. `memory_admin: true` wajib untuk tulis/hapus memori global.
+`sanka/data/patterns.json` adalah lembar karakter runtime: 30-60 gerakan bersyarat ("kalau ini, maka
+itu") dengan tag register, target gender, dan gate toxicity/adult. Tiap turn engine membaca pesan
+terakhir, menghitung register ruangan, lalu memilih `engine.character.patterns` baris (0-6, default 0;
+host produksi memakai 4). Pemilihan deterministik: kata kunci dulu, lalu cosine vektor MiniLM yang
+dipra-hitung. Pola `always` (kunci bahasa, panjang, batas pertanyaan, grounding, floor, pemicu
+umpatan) tidak butuh kata kunci.
 
-```yaml
-roles:
-  owner:
-    name: owner
-    description: Pemilik dan admin Sanka
-    priority: 100
-    users: ["6280000000000", "130799689031758"]
-    tools: ["*"]
-    commands: ["*"]
-    memory_admin: true
-    context: |
-      Kamu sedang bicara dengan pemilik Sanka.
-  guest:
-    name: guest
-    description: Pengirim tak dikenal
-    priority: 0
-    tools: [read, web_search, chat_history, memory]
-    commands: [help, ping, reset, whoami, status, tools, cari]
-    memory_admin: false
+Gerakan masuk ke prompt sebagai `## Room patterns (apply the move, never copy the wording)`. Baris
+`say` adalah contoh yang disetujui pemilik dan harus berasal dari koreksi pemilik, bukan chat pribadi
+mentah.
+
+Siklus hidup pola:
+
+```bash
+python scripts/patterns.py --check                      # skema, gate, duplikat, keterjangkauan
+python scripts/patterns.py --embed                      # bangun ulang pattern_vectors.json (384 dim)
+python scripts/patterns.py --stats                      # hitungan per register dan gate
+python scripts/patterns.py --build-xlsx workspace/review-patterns.xlsx
+python scripts/patterns.py --apply-xlsx workspace/review-patterns.xlsx   # 1:1 per id
 ```
 
-`sanka init` menulis contoh `owner`, `member`, dan `guest`; ubah lewat tool `settings`, `/language`,
-atau langsung lalu `sanka config import`.
+`--apply-xlsx` menulis balik `konten`, `contoh`, `hindari`, `keys`, dan `komentar`, serta melaporkan
+id yang tidak dikenal. Setelah mengubah konten, jalankan `--check` lalu `--embed` supaya vektor
+cocok.
 
-### Pemilih bahasa
+Replay skenario terhadap prompt hidup:
 
-Sanka selalu berbicara dalam satu bahasa pada satu waktu, diatur di YAML, bukan di string kode:
-
-```yaml
-soul:
-  language: id   # catalog code: sanka/lang/<code>.yaml
+```bash
+python scripts/replay.py --scenario roast_group --limit 4
+python scripts/replay.py --no-regulate --no-judge --limit 6
 ```
 
-- `/language` menampilkan nilai sekarang dan kode yang terpasang; `/language <kode>` mengubahnya.
-- Hanya role owner yang boleh menjalankannya (owner punya `commands: ["*"]`; member/guest tidak
-  mencantumkannya).
-- Command ini menulis dokumen `soul`, mencerminkan `config.yaml`, dan hot-reload.
-- `auto`/`in` dipetakan ke `id`; kode tanpa katalog ditolak dan balasannya menyebut yang terpasang.
-- `/status` menampilkan `Language: <kode>`; blok Self dan baris `Reply in ...` mengikutinya.
+Skrip membaca `tests/data/scenarios.json` (turn, target per pembicara, rubrik, contoh buruk),
+merakit turn dengan `character_block(...)`, menjalankan `regulate`, lalu menulis
+`workspace/replay-<id>.json` berisi transkrip dan hitungan `hard_fail`. Skrip ini tidak pernah
+menulis balik ke skenario atau katalog.
 
-Setiap teks yang terlihat di chat ada di `sanka/lang/<kode>.yaml`; menambah bahasa berarti menyalin
-satu katalog lalu menerjemahkan nilainya, dan `soul.language` memilih katalog yang dipakai.
+## Role dan izin
 
-### Level privasi dan pengungkapan
+Tidak ada handler yang punya izin default; role yang tidak menyebut `tools`/`commands` menolak
+semuanya. Tool berasal dari enam keluarga (`shell`, `read`, `write`, `web_search`, `sandbox`, `mcp`)
+dan izin diperiksa hanya di `sanka/engine/tools/__init__.py:execute`. Alamat di beberapa role
+digabung, konteks diurutkan menurut `priority` lalu nama. `memory_admin: true` wajib untuk menulis
+memori global. `/approve` tidak pernah memanggil LLM dan memeriksa ulang izin role.
 
-Entri memori membawa level numerik; teks mirip kredensial tidak pernah disimpan.
+## Keamanan dan approval
 
-| Level | Arti | Grup | DM |
+| Level | Arti | Plafon grup | Plafon DM |
 |---|---|---|---|
-| 0 | publik (info acara, lelucon) | cair | cair |
-| 1 | tim/internal | cair | cair |
-| 2 | personal, preferensi, fakta santai | cair | cair |
-| 3 | sensitif/aib/risiko harmoni | konfirmasi owner | owner: cair |
-| 4 | rahasia berat | konfirmasi owner | konfirmasi sekali |
-| 5 | kredensial | tidak pernah disimpan | tidak pernah disimpan |
+| 0 | publik | cair | cair |
+| 1 | tim | cair | cair |
+| 2 | pribadi | cair | cair |
+| 3 | sensitif | konfirmasi | cair |
+| 4 | rahasia | konfirmasi | konfirmasi |
+| 5 | kredensial | tidak disimpan | tidak disimpan |
 
-Aturan:
+Level 0-2 cair di mana saja; level 3 di grup dan level 4 meminta konfirmasi lewat `approvals`; entri
+yang diveto tidak pernah ditampilkan atau diungkap, dan yang boleh memveto adalah subjek memori, bukan
+pembicaranya. Auditor hanya jalan kalau ada entri berisiko.
 
-- `owner_id` adalah pembicara yang menyatakan fakta; `subject_id` adalah orang yang dibicarakan.
-  Hanya subjek yang boleh memveto entri; veto menyembunyikannya dari konteks dan output tool serta
-  memblokir pengungkapan.
-- L0-L2 tidak pernah memicu konfirmasi atau auditor. Plafon grup `group_max_level` (2) dan plafon DM
-  `dm_max_level` (4); `ask_level` (4) bertanya saat capture.
-- LLM hanya memberi label level/subjek sementara, menyusun pertanyaan konfirmasi dalam bahasa soul,
-  dan mendaftar entri yang disebut draft. Keputusannya deterministik
-  (`sanka/engine/memory/privacy.py`): veto → tolak, pengungkapan grup oleh non-owner → tolak,
-  pengungkapan owner yang belum dikonfirmasi → tanya, selain itu izinkan.
-- Auditor hanya berjalan bila ada entri berisiko; kalau gagal, default aman adalah tanya/tolak,
-  bukan draft mentah.
-- Tool `memory` mengekspos `level`, `subject`, `confirmed`, `veto`, dan `active=false` untuk
-  membatalkan veto; `/memori` menampilkan level, menyembunyikan entri yang diveto, dan membatasi
-  tambah/hapus global untuk `memory_admin`.
+`shell`, `sandbox`, dan perubahan internal `settings` melewati `SafetyPolicy`/`approvals`; mode
+default `yolo` (otomatis setuju), dan `off` mematikan pemeriksaan approval sepenuhnya - catat
+risikonya kalau diubah. Level nada datang dari `engine.character`: `toxicity` 0-4 dan `adult_memes`
+0-3, dengan floor permanen (tanpa konten seksual dengan anak, doxing, ancaman kredibel, kebencian).
 
-### Gateway
-
-- **WhatsApp** (`sanka/gateways/whatsapp`): transport Neonize, DB sesi `0600`, unduh media, history
-  sync, direktori kontak/LID, resolusi mention, tool `send`/`send_to`, dan `/backfill`. Ingress
-  menyimpan siapa yang benar-benar bicara: echo `fromMe` hanya `bot` bila ID-nya ada di cache
-  kiriman gateway (15 menit); selain itu `manual_owner` (manusia yang mengetik dari nomor owner).
-  History sync tidak bisa tahu, jadi menulis `unknown`. LID pengirim dipetakan ke JID nomor lewat
-  `SenderAlt` atau `wa_lid_map`, dan tiap baris payload membawa handle `mention=@<digit>` yang hanya
-  jadi mention asli bila cocok dengan pengirim yang dikenal; `@nomor` yang tidak cocok tetap teks
-  biasa. Revoke menandai baris arsip (`deleted`, `deleted_by`, `deleted_admin`) dan payload menampilkan
-  `(pesan dihapus …)` sebagai ganti isinya, sementara `chat_history` tetap mengembalikannya sebagai
-  `[dihapus]`. Baris sekali lihat diberi tag `sekali lihat`; stanza yang tidak bisa didekripsi
-  perangkat ini menjadi baris placeholder `tidak terbaca` dan tidak pernah memicu balasan.
-  `chat_history chat=<nama|JID>` membaca chat lain yang terarsip, dan `send_to` menolak kiriman
-  lintas chat sampai chat itu dibaca.
-- **CLI** (`sanka/gateways/cli`): REPL terminal lokal. `sanka console` selalu mengaktifkannya,
-  meskipun `config.yaml` mematikannya, dan tidak pernah menyalakan WhatsApp. Siapa pun dengan akses
-  shell diperlakukan sebagai `cli.role` yang dikonfigurasi (default: `default_role`).
-- Menambah gateway: sediakan entry point di grup `sanka.gateways` dan implementasikan protokol di
-  `sanka/engine/inbound.py`. Tool/command milik gateway ditemukan dari
-  `sanka/gateways/<nama>/tools` dan `commands`; nama duplikat ditolak saat startup.
-
-`gateway.render()` mengubah markdown ke dialek transport; `gateway.prompt_hints()` hanya menambah
-sintaks transport (format WhatsApp, mention, surface). Prompt dasar netral transport.
-
-### DB bersama, lease, freeze, console
-
-Hanya pemegang lease yang melayani turn. `sanka run` dan `sanka console` mengambil `engine_lease`;
-perpanjangan tiap 5 detik dengan TTL 30 detik. Kehilangan lease (atau `/freeze`) menghentikan
-gateway dan loop ambient, melepas lease, dan menjaga proses standby sambil mencoba lagi.
+## Database, lease, dan console
 
 ```bash
-# Produksi
-python -m sanka run
-# Lokal, ambil lease; instance produksi membeku dalam ~5 detik
-python -m sanka console --takeover
-# Periksa pemegang lease
-python -m sanka db check
+python -m sanka db check                       # ringkasan schema dan baris
+python -m sanka db backup                      # pg_dump
+python -m sanka console --takeover             # REPL lokal mengambil lease
 ```
 
-`/quit` di console melepas lease; instance produksi mempromosikan dirinya lagi. WhatsApp menyambung
-ulang dengan DB sesi yang sama setelah promosi.
+`engine_lease` hanya punya satu heartbeat. Instance lain standby dan beku; `sanka console` tanpa
+`--takeover` ikut sebagai follower, dan instance produksi membeku lagi sekitar lima detik setelah
+kehilangan lease.
 
-### Mesin memori (Mem0)
-
-Mem0 OSS melakukan ekstraksi, dedupe, embedding, dan retrieval. Sanka hanya menyimpan identitas,
-`ActionLedger` autografis, dan data affect/style/skill.
-
-| Scope | Identitas Mem0 | Metadata | Visibilitas |
-|---|---|---|---|
-| `person` | `user_id=person:<id>` | `audience=private` | ikut orang itu ke chat lain |
-| `chat` | `run_id=chat:<chat_id>` | `audience=group` | tetap di chat itu |
-| `global` | `agent_id=sanka` | `audience=shared` | fakta tim bersama |
-
-Setiap turn hanya me-query `global` + `person:<pengirim>` + `chat:<chat ini>`. Memori privat orang
-lain tidak pernah di-query. Prompt memerintahkan model tidak pernah membocorkan memori privat satu
-chat ke orang ketiga. `memory.backend: null` mematikan Mem0; kegagalan fail-open dengan alasan di
-`/status`.
-
-`memory_legacy` menampung memori era SQLite. `sanka memory migrate` memetakan DM ke `person`, grup
-ke `chat`, dan global ke `global`; idempoten, tidak pernah memigrasikan ulang satu baris, dan menulis
-level 2.
-
-### Affect, style, skills, recipes
-
-- `AffectStore` menyimpan emosi PAD, trust, relasi, topik, dan drives di Postgres; baris state
-  dibaca/ditulis dalam satu transaksi dengan `FOR UPDATE` di Postgres.
-- `StyleStore` mengagregasi statistik ritme/diksi dari arsip; isi pesan mentah tidak disimpan di
-  sana.
-- `SkillStore` menyimpan prosedur (`skills`, `skill_files`, `skill_usage`). Model memuat indeks dan
-  body lengkap lewat tool `skill`.
-- `RecipeStore` menyimpan command user (`/nama`) sebagai body YAML; langkah `recipe` menjalankan tool
-  dengan `{{args}}`, langkah `prompt` satu turn LLM.
-- `VibeRunner` menyimpan mood ruangan per chat di tabel `state`.
-
-### Approval dan safety
-
-Default `approval.mode: yolo` membiarkan tool biasa berjalan. Yang butuh `/approve`:
-
-- shell command destruktif yang cocok dengan `approval.sensitive_commands` (pola default: `rm *`,
-  `dd *`, `systemctl *`, `git reset --hard*`, `git push *--force*`, `find * -delete*`, …), termasuk
-  perintah yang sama di dalam wrapper `sudo`/`env`/`xargs`, segmen `;`/`&&`/`|`, dan substitusi
-  `$(…)`/backtick,
-- aksi internal destruktif: `memory` `forget` dan `skill` `archive`,
-- setiap perubahan internal lewat tool `settings` saat `approval.settings: true`,
-- setiap tool di `approval.sensitive_tools` (default kosong; glob diizinkan) — isi `[shell]` untuk
-  menggerbangi semua shell lagi,
-- konfirmasi privasi/pengungkapan (`kind=privacy|disclosure`),
-- di mode `strict`, setiap tool kecuali observasi read-only (`read`, `memory`, `skill`,
-  `chat_history`, `web_search`).
-
-Alur: model menerima `pending approval #ID`, memberi tahu pengirim, lalu berhenti. `/pending`
-mendaftar, `/approve ID` mengeksekusi dengan role asli dan mengecek ulang izin, `/deny ID`
-membatalkan. Item pending terikat `chat_id` + pengirim, kedaluwarsa setelah `ttl_seconds` (default
-900), dan `/approve` tidak pernah memanggil LLM atau mengubah emosi. `shell` yang disetujui berarti
-akses host secara desain; `settings` adalah jalur tervalidasi untuk perubahan config. Klasifikasi
-command sengaja kasar: redirection, one-liner `python -c`, dan file script tidak digerbangi, dan
-`sensitive_commands: []` mematikan gerbang command sepenuhnya.
-
-### Status, settings, audit
-
-`/status` melaporkan mode, pemegang lease, uptime, surface, model, database, chat/role, ukuran
-arsip, status memori, legacy pending, approval, skill, orang/aksi, mirror soul/persona, bahasa, flag
-privasi, mirror engine, dan perubahan config terakhir. `/whoami` melaporkan role, chat, surface, dan
-handle bot.
-
-Tool `settings` (sesuai izin role) membaca dan mengubah Sanka sendiri: `engine`, `host`, `gateway`,
-`soul`, `persona`, `role`. `engine`/`soul` memetakan ke bagian `config.yaml` dan dokumen DB;
-`gateway` hanya mengedit mapping `gateways`; `role` meregenerasi `roles.yaml`; `host` menolak path di
-dalam `engine`/`gateways`/`soul`. `set`/`unset`/`write` memvalidasi kandidat lewat loader asli,
-menulis dokumen DB, mengekspor mirror secara atomik, membackup berkas, mencatat `config_changes`,
-dan hot-reload. Kunci khusus restart mengembalikan `ok: saved; restart required ...` alih-alih
-reload. Kunci mirip rahasia (`api_key`, `password`, `secret`, `token`) ditolak kecuali
-`api_key_env`; path tetap di dalam berkas yang dikenal.
-
-Contoh audit:
-
-```sql
-select count(*) from sanka_memories;                    -- koleksi pgvector Mem0
-select scope, kind, count(*) from memory_legacy group by 1,2;
-select count(*) from messages;
-select * from engine_lease;
-select id, kind, status, summary from approvals order by id desc limit 5;
-select * from config_changes order by id desc limit 5;
-```
-
-### Migrasi dari SQLite atau config terpisah
+## Migrasi dari SQLite atau layout lama
 
 ```bash
-# 1. Hentikan bot.
-# 2. Lipat layout lama ke config.yaml + roles.yaml (tambah --dry-run untuk melihat).
-#    Backup masuk ke config.bak-<timestamp>/; --force menghapus berkas lama setelahnya.
-python -m sanka config migrate --dir .
-# 3. Arahkan SANKA_DATABASE_URL ke Postgres, lalu
-python -m sanka db upgrade
-# 4. Impor data .sanka lama (history, affect, style, skills, recipes, memori legacy)
-python -m sanka db import --sqlite .sanka
-# 5. Pindahkan memori bertahap ke Mem0
-python -m sanka memory migrate
-# 6. Salin berkas host-local: whatsapp.db, lampiran workspace, .env
-# 7. Verifikasi dan jalankan
-python -m sanka db check
-python -m sanka run
+python -m sanka config migrate --dir .        # lipat layout lama ke config.yaml + roles.yaml
+python -m sanka db import                     # data .sanka lama
+python -m sanka memory migrate                # memory_legacy -> Mem0
+python -m sanka db upgrade && python -m sanka db check
 ```
 
-`db import` menolak selama lease baru masih ada (`--force` menimpa). `db backup --out file.dump`
-memakai `pg_dump --format=custom`; `db restore file.dump --yes` memakai
-`pg_restore --clean --if-exists`. Backup DB sesi host-local dan workspace secara terpisah.
-
-### Pengembangan dan test
+## Pengembangan
 
 ```bash
-pytest -q
-python -m sanka selftest          # DB SQLite sementara untuk store; LLM nyata bila kunci ada
-python -m sanka console --takeover
+.venv/bin/python -m pytest -q
+.venv/bin/python -m sanka selftest
+python scripts/patterns.py --check
+ruff check . && ruff format --check .
+pytest -q --cov=sanka --cov-report=xml
 ```
 
-Test memakai URL file SQLite dan gateway/LLM palsu; runtime memakai Postgres. `sanka selftest` tidak
-pernah menyentuh database produksi. Bila Mem0/pgvector tidak tersedia, cek memorinya `SKIP`, bukan
-`FAIL`, dan matriks kebijakan privasi tetap PASS.
+Suite-nya kecil dan hanya menguji kontrak repo: routing/format/izin, kontrak gateway, lease,
+approval, memori lintas chat, privasi/pengungkapan, pemilihan bahasa, pemilihan pola, CLI pola, dan
+jalur balasan Neonize. `sonar-project.properties` siap untuk SonarCloud; kompleksitas kode maksimal
+12.
 
-### Keamanan
+## Pipeline korpus yang dihapus
 
-- Rahasia hanya di `.env` (nama env dirujuk dari YAML). `config.yaml`, `roles.yaml`, `.env`, dan
-  `.sanka/` diabaikan git.
-- `roles.yaml`, DB sesi, dan `.env` bermode `0600`. `sanka db backup` menulis `0600`.
-- Password database diredaksi dari log, `/status`, dan baris audit.
-- `settings` tidak pernah menyentuh `.env` dan menolak path kunci sensitif.
-- Entri yang diveto dan L3/L4 disembunyikan dari output tool grup; non-owner tidak bisa
-  mengonfirmasi pengungkapan.
-
-### Prinsip desain
-
-1. Identitas bertahan melampaui sesi: window per chat, memori per person/agent/chat.
-2. Gateway adalah appendage, bukan otak; sensor dan aktuator bisa ditambah dengan cara yang sama.
-3. Memori berlapis: Mem0 untuk fakta semantik, `ActionLedger` untuk autobiografi, affect/style untuk
-   cara Sanka merasa dan bicara, skills/recipes untuk prosedur.
-4. Safety dan privasi deterministik serta auditabel (`SafetyPolicy` + `approvals` +
-   `PrivacyPolicy`), bukan saran prompt.
-5. Kontrol motorik real-time di luar cakupan iterasi ini; seam-nya (`Gateway`, `WorkingMemory`,
-   `SafetyPolicy`, metadata `where`/`sensor_context` nullable) sudah tersedia.
+Toolchain pengumpulan dan pelatihan lama sudah hilang: tidak ada skrip fetch/ingest, tidak ada review
+Excel, tidak ada loop pelatihan, tidak ada inbox dataset unduhan, tidak ada
+`conversation_datasheet.json`. Data karakter adalah katalog yang ditulis tangan plus `SOUL.md`, dan
+harness replay adalah satu-satunya pintu evaluasi. Kalau nanti perlu menyegarkan korpus, itu tool
+baru, bukan bagian dari repo ini.

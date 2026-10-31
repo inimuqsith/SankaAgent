@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects import postgresql
 
 from sanka.engine.db import Database, redact_dsn
-from sanka.engine.schema import documents, messages, schema_meta, state
+from sanka.engine.schema import documents, messages, people, schema_meta, state
 from sanka.engine.stores.history import HistoryStore
 from support import database
 
@@ -156,7 +156,7 @@ def test_label_of_sqlite_database(tmp_path) -> None:
     db.dispose()
 
 
-def test_ensure_adds_missing_message_columns_and_bumps_version(tmp_path) -> None:
+def test_ensure_adds_missing_columns_and_bumps_version(tmp_path) -> None:
     db = database(tmp_path)
     with db.engine.begin() as conn:
         conn.execute(text("ALTER TABLE messages DROP COLUMN author"))
@@ -164,6 +164,10 @@ def test_ensure_adds_missing_message_columns_and_bumps_version(tmp_path) -> None
         conn.execute(text("ALTER TABLE messages DROP COLUMN deleted"))
         conn.execute(text("ALTER TABLE messages DROP COLUMN deleted_by"))
         conn.execute(text("ALTER TABLE messages DROP COLUMN deleted_admin"))
+        db.upsert(conn, people, [{"person_id": "u1", "name": "Budi"}], ["person_id"])
+        conn.execute(text("ALTER TABLE people DROP COLUMN gender"))
+        conn.execute(text("ALTER TABLE people DROP COLUMN gender_confidence"))
+        conn.execute(text("ALTER TABLE people DROP COLUMN gender_source"))
         conn.execute(text("UPDATE schema_meta SET value = '1' WHERE key = 'version'"))
         conn.execute(
             text(
@@ -186,5 +190,9 @@ def test_ensure_adds_missing_message_columns_and_bumps_version(tmp_path) -> None
     assert row["deleted_by"] == ""
     assert row["deleted_admin"] is False
     assert row["text"] == "halo"
-    assert version is not None and version["value"] == "3"
-    assert db._add_missing_message_columns() == []
+    assert version is not None and version["value"] == "4"
+    person = db.fetch_one(select(people).where(people.c.person_id == "u1"))
+    assert person is not None
+    assert person["gender"] == "" and person["gender_source"] == ""
+    assert person["gender_confidence"] == 0.0
+    assert db._add_missing_columns() == []

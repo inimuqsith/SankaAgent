@@ -12,6 +12,7 @@ BOLD = re.compile(r"\*\*(.+?)\*\*")
 BULLET = re.compile(r"^[-*]\s+", re.MULTILINE)
 LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 BUBBLE = re.compile(r"(?m)^\s*-{3,}\s*$")  # baris "---" saja = bubble baru; pilihan model
+INLINE_BUBBLE = re.compile(r"[ \t]+-{3,}[ \t]+")  # "satu --- dua" di tengah baris
 BLANK = re.compile(r"\n\s*\n")
 LIST_LINE = re.compile(r"(?m)^\s*(?:[-*•]|\d+[.)]|\d\ufe0f?\u20e3)\s")
 CASUAL_BUBBLE_MAX = 300
@@ -27,7 +28,8 @@ def _heading(line: str) -> str:
     rest = line[marks:]
     if not 1 <= marks <= 6 or rest[:1] not in (" ", "\t") or len(rest) < 2:
         return line
-    return f"*{rest.lstrip(' \t')}*"
+    body = rest.lstrip(" \t")
+    return f"*{body}*"
 
 
 def clean_prose(chunk: str) -> str:
@@ -62,7 +64,7 @@ def split_text(text: str, limit: int = 10000) -> list[str]:
 
 def human_chunks(text: str, *, max_parts: int = 3) -> list[str]:
     """Teks -> bubble apa adanya; model menandai batas dengan baris `---`."""
-    body = str(text or "").strip()
+    body = strip_blocks(str(text or "")).strip()
     if not body:
         return []
     parts: list[str] = []
@@ -73,6 +75,7 @@ def human_chunks(text: str, *, max_parts: int = 3) -> list[str]:
         if piece.lstrip().startswith(FENCE_START):
             current = f"{current}\n{piece}".strip() if current else piece.strip()
             continue
+        piece = INLINE_BUBBLE.sub("\n---\n", piece)
         for index, part in enumerate(BUBBLE.split(piece)):
             chunk = part.strip()
             if not chunk:

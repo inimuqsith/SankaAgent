@@ -39,6 +39,7 @@ PAD_WEIGHT = {"me": 1.0, "group": 0.6, "other": 0.2, "unknown": 0.2}
 WINDOW_SECONDS = 600.0  # jendela pembatas gerak hubungan per orang
 WINDOW_LIMIT = 0.20  # delta maksimum per arah per jendela
 SOOTHE_FLOOR = 0.01  # di bawah ini dianggap lunas, biar tidak menulis angka receh terus
+GENDERS = ("male", "female", "unknown", "")
 
 PERSON_DEFAULTS: dict = {
     "name": "",
@@ -858,6 +859,52 @@ class AffectStore:
                 update(people)
                 .where(people.c.person_id == person_id)
                 .values(notes=notes)
+            )
+
+    def gender(self, person_id: str) -> tuple[str, float, str]:
+        """(label, keyakinan, sumber) tersimpan; kosong kalau orangnya belum dikenal."""
+        if not person_id:
+            return ("", 0.0, "")
+        with self._lock, self.db.connect() as conn:
+            row = conn.execute(
+                select(people.c.gender, people.c.gender_confidence, people.c.gender_source).where(
+                    people.c.person_id == person_id
+                )
+            ).first()
+        if row is None:
+            return ("", 0.0, "")
+        label = str(row[0] or "")
+        return (
+            label if label in GENDERS else "",
+            float(row[1] or 0.0),
+            str(row[2] or ""),
+        )
+
+    def set_gender(
+        self, person_id: str, gender: str, confidence: float = 0.0, source: str = ""
+    ) -> None:
+        """Simpan label gender; id yang belum dikenal tidak dibuatkan baris baru."""
+        label = str(gender or "").strip().lower()
+        if not person_id or label not in GENDERS:
+            return
+        try:
+            score = max(0.0, min(1.0, float(confidence)))
+        except (TypeError, ValueError):
+            score = 0.0
+        with self._lock, self.db.connect() as conn:
+            exists = conn.execute(
+                select(people.c.person_id).where(people.c.person_id == person_id)
+            ).first()
+            if exists is None:
+                return
+            conn.execute(
+                update(people)
+                .where(people.c.person_id == person_id)
+                .values(
+                    gender=label,
+                    gender_confidence=score,
+                    gender_source=str(source or "")[:16],
+                )
             )
 
     # ------------------------------------------------------------------ prompt

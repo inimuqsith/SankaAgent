@@ -1,103 +1,74 @@
 # TASK
 
-Checklist for the soul-engine + gateway refactor. Tick `[x]` only after the real path is verified.
+Checklist for the soul engine, the gateway contract, and the pattern-based character layer. Tick
+`[x]` only after the real path is verified.
 
 ## Core
 
 - [x] `sanka/engine/` is an autonomous core; it never imports a gateway or Neonize (`tests/test_gateway_contract.py`).
-- [x] `Agent.handle` receives `Inbound` and uses `Gateway` (no protobuf in core).
+- [x] `Agent.handle` receives `Inbound` and talks back through `Gateway`; five docs only.
 - [x] `WorkingMemory` = per-chat window, not identity; `HistoryStore` = archive.
-- [x] Modular roles: one `roles.yaml` block per role, explicit permissions, multi-role union, no handler defaults.
-- [x] `Soul` (name/language/pronouns/persona) + `language_line` for the prompt.
-- [x] English prompt scaffolding; Indonesian persona preserved; gateway hints for transport syntax.
-- [x] Prompt blocks `Self`, `Roles`, and `Memory` stay visible; memory is never dropped by salience.
+- [x] Modular roles: one `roles.yaml` block per role, explicit permissions, union across matching roles, no handler defaults.
+- [x] `Soul` (name/language/pronouns/persona) + `language_line`; English scaffolding, Indonesian persona.
+- [x] One host-local `config.yaml` (host keys + `engine` + `gateways` + `soul`) and one `roles.yaml`; `config import`/`export` keep the DB documents and the files in step.
+- [x] One `Database` + one `MetaData` (Postgres runtime, SQLite test); documents `engine`/`soul`/`persona`/`role:<name>`.
+- [x] Mem0 semantic memory, scopes `person`/`chat`/`global`, cross-chat retrieval for the same person only; `ActionLedger` for actions.
+- [x] Supervisor + `engine_lease`: primary/standby, renew, takeover, `/freeze`.
 
-## Config consolidation
+## Character layer
 
-- [x] One host-local `config.yaml`: host keys + `engine` + `gateways` + `soul`; one `roles.yaml`; `SOUL.md` persona.
-- [x] `engine.yaml`, `gateway.yaml`, `soul.yaml`, and `roles/` removed; the loader rejects the split layout with a migration hint.
-- [x] `sanka init` writes exactly `config.yaml`, `roles.yaml`, `SOUL.md`, `.env`; `roles.yaml`/`.env` are `0600`.
-- [x] `sanka config migrate` folds legacy or split layouts into `config.yaml`+`roles.yaml`, backs up old files into `config.bak-<timestamp>/`, and removes them only with `--force`.
-- [x] Document mirrors merge engine/soul into `config.yaml` without clobbering host/gateway keys and aggregate every role into `roles.yaml`.
-- [x] `settings` tool: `engine`/`gateway`/`soul`/`persona`/`role` map to the combined files; `host` rejects reserved sections.
+- [x] `sanka/data/patterns.json`: 30-60 conditional moves with `register`, `keys`, `target`, toxicity/adult gates, `say` exemplars, `avoid`, `priority`, `always`, `source`.
+- [x] Only the six invariants are `always` (language lock, length, question limit, grounding, floor, curse trigger); they need no keyword hit and never crowd the register moves out of the sort.
+- [x] `sanka/data/pattern_vectors.json`: one 384-dim unit vector per pattern for `paraphrase-multilingual-MiniLM-L12-v2`.
+- [x] `sanka/engine/patterns.py`: `load_patterns` (cache, corrupt = empty, malformed rows dropped), `room_register`, `select_patterns` (gate filter, keyword hits, cosine, deterministic sort by score/priority/id, 180-char render).
+- [x] `sanka/engine/agent.py` selects `config.character.patterns` lines per turn and passes them to `character_block`; the prompt header is `## Room patterns (apply the move, never copy the wording)`.
+- [x] `CharacterConfig.patterns` clamped 0..6; `config.yaml`, `config.example.yaml`, and the admin template carry `patterns` (no `examples` left anywhere).
+- [x] Keyword fallback keeps the turn working when `sentence-transformers` or the vectors are missing; `--embed` is the only path that needs the model.
+- [x] `scripts/patterns.py`: `--check` (schema, gates, duplicates, reachability), `--embed`, `--stats`, `--build-xlsx`, `--apply-xlsx` (1:1 by id, unknown ids reported).
+- [x] `SOUL.md` is a character card (identity, personality, voice, rules, backstory, relationships, four examples), ≤3600 chars, no trainer/coach framing, honest about being an AI.
+- [x] Level semantics live in `engine.character`: `toxicity` 0-4, `adult_memes` 0-3, `roast_jabs` 1-3, `max_questions` 1-2, plus `regulate` as the deterministic rewrite.
+- [x] `target.py`: typing-style gender, avatar only as a fallback, `/gender` override; unsure means gentle and no curse.
+- [x] `scripts/replay.py` replays `tests/data/scenarios.json` through the live prompt and writes `workspace/replay-<id>.json` with a hard-fail count.
 
-## Storage
+## Character data contract
 
-- [x] One SQLAlchemy Core `Database`; portable schema (Postgres runtime, SQLite test).
-- [x] DB stores: history, affect, style, vibe, skills, recipes, documents.
-- [x] Documents `engine`/`soul`/`persona`/`role:<name>` + file mirrors (`seed`, `export`, `import`).
-- [x] Mem0 OSS for semantic memory; scopes `person`/`chat`/`global` + privacy metadata (level/owner/subject/confirmed/vetoed).
-- [x] Cross-chat retrieval for the same person; another person's memory is never queried.
-- [x] `ActionLedger` autobiographical; the ledger is filtered free of secrets.
-- [x] `memory` ids are full UUIDs; prefix ids resolve first, so a non-UUID id never reaches pgvector.
-- [x] `memory_legacy` + `sanka memory migrate` idempotent (DM/LID → person, group → chat, global).
-- [x] `sanka db upgrade|import|check|backup|restore`; imports old SQLite plus skills/recipes/state.
-- [x] Selftest uses a temporary database; unavailable Mem0 = SKIP.
+- [x] The runtime character sheet is `sanka/data/patterns.json` (plus `pattern_vectors.json`); there is no second source of moves.
+- [x] No raw transcripts, private exports, phone numbers, or dataset copies live in the repo or in the prompt.
+- [x] Every `say` line comes from an owner-approved correction; `content` is imperative, one line, 10-200 chars.
+- [x] Every pattern has a register the selector can reach, so no row is dead weight (`--check` fails otherwise).
+- [x] Editing content requires `--check` then `--embed`; the selector ignores vectors whose model/dim do not match.
 
-## Gateway
+## Privacy, safety, and settings
 
-- [x] `Gateway`/`Inbound`/`GatewayError` contract; tool+command registries merged, duplicates rejected.
-- [x] WhatsApp: ingress, media, directory (contacts/LID/names), history sync, send/typing/reaction/render.
-- [x] `send_to` only takes explicit targets from the archive (no single-contact fallback).
+- [x] Numeric memory levels 0-4 (public, team, personal, sensitive, secret); level 5/credentials are never stored.
+- [x] Deterministic `PrivacyPolicy`: show/disclose matrices, group vs DM ceilings, owner = speaker, subject veto, confirmation state.
+- [x] L0-L2 stay fluid; group L3 and L4 ask through `approvals`; the auditor runs only when a risky entry exists.
+- [x] Deterministic `SafetyPolicy` (`allow|pending|deny`); approvals bound to chat+sender+TTL; `/approve` re-checks role permissions.
+- [x] `settings` tool: `schema/get/set/unset/write/reload`, atomic mirror, backup, audit, hot reload; the loader never `mkdir`s.
+- [x] `/status` reports mode, lease, uptime, database, memory, approvals, soul/engine, privacy, and language.
+
+## Gateways
+
+- [x] `Gateway`/`Inbound`/`GatewayError` contract; tool and command registries merged with duplicates rejected.
+- [x] WhatsApp: ingress, media, directory, history sync, send/typing/reaction/render; a partial send never marks the message answered.
 - [x] CLI REPL `sanka console`; CLI gateway only, role from `config.yaml`.
-- [x] Supervisor + `engine_lease`: primary/standby, renew, takeover, `/freeze`, promote back.
-- [x] `sanka run` by default; `backfill` stays a WhatsApp gateway command.
-- [x] A partial send never marks the message as answered.
-
-## Privacy and disclosure
-
-- [x] Numeric memory levels 0-4 (public, team, personal, sensitive/aib, secret); level 5/credentials are never stored.
-- [x] Deterministic `PrivacyPolicy`: show/disclose matrices with group vs DM ceilings, owner = speaker, subject veto, confirmation state.
-- [x] `PrivacyService`: pending confirmations, capture assessment, pre-delivery review; only agent-facing hook.
-- [x] Capture asks at `ask_level` (default 4) and stores unconfirmed until the speaker answers; L0-L2 stay fluid.
-- [x] Group L3/L4 disclosure asks the owner; non-owner or vetoed disclosure is denied; the auditor runs only when a risky entry exists.
-- [x] `memory` tool: level/subject/confirmed/veto, `memory_admin` required for global add/delete; `memori` command filters through the policy.
-- [x] Memory context carries `MemoryHit` metadata and filters vetoed entries.
-
-## Cross-room soul
-
-- [x] `ChatMessage.author` (`bot`/`manual_owner`/`system`/`unknown`) + numeric `visibility` (L0-L4, default 2); `messages` columns, `schema version 2`, additive migration.
-- [x] Live `fromMe` echo is `bot` only when its ID is in the gateway's sent cache; the owner's manual typing is `manual_owner`; history sync never guesses (`unknown`).
-- [x] Merge precedence `bot > manual_owner > system > unknown`, visibility only rises, in the window and in the SQL upsert.
-- [x] `chat_history chat=<name|JID>` reads another archived room, tags the result internal, and records it in `ToolContext.reads`.
-- [x] `send_to` refuses a cross-room send until that room's archive was read; failed sends are logged in the ledger too.
-- [x] `## Recent actions` block (10 lines, newest first, failures included) never carries the requester or the source room.
-- [x] Prompt: one soul across rooms, no cross-room disclosure, read-before-send; privacy capture raises the turn and reply visibility.
-
-## Language selector
-
-- [x] `soul.language` is YAML config (`config.yaml` `soul` section / `soul` document); only `en` and `id` are supported.
-- [x] `/language en|id` (owner-only) writes the soul document, mirrors `config.yaml`, and reloads.
-- [x] `language_line` and the Self block follow the configured language; there is no Python string catalog.
-- [x] `settings` `file=soul path=language` validates through the same normaliser.
-
-## Safety, settings, self
-
-- [x] Deterministic `SafetyPolicy` (`allow|pending|deny`) as the robotics seam.
-- [x] `approvals` bound to chat+sender+TTL; `/pending`, `/approve`, `/deny` without the LLM.
-- [x] `/approve` re-checks the original role permissions; `settings` is loader-validated before writing.
-- [x] `settings` tool: `schema/get/set/unset/write/reload`, atomic mirror, backup, `config_changes` audit, hot reload/restart-only.
-- [x] `/status` reports mode, lease, uptime, database, memory, approvals, skills, soul/engine/config, privacy, and language.
-- [x] Empty `send_text` = explicit error; the config loader never `mkdir`s; the DSN is redacted.
+- [x] `send_to` only takes explicit archive targets, and only after that room's archive was read.
 
 ## Packaging and docs
 
-- [x] `pyproject` script `sanka`, extras `whatsapp`/`vibe`/`memory`/`dev`; Dockerfile + pgvector compose.
-- [x] `sanka init` scaffold + `.env` `0600`; a single `config.example.yaml`.
-- [x] English README + full Indonesian section, migration runbook, audit SQL, approval, memory privacy, language.
-- [x] AGENTS/TASK/LOG updated; five docs only.
+- [x] `pyproject` script `sanka`, extras `whatsapp`/`vibe`/`memory`/`dev`; ruff + coverage config; Dockerfile + pgvector compose.
+- [x] `sonar-project.properties` for SonarCloud (sources, tests, exclusions, coverage path).
+- [x] English README with a full Indonesian section; TASK/LOG/AGENTS/SOUL are the only other markdown files.
+- [x] The corpus toolchain is deleted: fetch/ingest/Excel review/chat review/training scripts, the downloaded dataset inbox, and `conversation_datasheet.json`.
 
-## Release verification
+## Verification
 
 - [x] `pytest -q`.
 - [x] `python -m sanka selftest`.
-- [x] `sanka init` + `sanka db upgrade` + `sanka db check`.
-- [x] Real console with the LLM + `/status` + `/quit` (lease released).
-- [x] Two lease processes (console A/B): takeover, freeze, promote back.
-- [x] Real Postgres + pgvector: `db upgrade`, 386-message import, sequence reset, merge upsert.
-- [x] Real Mem0: `sanka memory migrate` 3 rows + add/search/context/forget through pgvector.
-  Note: the HF embedder cannot be installed on the dev machine's Python 3.15; verification used a
-  deterministic OpenAI-compatible embedding server. Production uses HuggingFace (Docker Python 3.12).
-- [x] Config consolidation: split layout migrated, combined config loads, mirrors round-trip.
-- [x] Privacy matrix and `/language` console smoke.
+- [x] `python scripts/patterns.py --check` and `--embed` (43 patterns, 384 dims).
+- [x] Selector smoke: comfort first for a distressed message, no roast pattern at toxicity 1, count 0 returns `[]`, banter returns the roast move first.
+- [x] Workbook roundtrip: `--build-xlsx`, edit one `konten` cell, `--apply-xlsx`, `--check` clean.
+- [x] `python -m sanka config import` mirrors `patterns` into the `engine` document.
+- [x] Replay smoke on a roast scenario with a real key: transcript written, no curse for an unknown target.
 - [ ] Real WhatsApp end-to-end (needs production credentials/QR).
+- [ ] SonarCloud scan (needs `SONAR_TOKEN` and `sonar-scanner` on the host).

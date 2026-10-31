@@ -22,11 +22,12 @@ from ...engine.config import Config, GatewaySettings, secure_db
 from ...engine.context import ChatMessage, human_size
 from ...engine.inbound import GatewayError, Inbound
 from ...engine.registry import Handler, discover
-from ...engine.tools import FAMILIES
 from ...engine.reply import FENCE, clean_prose, strip_blocks
+from ...engine.tools import FAMILIES
 from . import directory, history_sync, ingress
 from .config import WhatsAppSettings
 from .media import download_media, send_kind
+from .profile import avatar_bytes
 
 log = logging.getLogger(__name__)
 
@@ -198,6 +199,12 @@ class WhatsAppGateway:
     def _jid(self, chat_id: str):
         user, _, server = chat_id.partition("@")
         return build_jid(user, server)
+
+    async def avatar(self, jid: str) -> tuple[bytes, str] | None:
+        """Foto profil untuk sinyal gender cadangan; None tanpa klien atau tanpa foto."""
+        if self.client is None:
+            return None
+        return await avatar_bytes(self.client, self.config, jid)
 
     def remember_sent(self, message_id: str) -> None:
         """Catat ID pesan yang dikirim bot; echo `fromMe` dengan ID ini adalah bot, bukan owner."""

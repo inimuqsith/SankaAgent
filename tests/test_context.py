@@ -209,3 +209,45 @@ def test_mark_deleted_falls_back_to_the_archive(tmp_path) -> None:
     item = store.find("chat", "a")
     assert item.deleted is True and item.deleted_admin is True
     assert windows.mark_deleted("chat", "hilang", "628999@s.whatsapp.net", "Ani") is False
+
+
+def sticker_line(tmp_path, *, animated: bool) -> str:
+    from sanka.engine.context import Media
+
+    config = build_config(tmp_path, soul=Soul(name="sanka", persona="p"))
+    media = Media(
+        kind="sticker",
+        mimetype="image/webp",
+        filename="x.webp",
+        size=1,
+        animated=animated,
+    )
+    entry = row("m1", "kirim stiker dong", media=media)
+
+    text = asyncio.run(build_user_content(config, "chat", [entry], entry))
+
+    return next(line for line in text.splitlines() if "x.webp" in line)
+
+
+def test_animated_sticker_is_labelled_stiker_and_animasi(tmp_path) -> None:
+    line = sticker_line(tmp_path, animated=True)
+
+    assert "stiker" in line
+    assert "animasi" in line
+
+
+def test_static_sticker_is_labelled_stiker_diam(tmp_path) -> None:
+    line = sticker_line(tmp_path, animated=False)
+
+    assert "stiker diam" in line
+    assert "animasi" not in line
+
+
+def test_prompt_entry_marks_an_animated_sticker() -> None:
+    from sanka.engine.context import Media
+
+    media = Media(kind="sticker", mimetype="image/webp", filename="x.webp", size=1, animated=True)
+
+    assert prompt_entry(row("m1", "", media=media), "sanka") == (
+        "[role=unknown vis=L2] Budi: [stiker animasi]"
+    )

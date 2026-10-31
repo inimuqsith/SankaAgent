@@ -21,3 +21,7 @@ roles.yaml
 config.yaml.bak-*
 config.bak-*/
 compose.yaml
+
+# generated test artifacts
+.coverage
+coverage.xml

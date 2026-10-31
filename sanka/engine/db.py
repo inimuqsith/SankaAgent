@@ -17,7 +17,7 @@ from .schema import engine_control, metadata, schema_meta
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 UPSERT_BATCH_ROWS = 500
 MESSAGE_COLUMNS = (
     ("author", "VARCHAR(20) NOT NULL DEFAULT 'unknown'"),
@@ -25,6 +25,11 @@ MESSAGE_COLUMNS = (
     ("deleted", "BOOLEAN NOT NULL DEFAULT false"),
     ("deleted_by", "VARCHAR(160) NOT NULL DEFAULT ''"),
     ("deleted_admin", "BOOLEAN NOT NULL DEFAULT false"),
+)
+PEOPLE_COLUMNS = (
+    ("gender", "VARCHAR(12) NOT NULL DEFAULT ''"),
+    ("gender_confidence", "FLOAT NOT NULL DEFAULT 0"),
+    ("gender_source", "VARCHAR(16) NOT NULL DEFAULT ''"),
 )
 
 
@@ -63,7 +68,7 @@ class Database:
 
     def create_all(self) -> None:
         metadata.create_all(self.engine)
-        self._add_missing_message_columns()
+        self._add_missing_columns()
         with self.connect() as conn:
             self.upsert(
                 conn,
@@ -81,19 +86,23 @@ class Database:
                 update={"id": engine_control.c.id},
             )
 
-    def _add_missing_message_columns(self) -> list[str]:
-        """Kolom baru pada `messages` untuk database lama; tidak membuat tabel dari nol."""
+    def _add_missing_columns(self) -> list[str]:
+        """Kolom baru pada tabel lama; tidak pernah membuat tabel dari nol."""
         inspector = inspect(self.engine)
-        if "messages" not in inspector.get_table_names():
-            return []
-        existing = {column["name"] for column in inspector.get_columns("messages")}
-        missing = [(name, ddl) for name, ddl in MESSAGE_COLUMNS if name not in existing]
-        if not missing:
-            return []
-        with self.engine.begin() as conn:
-            for name, ddl in missing:
-                conn.execute(text(f"ALTER TABLE messages ADD COLUMN {name} {ddl}"))
-        return [name for name, _ in missing]
+        tables = set(inspector.get_table_names())
+        added: list[str] = []
+        for table, columns in (("messages", MESSAGE_COLUMNS), ("people", PEOPLE_COLUMNS)):
+            if table not in tables:
+                continue
+            existing = {column["name"] for column in inspector.get_columns(table)}
+            missing = [(name, ddl) for name, ddl in columns if name not in existing]
+            if not missing:
+                continue
+            with self.engine.begin() as conn:
+                for name, ddl in missing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+            added.extend(f"{table}.{name}" for name, _ in missing)
+        return added
 
     def ensure_vector(self) -> bool:
         """Aktifkan pgvector best-effort; SQLite tidak butuh."""

@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 
 import pytest
 
-from sanka.engine.prompts import self_block, system_prompt
+from sanka.engine.config import PromptConfig
+from sanka.engine.prompts import (
+    character_block,
+    research_block,
+    self_block,
+    system_prompt,
+)
 from sanka.engine.roles import Role
 from sanka.engine.runtime import RuntimeFacts
 from sanka.engine.soul import Soul, language_line, normalize_language
@@ -107,3 +114,54 @@ def test_system_prompt_states_the_cross_room_policy(tmp_path) -> None:
     assert "never reveal or hint at the requester" in prompt
     assert "## Recent actions" in prompt
     assert "The archive covers only this chat" not in prompt
+
+
+def test_character_block_reports_levels_target_and_patterns() -> None:
+    block = character_block((3, 2), "male", 0.9, jabs=2, patterns=["Balas sekali", " "])
+
+    assert "Toxicity level 3/4 for this turn (target male, confidence 0.90)." in block
+    assert "Adult memes 2/3:" in block
+    assert "At most 2 jab per turn" in block
+    assert "stay gentle: no jab, no curse" in block
+    assert "Hard floor no level unlocks" in block
+    assert block.count("\n- ") == 1
+    assert "## Room patterns (apply the move, never copy the wording):" in block
+    assert "Balas sekali" in block
+
+
+def test_character_block_gentle_floor_and_disabled_gate() -> None:
+    gentle = character_block((1, 0), "", 0.0)
+    assert "target unknown" in gentle
+    assert "Toxicity level 1/4" in gentle
+    assert "## Room patterns" not in gentle
+    ungated = character_block((3, 3), "female", 0.9, gate=False)
+    assert "Target restriction disabled for this host." in ungated
+    assert "Never target a woman" not in ungated
+
+
+def test_research_block_forbids_interrogation_and_asks_for_indonesian_context() -> None:
+    block = research_block()
+
+    assert "Ask at most one question per turn" in block
+    assert "Never ask about stickers" in block
+    assert "Assume Indonesia (+62) context" in block
+    assert "never invent fresh numbers or quotes" in block
+
+
+def test_system_prompt_carries_the_character_and_research_blocks(tmp_path) -> None:
+    env = make_agent(tmp_path)
+    prompt = system_prompt(
+        replace(env.agent.config, prompt=PromptConfig(max_chars=20000)),
+        (Role(name="member"),),
+        runtime=RuntimeFacts(),
+        character=character_block((1, 0), "unknown", 0.0),
+        research=research_block(),
+        currents="## Current Indonesia context (fetched 2026-11-01)\n- rupiah: melemah",
+        query="ada berita apa",
+    )
+
+    assert "Toxicity level 1/4" in prompt
+    assert "Research before asking" in prompt
+    assert "## Current Indonesia context (fetched 2026-11-01)" in prompt
+    assert "In a clearly joking room you may return one short jab" not in prompt
+    assert "but never start them yourself" not in prompt

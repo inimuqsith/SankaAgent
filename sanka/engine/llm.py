@@ -249,7 +249,7 @@ class LLM:
     async def complete(
         self,
         system: str,
-        user: str,
+        user: str | list[dict],
         *,
         max_tokens: int = 300,
         temperature: float = 0.2,
@@ -259,7 +259,7 @@ class LLM:
         """Satu panggilan tanpa tool untuk keputusan/ringkasan; gagal = string kosong."""
         messages = [
             {"role": "system", "content": str(system or "")},
-            {"role": "user", "content": str(user or "")},
+            {"role": "user", "content": user if isinstance(user, list) else str(user or "")},
         ]
         kwargs: dict = {
             "model": self.config.llm.model,

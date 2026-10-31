@@ -37,14 +37,17 @@ from .i18n import reload_catalogs, t
 from .inbound import Gateway, GatewayError, Inbound
 from .llm import LLM
 from .memory import MemoryBackend, MemoryContext, memory_status
+from .character import effective_limits, polish, regulate
 from .permissions import command_allowed, command_patterns, commands_for, tool_patterns, tools_for
 from .privacy import PrivacyService
-from .prompts import CRISIS_SAFETY, away_block, system_prompt
+from .patterns import room_register, select_patterns
+from .prompts import CRISIS_SAFETY, away_block, character_block, research_block, system_prompt
 from .registry import Handler, Registry
 from .reply import human_chunks, split_text, typing_delay
 from .roles import Role
 from .runtime import RuntimeFacts
 from .safety import SafetyPolicy, build_safety
+from .target import classify, combine, score_style
 from .tools import REGISTRY as CORE_TOOLS
 from .tools import ToolContext
 
@@ -99,6 +102,7 @@ class Agent:
         affect=None,
         style=None,
         ambient=None,
+        currents=None,
         vibe=None,
         gateways: tuple[Gateway, ...] = (),
         documents=None,
@@ -120,6 +124,7 @@ class Agent:
         self.affect = affect
         self.style = style
         self.ambient = ambient
+        self.currents = currents
         self.vibe = vibe
         self.gateways = tuple(gateways)
         self.documents = documents
@@ -164,6 +169,45 @@ class Agent:
     @staticmethod
     def _sender(inbound: Inbound) -> str:
         return inbound.message.sender_id or inbound.message.sender_jid or inbound.chat_id
+
+    async def _target(
+        self, inbound: Inbound, gateway: Gateway, messages, message
+    ) -> tuple[str, float, str]:
+        """Gender target: override manual, lalu gaya mengetik, avatar hanya bila diminta."""
+        recent = [
+            entry.text
+            for entry in messages[-8:]
+            if entry.sender_id == message.sender_id and entry.text.strip()
+        ]
+        style = score_style(recent)
+        stored = ("", 0.0, "")
+        if self.affect is not None:
+            try:
+                stored = self.affect.gender(inbound.person_id)
+            except Exception:
+                log.debug("gender: gagal membaca simpanan", exc_info=True)
+        if stored[0] and stored[2] == "manual":
+            return stored
+        avatar = None
+        if style[0] == "unknown" and self.config.character.gender_avatar:
+            grab = getattr(gateway, "avatar", None)
+            if callable(grab):
+                try:
+                    shot = await grab(message.sender_jid)
+                except Exception:
+                    log.debug("gender: avatar gagal diambil", exc_info=True)
+                    shot = None
+                if shot:
+                    avatar = await classify(self.llm, shot[0], shot[1])
+        target, confidence, source = combine(
+            style, avatar, gate=self.config.character.gender_gate
+        )
+        if self.affect is not None and (target, confidence, source) != tuple(stored):
+            try:
+                self.affect.set_gender(inbound.person_id, target, confidence, source)
+            except Exception:
+                log.debug("gender: gagal menyimpan label", exc_info=True)
+        return (target, confidence, source)
 
     def tool_context(
         self,
@@ -594,6 +638,34 @@ class Agent:
                     if any(entry is message for entry in window):
                         messages = window
                     covered = frozenset(entry.id for entry in messages if entry.id)
+                    target, confidence, source = await self._target(
+                        inbound, gateway, messages, message
+                    )
+                    limits = effective_limits(self.config.character, target, confidence)
+                    register = room_register(
+                        [entry.text for entry in messages[-6:] if entry.text.strip()]
+                    )
+                    patterns = select_patterns(
+                        self.config.character.patterns,
+                        register=register,
+                        target=target,
+                        limits=limits,
+                        messages=[entry.text for entry in messages[-8:]],
+                    )
+                    character = character_block(
+                        limits,
+                        target,
+                        confidence,
+                        gate=self.config.character.gender_gate,
+                        jabs=self.config.character.roast_jabs,
+                        patterns=patterns,
+                    )
+                    currents_block = ""
+                    if self.currents is not None:
+                        try:
+                            currents_block = self.currents.block(time.time(), 6)
+                        except Exception:
+                            log.debug("currents: gagal membaca konteks", exc_info=True)
                     try:
                         content = await build_user_content(
                             self.config,
@@ -665,6 +737,9 @@ class Agent:
                             style=style_block,
                             person_style=person_style,
                             safety=safety,
+                            character=character,
+                            research=research_block(),
+                            currents=currents_block,
                             sender=message.sender_name,
                             is_dm=inbound.is_dm,
                             mode=decision.mode,
@@ -683,6 +758,58 @@ class Agent:
                         if answer.strip() or not tool_ctx.sent
                         else t("agent.sent_ack", self.soul.language)
                     )
+                    daily = decision is None or decision.mode != "professional"
+                    if (
+                        daily
+                        and not is_command
+                        and not crisis
+                        and reply
+                        and not tool_ctx.sent
+                    ):
+                        recent = "\n".join(
+                            f"{entry.sender_name}: {entry.text}"
+                            for entry in messages[-6:]
+                            if entry.text.strip()
+                        )
+                        before = reply
+                        reply = await polish(
+                            self.llm,
+                            self.config,
+                            reply,
+                            latest=message.text,
+                            recent=recent,
+                            is_dm=inbound.is_dm,
+                            tone=decision.tone if decision is not None else "neutral",
+                            session=f"sanka-character-{chat_id}",
+                        )
+                        log.info(
+                            "character chat=%s status=%s",
+                            chat_id,
+                            "rewrite" if reply != before else "pass",
+                        )
+                        if not reply.strip():
+                            reply = before
+                    if reply and not is_command and not crisis:
+                        before = reply
+                        reply = await regulate(
+                            self.llm,
+                            self.config,
+                            reply,
+                            target=target,
+                            confidence=confidence,
+                            latest=message.text,
+                            session=f"sanka-character-{chat_id}",
+                            is_professional=bool(
+                                decision is not None and decision.mode == "professional"
+                            ),
+                        )
+                        log.info(
+                            "level chat=%s target=%s/%s status=%s",
+                            chat_id,
+                            target,
+                            f"{confidence:.2f}",
+                            "regulated" if reply != before else "pass",
+                        )
                     review = await self.privacy.review(
                         inbound,
                         reply,

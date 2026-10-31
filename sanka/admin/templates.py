@@ -82,6 +82,20 @@ ENGINE: dict = {
         "reaction_stickers": [],
     },
     "style": {"enabled": True, "max_chars": 800},
+    "character": {
+        "enabled": False,
+        "max_chars": 400,
+        "max_tokens": 500,
+        "temperature": 0.7,
+        "toxicity": 2,
+        "adult_memes": 1,
+        "gender_gate": True,
+        "gender_confidence": 0.6,
+        "roast_jabs": 1,
+        "gender_avatar": False,
+        "patterns": 0,
+        "max_questions": 1,
+    },
     "affect": {
         "enabled": True,
         "volatility": "expressive",
@@ -107,6 +121,10 @@ ENGINE: dict = {
         "research_cooldown": 21600,
         "research_per_day": 6,
         "research_results": 5,
+        "context_enabled": True,
+        "context_hours": 6,
+        "context_topics": 2,
+        "context_results": 4,
     },
 }
 

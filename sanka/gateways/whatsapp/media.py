@@ -166,6 +166,7 @@ def describe_media(message, message_id: str) -> Media | None:
             filename=name,
             size=int(getattr(content, "fileLength", 0) or 0),
             proto=message,
+            animated=bool(getattr(content, "isAnimated", False)) if kind == "sticker" else False,
         )
     return None
 

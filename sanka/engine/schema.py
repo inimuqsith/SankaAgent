@@ -158,6 +158,9 @@ people = Table(
     Column("window_respect", Float, nullable=False, default=0.0),
     Column("window_annoyance", Float, nullable=False, default=0.0),
     Column("notes", Json, nullable=False, default=list),
+    Column("gender", String(12), nullable=False, default=""),
+    Column("gender_confidence", Float, nullable=False, default=0.0),
+    Column("gender_source", String(16), nullable=False, default=""),
 )
 
 topics = Table(

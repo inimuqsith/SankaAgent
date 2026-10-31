@@ -20,6 +20,7 @@ Hard rules for changes in this repo:
 - Sensitive actions (`shell`, `sandbox`) and internal changes (`settings`) must pass `SafetyPolicy`/`approvals` and `/approve`. Default mode `yolo`; `off` disables approval (document the risk). `/approve` never calls the LLM and re-checks role permissions.
 - One primary: `engine_lease`. An instance without the lease stays standby and frozen; `/freeze` and takeover happen only through the lease/DB, never two hearts.
 - Prompt scaffolding and model-facing payloads are English; the `SOUL.md` persona and role `description`/`context` stay Indonesian.
+- Character data lives only in `sanka/data/patterns.json` (+ `pattern_vectors.json`): conditional moves with register/target/level gates, never raw transcripts, names, phone numbers, or URLs in the repo or in prompts. Edit it with `scripts/patterns.py`, run `--check` then `--embed`, and keep every `say` line from an owner-approved correction. Pattern `content`/`say` are Indonesian character data like `SOUL.md`; the surrounding prompt scaffolding stays English.
 - Code must stay minimal but solid. Do not add abstractions without need.
-- The test suite is small and focused on repo contracts: routing/format/permission, gateway contract, lease, approval, cross-chat memory, privacy/disclosure, language selection, and the Neonize reply path. Do not re-test library behavior.
+- The test suite is small and focused on repo contracts: routing/format/permission, gateway contract, lease, approval, cross-chat memory, privacy/disclosure, language selection, pattern selection, and the Neonize reply path. Do not re-test library behavior.
 - Verify before finishing: `pytest -q` and `python -m sanka selftest`. For gateway/lease changes also smoke `sanka console --takeover`.

@@ -108,6 +108,7 @@ class Media:
     proto: object = field(repr=False, compare=False, default=None)
     path: Path | None = None
     error: str = ""
+    animated: bool = False
     ref: bytes | None = field(default=None, repr=False, compare=False)
 
 
@@ -461,15 +462,27 @@ def _media_lines(
     current: bool,
     prefix: str = "lampiran",
 ) -> list[str]:
-    label = "gambar" if _is_image(media) else media.kind
-    head = f"  {prefix}: {label} {media.filename} ({media.mimetype}, {human_size(media.size)})"
+    if media.kind == "sticker":
+        label = "stiker"
+    elif _is_image(media):
+        label = "gambar"
+    else:
+        label = media.kind
+    motion = (
+        " [animasi; hanya bingkai pertama terlihat]"
+        if media.animated
+        else (" [stiker diam]" if media.kind == "sticker" else "")
+    )
+    head = (
+        f"  {prefix}: {label} {media.filename} ({media.mimetype}, {human_size(media.size)}){motion}"
+    )
     if media.error:
         return [f"{head} [gagal diunduh: {media.error}]"]
     if media.path is None:
         return [f"{head} [tidak tersedia]"]
     relative = _relative(config, media.path)
     if number:
-        return [f"{head} -> {relative} [gambar #{number}]"]
+        return [f"{head} -> {relative} [{label} #{number}]"]
     if _is_image(media):
         return [f"{head} -> {relative} [tidak diinjeksi; periksa dengan sandbox]"]
     if _is_text(media):
@@ -521,7 +534,8 @@ def prompt_entry(entry: ChatMessage, bot_name: str, limit: int = 300) -> str:
     body = note or _flatten(entry.text, limit)
     notes: list[str] = []
     if entry.media is not None:
-        notes.append(f"[{MEDIA_LABELS.get(entry.media.kind, entry.media.kind)}]")
+        kind = MEDIA_LABELS.get(entry.media.kind, entry.media.kind)
+        notes.append(f"[{kind} animasi]" if entry.media.animated else f"[{kind}]")
     if entry.quote is not None and not entry.deleted:
         qwho = _flatten(entry.quote.sender_name, NAME_LIMIT) or "-"
         qtext = _flatten(entry.quote.text, 120)

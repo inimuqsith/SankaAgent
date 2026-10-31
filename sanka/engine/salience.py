@@ -4,10 +4,24 @@ from __future__ import annotations
 
 from .context import keyword_set
 
-MANDATORY = ("base", "self", "roles", "safety", "away", "emotion", "vibe", "memory", "actions")
-COMPETING = ("topic", "style", "person_style", "skills")
+MANDATORY = (
+    "base",
+    "character",
+    "research",
+    "self",
+    "roles",
+    "safety",
+    "away",
+    "emotion",
+    "vibe",
+    "memory",
+    "actions",
+)
+COMPETING = ("topic", "currents", "style", "person_style", "skills")
 ORDER = (
     "base",
+    "character",
+    "research",
     "self",
     "roles",
     "safety",
@@ -15,6 +29,7 @@ ORDER = (
     "emotion",
     "vibe",
     "topic",
+    "currents",
     "style",
     "person_style",
     "memory",

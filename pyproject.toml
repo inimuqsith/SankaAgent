@@ -18,7 +18,7 @@ dependencies = [
 memory = ["mem0ai>=2.2,<3", "sentence-transformers>=5.2,<6"]
 whatsapp = ["neonize>=0.5.2,<0.6", "segno>=1.6"]
 vibe = ["torch>=2.2", "transformers>=4.40,<6"]
-dev = ["pytest>=8", "neonize>=0.5.2,<0.6", "segno>=1.6"]
+dev = ["pytest>=8", "pytest-cov>=6", "ruff>=0.17", "neonize>=0.5.2,<0.6", "segno>=1.6"]
 
 [project.scripts]
 sanka = "sanka.__main__:main"
@@ -31,10 +31,24 @@ build-backend = "setuptools.build_meta"
 include = ["sanka*"]
 
 [tool.setuptools.package-data]
-sanka = ["lang/*.yaml"]
+sanka = ["lang/*.yaml", "data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["sanka/vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C90", "PLR0912", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.coverage.run]
+branch = true
+source = ["sanka"]
 
 [tool.uv]
 # Mem0 mem-pin protobuf<7 sedangkan Neonize butuh >=6.32.1; build lama tetap memakai

@@ -194,6 +194,32 @@ class StyleConfig:
 
 
 @dataclass(frozen=True)
+class CharacterConfig:
+    """Lapisan karakter: merapikan balasan robotik dan menahan register di dalam level.
+
+    Level menggantikan larangan absolut. `toxicity` 0-4: 0 tanpa sindiran/kutukan, 1
+    goda ringan, 2 satu sindiran pendek plus kutukan ringan saat ruangan bercanda, 3
+    sindiran lebih keras (hinaan bernuansa seksual hanya ke target pria yang sudah ikut
+    bercanda), 4 register ruangan tanpa filter. `adult_memes` 0-3: 0 kenali saja, 1
+    tiru hanya kalau chat ini sudah memakainya, 2 pakai saat ruangan becanda soal meme,
+    3 mulai sendiri di grup yang jelas bercanda dengan target pria.
+    """
+
+    enabled: bool = False
+    max_chars: int = 400
+    max_tokens: int = 500
+    temperature: float = 0.7
+    toxicity: int = 2
+    adult_memes: int = 1
+    gender_gate: bool = True
+    gender_confidence: float = 0.6
+    roast_jabs: int = 1
+    gender_avatar: bool = False  # avatar hanya sinyal cadangan
+    patterns: int = 0  # pola runtime per turn, 0..6
+    max_questions: int = 1  # pertanyaan per balasan, 1..2
+
+
+@dataclass(frozen=True)
 class AmbientConfig:
     enabled: bool = True
     tick_seconds: int = 10
@@ -204,6 +230,10 @@ class AmbientConfig:
     research_cooldown: int = 21600
     research_per_day: int = 6
     research_results: int = 5
+    context_enabled: bool = True
+    context_hours: int = 6
+    context_topics: int = 2
+    context_results: int = 4
 
 
 @dataclass(frozen=True)
@@ -262,6 +292,7 @@ class Config:
     prompt: PromptConfig = field(default_factory=PromptConfig)
     humanize: HumanizeConfig = field(default_factory=HumanizeConfig)
     style: StyleConfig = field(default_factory=StyleConfig)
+    character: CharacterConfig = field(default_factory=CharacterConfig)
     affect: AffectConfig = field(default_factory=AffectConfig)
     ambient: AmbientConfig = field(default_factory=AmbientConfig)
 
@@ -364,6 +395,22 @@ def _num(value: object, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _clamped(value: object, default: int, low: int, high: int) -> int:
+    """Level numerik: nilai rusak jatuh ke default, nilai di luar rentang dipotong."""
+    if isinstance(value, bool):
+        return default
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, number))
+
+
+def _num_clamped(value: object, default: float, low: float, high: float) -> float:
+    number = _num(value, default)
+    return max(low, min(high, number))
 
 
 def _section(raw: Mapping, key: str) -> dict:
@@ -624,6 +671,7 @@ def load_config(
     prompt_raw = _section(engine, "prompt")
     humanize_raw = _section(engine, "humanize")
     style_raw = _section(engine, "style")
+    character_raw = _section(engine, "character")
     affect_raw = _section(engine, "affect")
     ambient_raw = _section(engine, "ambient")
     vibe_raw = _section(affect_raw, "vibe")
@@ -726,6 +774,20 @@ def load_config(
             enabled=_bool(style_raw.get("enabled"), True),
             max_chars=int(_num(style_raw.get("max_chars"), 800)),
         ),
+        character=CharacterConfig(
+            enabled=_bool(character_raw.get("enabled"), False),
+            max_chars=int(_num(character_raw.get("max_chars"), 400)),
+            max_tokens=int(_num(character_raw.get("max_tokens"), 500)),
+            temperature=_num(character_raw.get("temperature"), 0.7),
+            toxicity=_clamped(character_raw.get("toxicity"), 2, 0, 4),
+            adult_memes=_clamped(character_raw.get("adult_memes"), 1, 0, 3),
+            gender_gate=_bool(character_raw.get("gender_gate"), True),
+            gender_confidence=_num_clamped(character_raw.get("gender_confidence"), 0.6, 0.0, 1.0),
+            roast_jabs=_clamped(character_raw.get("roast_jabs"), 1, 1, 3),
+            gender_avatar=_bool(character_raw.get("gender_avatar"), False),
+            patterns=_clamped(character_raw.get("patterns"), 0, 0, 6),
+            max_questions=_clamped(character_raw.get("max_questions"), 1, 1, 2),
+        ),
         affect=AffectConfig(
             enabled=_bool(affect_raw.get("enabled"), True),
             volatility=str(affect_raw.get("volatility") or "expressive").strip() or "expressive",
@@ -754,5 +816,9 @@ def load_config(
             research_cooldown=int(_num(ambient_raw.get("research_cooldown"), 21600)),
             research_per_day=int(_num(ambient_raw.get("research_per_day"), 6)),
             research_results=int(_num(ambient_raw.get("research_results"), 5)),
+            context_enabled=_bool(ambient_raw.get("context_enabled"), True),
+            context_hours=_clamped(ambient_raw.get("context_hours"), 6, 1, 168),
+            context_topics=_clamped(ambient_raw.get("context_topics"), 2, 1, 9),
+            context_results=_clamped(ambient_raw.get("context_results"), 4, 1, 8),
         ),
     )

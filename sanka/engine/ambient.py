@@ -13,6 +13,7 @@ from datetime import date, datetime
 
 from . import guard
 from .config import Config
+from .currents import refresh
 from .roles import Role
 from .tools import ToolContext, execute
 from .tools.web_search import TOOL as WEB_SEARCH
@@ -35,6 +36,7 @@ class Ambient:
         memory=None,
         history=None,
         windows=None,
+        currents=None,
     ):
         self.config = config
         self.settings = config.ambient
@@ -44,6 +46,7 @@ class Ambient:
         self.memory = memory
         self.history = history
         self.windows = windows
+        self.currents = currents
         self.known_chats: set[str] = set()
         self.busy: set[str] = set()
         self.tasks: set[asyncio.Task] = set()
@@ -100,9 +103,10 @@ class Ambient:
     # ------------------------------------------------------------------ tick
 
     async def _tick(self, now: float | None = None) -> None:
+        moment = time.time() if now is None else float(now)
+        await self._context(moment)
         if self.affect is None or self.history is None or self.llm is None:
             return
-        moment = time.time() if now is None else float(now)
         settings = self.settings
         chats = sorted(self.known_chats)
         for chat_id in chats:
@@ -143,6 +147,46 @@ class Ambient:
         if moment - float(topic["last_research"]) < int(settings.research_cooldown):
             return False
         return int(topic["research_count"]) < int(settings.research_per_day)
+
+    # ------------------------------------------------------------------ konteks
+
+    async def _context(self, moment: float) -> None:
+        """Segarkan konteks Indonesia paling basi; hanya proses primer yang sampai ke sini."""
+        settings = self.settings
+        if self.currents is None or self.llm is None or not settings.context_enabled:
+            return
+        if "__context" in self.busy:
+            return
+        try:
+            last = float(self.currents.load().get("updated_at") or 0.0)
+        except Exception:
+            log.debug("ambient: gagal membaca currents", exc_info=True)
+            return
+        if moment - last < int(settings.context_hours) * 3600:
+            return
+        self.busy.add("__context")
+        try:
+            updated = await refresh(
+                self.currents,
+                self._search,
+                self.llm.research_summary,
+                topics=int(settings.context_topics),
+                results=int(settings.context_results),
+                now=moment,
+            )
+            log.info("ambient konteks: %d topik diperbarui", updated)
+        except Exception:  # konteks latar tidak boleh menghentikan loop
+            log.exception("ambient konteks gagal")
+        finally:
+            self.busy.discard("__context")
+
+    async def _search(self, query: str, results: int) -> str:
+        return await execute(
+            {"web_search": WEB_SEARCH},
+            "web_search",
+            {"query": query, "max_results": int(results)},
+            self._tool_ctx(""),
+        )
 
     # ------------------------------------------------------------------ aksi
 

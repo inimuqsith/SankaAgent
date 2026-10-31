@@ -52,6 +52,7 @@ async def build_runtime(config_path: str | None, *, console: bool = False):
     from .engine.stores.history import HistoryStore
     from .engine.stores.recipes import RecipeStore
     from .engine.stores.skills import SkillStore
+    from .engine.stores.currents import CurrentsStore
     from .engine.stores.style import StyleStore
     from .engine.stores.vibe import VibeRunner
     from .engine.context import WorkingMemory
@@ -80,6 +81,7 @@ async def build_runtime(config_path: str | None, *, console: bool = False):
         AffectStore(db, config.affect, soul=config.soul.persona) if config.affect.enabled else None
     )
     style = StyleStore(db, config.style) if config.style.enabled else None
+    currents = CurrentsStore(db)
     vibe = None
     if affect is not None and config.affect.vibe.enabled:
         vibe = VibeRunner(db, config.affect.vibe)
@@ -93,7 +95,7 @@ async def build_runtime(config_path: str | None, *, console: bool = False):
     )
     ambient = None
     if config.ambient.enabled:
-        ambient = Ambient(config, llm, affect, style, memory, history, windows)
+        ambient = Ambient(config, llm, affect, style, memory, history, windows, currents)
     agent = Agent(
         config,
         db,
@@ -108,6 +110,7 @@ async def build_runtime(config_path: str | None, *, console: bool = False):
         affect=affect,
         style=style,
         ambient=ambient,
+        currents=currents,
         vibe=vibe,
         gateways=tuple(gateways),
         documents=documents,
