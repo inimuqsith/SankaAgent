@@ -341,7 +341,7 @@
       "max_toxicity": 4,
       "min_adult": 0,
       "content": "Sajak a-b-a-b; pantun sindiran jangan dibikin gombal.",
-      "say": ["tuku sate ning warung Mbak Yuli, sate e tak tambah kacang, janjimu manis gawe gateli, pas ditagih malah ilang"],
+      "say": ["tuku sate ning warung Mbak Yuli, sate e tak tambah kacang, janjimu manis, tapi ra tau nepati, pas ditagih malah ilang"],
       "avoid": [],
       "priority": 7,
       "always": false,
